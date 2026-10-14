@@ -1,0 +1,70 @@
+# GMAO SETRAM — déploiement sur serveur interne
+# Démarrage :  cp .env.example .env  (puis éditer)  ->  docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }     # journaux limités à 50 Mo par service
+    environment:
+      POSTGRES_DB: gmao
+      POSTGRES_USER: gmao
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD manquant dans le fichier .env}
+    volumes:
+      - gmao_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gmao -d gmao"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: ./server
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }     # journaux limités à 50 Mo par service
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://gmao:${DB_PASSWORD:?DB_PASSWORD manquant}@db:5432/gmao
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans le fichier .env}
+      COOKIE_SECURE: "true"
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+      TRUST_PROXY: "1"
+    volumes:
+      - gmao_files:/data          # pièces jointes (photos)
+    expose:
+      - "3000"
+
+  # Reverse proxy HTTPS (certificat interne auto-généré par Caddy)
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }     # journaux limités à 50 Mo par service
+    depends_on:
+      - app
+    ports:
+      - "443:443"
+      - "80:80"
+    environment:
+      GMAO_HOST: ${GMAO_HOST:-gmao.setram.local}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificat de l'entreprise : décommenter ces 2 lignes ET utiliser Caddyfile.certificat-entreprise (voir DOSSIER-DSI.md § 6)
+      # - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  gmao_pgdata:
+  gmao_files:
+  caddy_data:
+  caddy_config:

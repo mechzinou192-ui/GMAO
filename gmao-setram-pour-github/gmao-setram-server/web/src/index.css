@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+  /* ===== Thème SETRAM (clair) — modifiez ces 3 couleurs pour ajuster l'identité ===== */
+  :root{
+    color-scheme:light;
+    --brand:#0b4ea2;        /* bleu principal (boutons, liens, menu actif) */
+    --brand-dark:#083b7a;   /* survol */
+    --accent:#e30613;       /* filet d'accent */
+    --ink:#0f2447;          /* titres */
+    --text:#334155;         /* texte courant */
+    --muted:#64748b;
+    --bg:#f3f6fb;
+    --card:#ffffff;
+    --soft:#eef2f8;         /* champs / lignes */
+    --line:#dde4ee;
+  }
+  html,body{margin:0;}
+  body{background:var(--bg);color:var(--text);font-family:"Segoe UI",Inter,system-ui,-apple-system,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#c3cddc;border-radius:4px}
+
+  /* Textes */
+  body .text-slate-100,body .text-slate-200{color:var(--ink)}
+  body .text-slate-300{color:var(--text)}
+  body .text-slate-400,body .text-slate-500{color:var(--muted)}
+  body .text-slate-600,body .text-slate-700{color:#94a3b8}
+  body .text-sky-400,body .text-sky-300,body .hover\:text-sky-400:hover{color:var(--brand)}
+  body .text-amber-400{color:#b45309}
+  body .text-emerald-400{color:#047857}
+  body .text-rose-400,body .hover\:text-rose-400:hover{color:#be123c}
+  body .text-rose-300{color:#be123c} body .text-rose-200{color:#9f1239}
+
+  /* Fonds */
+  body .bg-slate-950,body .bg-slate-900,body .bg-slate-900\/60{background-color:var(--soft)}
+  body .bg-slate-800,body .bg-slate-800\/60{background-color:var(--card)}
+  body .bg-slate-800\/60{box-shadow:0 1px 3px rgba(15,36,71,.06),0 4px 14px rgba(15,36,71,.05)}
+  body .bg-slate-700{background-color:#e3e9f2;color:var(--ink)}
+  body .hover\:bg-slate-600:hover,body .hover\:bg-slate-700:hover{background-color:#cfd8e6}
+  body .hover\:bg-slate-800:hover,body .hover\:bg-slate-700\/40:hover,body .hover\:bg-slate-700\/30:hover{background-color:#eaf0f9}
+  body .bg-slate-600{background-color:#cfd8e6;color:var(--ink)}
+  body .bg-slate-500{background-color:#e3e9f2;color:var(--ink)}
+  body .bg-black\/60{background-color:rgba(15,36,71,.5)}
+  body .bg-rose-900\/30,body .bg-rose-950\/40{background-color:#fff1f2}
+  body .bg-emerald-950\/30{background-color:#ecfdf5}
+  body .bg-sky-900\/30{background-color:#eaf2fd}
+  /* Alertes orange / vertes (contrats, habilitations, avertissements) : fond clair + texte foncé lisible */
+  body .bg-amber-900\/20,body .bg-amber-900\/30{background-color:#fffbeb}
+  body .bg-emerald-900\/20,body .bg-emerald-900\/30{background-color:#ecfdf5}
+  body .text-amber-300{color:#b45309} body .text-amber-200{color:#92400e}
+  body .text-emerald-300{color:#047857} body .text-emerald-200{color:#065f46}
+
+  /* Bordures */
+  body .border-slate-700,body .border-slate-600,body .border-slate-800{border-color:var(--line)}
+  body .border-rose-700,body .border-rose-800{border-color:#fecdd3}
+  body .border-emerald-900{border-color:#a7f3d0}
+  body .border-amber-700,body .border-amber-800{border-color:#fde68a}
+  body .border-emerald-700{border-color:#a7f3d0}
+  body .border-sky-500,body .border-sky-600{border-color:var(--brand)}
+
+  /* Couleur de marque (boutons / menu actif) */
+  body .bg-sky-600,body .bg-sky-500,body .bg-sky-700{background-color:var(--brand);color:#fff}
+  body .hover\:bg-sky-500:hover,body .hover\:bg-sky-600:hover{background-color:var(--brand-dark)}
+  body .bg-violet-700{background-color:#1d6fd6;color:#fff}
+  body .hover\:bg-violet-600:hover{background-color:var(--brand)}
+
+  /* Panneau latéral : blanc avec filet rouge SETRAM */
+  body aside{background-color:#fff !important;border-right:1px solid var(--line) !important;border-top:4px solid var(--accent);box-shadow:2px 0 18px rgba(15,36,71,.05)}
+  body aside .bg-slate-800{background-color:var(--soft)}
+  body aside nav button{border-radius:10px;font-weight:500}
+  body aside nav button.bg-sky-600{box-shadow:0 4px 12px rgba(11,78,162,.28)}
+
+  /* Cartes, fenêtres, champs */
+  body .rounded-xl{border-radius:16px}
+  body input,body select,body textarea{color:var(--ink)}
+  body input::placeholder,body textarea::placeholder{color:#94a3b8}
+  body input:focus,body select:focus,body textarea:focus{outline:2px solid rgba(11,78,162,.35);outline-offset:0;border-color:var(--brand)}
+  body button.rounded-lg{border-radius:10px}
+  body table th{font-weight:600;color:var(--muted);text-transform:none}
+  body h1,body h2,body h3,body h4{color:var(--ink)}
+
+
+  /* ===== Téléphone / tablette étroite ===== */
+  @media (max-width:767px){
+    /* iOS zoome automatiquement dans un champ dont la police est < 16 px : on l'évite */
+    input,select,textarea{font-size:16px !important}
+    /* aucun contenu ne doit élargir la page : les tableaux défilent dans leur cadre */
+    html,body{overflow-x:hidden}
+    table{font-size:13px}
+  }
+  /* ===== Impression directe de l'écran ===== */
+  @media print{
+    aside,[data-testid="menu-bouton"]{display:none !important}
+    main{padding:0 !important;overflow:visible !important}
+  }
