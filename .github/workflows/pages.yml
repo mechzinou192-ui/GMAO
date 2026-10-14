@@ -1,0 +1,44 @@
+name: Démo GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trouver le dossier web
+        id: find
+        run: |
+          F=$(find gmao-setram-pour-github -name vite.config.demo.js -not -path '*/node_modules/*' | head -1)
+          echo "Trouvé : $F"
+          test -n "$F"
+          echo "dir=$(dirname "$F")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: ${{ steps.find.outputs.dir }}
+      - run: npm run build:demo
+        working-directory: ${{ steps.find.outputs.dir }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.find.outputs.dir }}/dist-demo
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        
