@@ -1,0 +1,26 @@
+# Déploiement GRATUIT d'une démonstration sur Render (https://render.com) — voir HEBERGEMENT-GRATUIT.md
+# La base de données est externe (Neon, gratuit) : renseigner DATABASE_URL à la création du service.
+services:
+  - type: web
+    name: gmao-setram-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL          # adresse de la base Neon (à coller, voir le guide)
+        sync: false
+      - key: JWT_SECRET            # clé de session générée automatiquement par Render
+        generateValue: true
+      - key: DEMO                  # mode démonstration : comptes publics + données fictives
+        value: "1"
+      - key: DEMO_RESET_HOURS      # remise à zéro des données de démo toutes les 24 h
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "1"

@@ -1,0 +1,29 @@
+# Service systemd pour une installation SANS Docker (Linux).  /etc/systemd/system/gmao.service
+# Puis :  systemctl daemon-reload && systemctl enable --now gmao && systemctl status gmao
+[Unit]
+Description=GMAO SETRAM
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=gmao
+Group=gmao
+WorkingDirectory=/opt/gmao-setram/server
+EnvironmentFile=/etc/gmao-setram/gmao.env
+ExecStart=/usr/bin/node src/start.js
+Restart=on-failure
+RestartSec=5
+# Durcissement : l'application ne peut écrire que dans /var/lib/gmao-setram (photos)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/gmao-setram
+
+[Install]
+WantedBy=multi-user.target

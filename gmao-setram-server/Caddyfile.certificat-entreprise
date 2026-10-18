@@ -1,0 +1,8 @@
+# À utiliser À LA PLACE de Caddyfile quand la DSI fournit un certificat (autorité interne ou publique) :
+#   1. déposer gmao.crt (chaîne complète) et gmao.key dans ./certs/
+#   2. dans docker-compose.yml, décommenter la ligne « ./certs:/certs:ro » et remplacer « ./Caddyfile » par « ./Caddyfile.certificat-entreprise »
+{$GMAO_HOST} {
+	tls /certs/gmao.crt /certs/gmao.key
+	encode gzip
+	reverse_proxy app:3000
+}

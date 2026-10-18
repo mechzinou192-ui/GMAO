@@ -1,0 +1,670 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Dossier DSI</title><style>body{font:14px/1.55 -apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}
+h1{color:#2b3593;border-bottom:3px solid #2b3593;padding-bottom:6px}h2{color:#2b3593;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}
+code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}
+blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}
+@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)</h1>
+<p><strong>Version de l'application : 1.9.0</strong> · Public : DSI / RSSI / administrateurs système · Langue : français</p>
+<p>Ce document permet à la DSI d'<strong>héberger, sécuriser, sauvegarder, superviser et mettre à jour</strong> l'application sur son
+infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et ce qui ne l'a pas été</strong> (§ 12).</p>
+<hr />
+<h2>1. En bref</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Nature</strong></td>
+<td>Application web (GMAO : demandes d'intervention, bons de travail, préventif, magasin, indicateurs) pour 7 unités</td>
+</tr>
+<tr>
+<td><strong>Architecture</strong></td>
+<td>Navigateur → reverse proxy HTTPS → application Node.js → base PostgreSQL. Aucun autre composant</td>
+</tr>
+<tr>
+<td><strong>Accès</strong></td>
+<td>Intranet (recommandé) ; utilisable sur téléphone / tablette (navigateur)</td>
+</tr>
+<tr>
+<td><strong>Connexions sortantes</strong></td>
+<td><strong>Aucune.</strong> Pas de CDN, pas de police externe, pas de service tiers : l'application fonctionne sans accès Internet</td>
+</tr>
+<tr>
+<td><strong>Authentification</strong></td>
+<td>Comptes locaux (mot de passe haché). <strong>Pas d'annuaire AD/LDAP ni de SSO</strong> dans cette version (§ 10)</td>
+</tr>
+<tr>
+<td><strong>Données</strong></td>
+<td>Fiches équipements, DI, BT, stocks, personnel de maintenance (nom, matricule, taux horaire, habilitations), photos</td>
+</tr>
+<tr>
+<td><strong>Instances</strong></td>
+<td><strong>Une seule instance</strong> (pas de haute disponibilité intégrée, § 11)</td>
+</tr>
+<tr>
+<td><strong>Dépendances</strong></td>
+<td>8 paquets Node côté serveur ; <strong>0 vulnérabilité connue</strong> (<code>npm audit</code>, 13/10/2026) ; licences permissives (MIT, ISC, BSD, Apache-2.0)</td>
+</tr>
+</tbody>
+</table>
+<h3>Schéma des flux</h3>
+<pre><code> Poste utilisateur (navigateur)
+        │  HTTPS 443  (TLS 1.2/1.3)
+        ▼
+ Reverse proxy (nginx ou Caddy)  ── redirige 80 → 443, en-têtes de sécurité, limite 11 Mo
+        │  HTTP, réseau local uniquement  (127.0.0.1:3000 ou réseau Docker interne)
+        ▼
+ Application Node.js (port 3000)  ── API + fichiers de l'interface
+        │                      └─── disque : photos (volume /data/files  ou  /var/lib/gmao-setram/files)
+        │  PostgreSQL 5432, réseau local uniquement
+        ▼
+ Base PostgreSQL 16
+</code></pre>
+<h3>Ports et flux réseau à ouvrir</h3>
+<table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Sens</th>
+<th>Ouverture</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>443/TCP</strong></td>
+<td>utilisateurs → proxy</td>
+<td>Intranet (ou VPN) uniquement, <strong>jamais</strong> vers Internet sans décision RSSI</td>
+</tr>
+<tr>
+<td><strong>80/TCP</strong></td>
+<td>utilisateurs → proxy</td>
+<td>Facultatif : sert uniquement à rediriger vers HTTPS</td>
+</tr>
+<tr>
+<td>3000/TCP</td>
+<td>proxy → application</td>
+<td><strong>Local à la machine</strong> (<code>HOST=127.0.0.1</code>) ou réseau Docker interne. <strong>Ne pas exposer</strong></td>
+</tr>
+<tr>
+<td>5432/TCP</td>
+<td>application → base</td>
+<td><strong>Local</strong> uniquement. <strong>Ne pas exposer</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. Dimensionnement</h2>
+<table>
+<thead>
+<tr>
+<th>Ressource</th>
+<th>Minimum</th>
+<th>Recommandé</th>
+<th>Mesuré</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>1 vCPU</td>
+<td>2 vCPU</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Mémoire</td>
+<td>2 Go</td>
+<td>4 Go</td>
+<td>Application ≈ <strong>75–82 Mo</strong> avec le jeu de démonstration (68 équipements, 86 DI, 93 BT)</td>
+</tr>
+<tr>
+<td>Disque</td>
+<td>20 Go</td>
+<td>40 Go</td>
+<td>Photo ≈ 200–400 Ko après réduction sur le téléphone : 50 photos/jour ≈ 4–6 Go/an</td>
+</tr>
+<tr>
+<td>Réseau</td>
+<td>100 Mb/s</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Charge</strong> : aucun test de charge n'a été réalisé. Pour une équipe de maintenance de quelques dizaines d'utilisateurs,
+la configuration recommandée est très largement suffisante, mais le <strong>pilote</strong> (§ 13) doit le confirmer.</p>
+</blockquote>
+<hr />
+<h2>3. Choix d'installation</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>A. Docker Compose</strong> (recommandé)</th>
+<th><strong>B. Sans Docker</strong> (Linux)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quand</td>
+<td>La DSI exploite déjà Docker</td>
+<td>Pas de Docker autorisé / préférence systemd</td>
+</tr>
+<tr>
+<td>Éléments</td>
+<td><code>docker-compose.yml</code>, <code>Caddyfile</code></td>
+<td><code>deploy/gmao.service</code>, <code>deploy/nginx.conf.example</code>, <code>deploy/gmao.env.example</code></td>
+</tr>
+<tr>
+<td>Sauvegarde</td>
+<td><code>scripts/backup.sh</code></td>
+<td><code>scripts/backup-sans-docker.sh</code></td>
+</tr>
+</tbody>
+</table>
+<p>Windows Server : voir § 14 (pistes, non testé). La version « Windows local » (<code>gmao-setram-local-windows.zip</code>) est un
+<strong>outil d'essai pour un poste isolé</strong> (base embarquée, sans HTTPS) : <strong>ne pas l'utiliser en exploitation</strong>.</p>
+<hr />
+<h2>4. Installation A — Docker Compose</h2>
+<p>Prérequis : Docker Engine ≥ 24 avec le plugin Compose v2, un nom DNS interne (ex. <code>gmao.setram.local</code>).</p>
+<pre><code class="language-bash"># 1. Déposer le dossier gmao-setram-server sur le serveur, par exemple dans /opt/gmao-setram-server
+cd /opt/gmao-setram-server
+cp .env.example .env
+nano .env            # renseigner les 4 valeurs ci-dessous
+
+# 2. Générer des secrets aléatoires
+openssl rand -base64 48 | tr -d '\n'     # → JWT_SECRET
+openssl rand -base64 24 | tr -d '\n'     # → DB_PASSWORD
+
+# 3. Construire et démarrer
+docker compose build
+docker compose up -d
+docker compose ps                         # app doit être « healthy » après ~40 s
+docker compose logs app | head -30        # le mot de passe du compte admin y figure (§ 7)
+</code></pre>
+<p>Fichier <code>.env</code> :</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GMAO_HOST</code></td>
+<td>Nom DNS de l'application (ex. <code>gmao.setram.local</code>)</td>
+</tr>
+<tr>
+<td><code>DB_PASSWORD</code></td>
+<td>Mot de passe de la base (obligatoire ; la valeur d'exemple est <strong>refusée</strong>)</td>
+</tr>
+<tr>
+<td><code>JWT_SECRET</code></td>
+<td>Clé de signature des sessions, <strong>≥ 32 caractères</strong> (la valeur d'exemple est <strong>refusée</strong>)</td>
+</tr>
+<tr>
+<td><code>ADMIN_INITIAL_PASSWORD</code></td>
+<td>Facultatif. Sinon un mot de passe aléatoire est affiché une fois dans les journaux</td>
+</tr>
+</tbody>
+</table>
+<p>Le fichier <code>docker-compose.yml</code> ne publie <strong>que</strong> les ports 80 et 443 (Caddy). La base et l'application ne sont
+joignables que sur le réseau interne de Compose. Les journaux sont limités à 50 Mo par service.</p>
+<p><strong>HTTPS</strong> — deux possibilités :
+1. <em>Caddy avec le certificat de l'entreprise</em> (recommandé) : déposer <code>gmao.crt</code> (chaîne complète) et <code>gmao.key</code> dans <code>./certs/</code>,
+   décommenter la ligne <code>./certs:/certs:ro</code> dans <code>docker-compose.yml</code> et monter <code>Caddyfile.certificat-entreprise</code> à la place de <code>Caddyfile</code>.
+2. <em>Déjà un reverse proxy d'entreprise</em> (F5, nginx, HAProxy…) : supprimer le service <code>proxy</code> et faire pointer le proxy existant
+   vers <code>app:3000</code> (publier ce port <strong>sur 127.0.0.1 uniquement</strong>). Voir § 6 pour les en-têtes à transmettre.</p>
+<blockquote>
+<p>Le <code>Caddyfile</code> livré utilise <code>tls internal</code> (autorité de certification interne de Caddy) : les navigateurs affichent
+un avertissement tant que cette autorité n'est pas distribuée aux postes. Utiliser le certificat de l'entreprise en exploitation.</p>
+</blockquote>
+<hr />
+<h2>5. Installation B — Sans Docker (Linux)</h2>
+<p>Testé sur Ubuntu 24.04, Node.js 22 LTS, PostgreSQL 16, nginx 1.24.</p>
+<pre><code class="language-bash"># 1. Paquets
+apt install -y postgresql nginx
+#    Node.js 22 LTS : dépôt officiel NodeSource ou nvm (la version du paquet de la distribution est souvent trop ancienne)
+node -v     # doit afficher v22.x (minimum v20)
+
+# 2. Utilisateur système et dossiers
+useradd --system --home /opt/gmao-setram --shell /usr/sbin/nologin gmao
+mkdir -p /opt/gmao-setram /var/lib/gmao-setram/files /etc/gmao-setram /var/backups/gmao
+cp -r gmao-setram-server/* /opt/gmao-setram/
+cd /opt/gmao-setram/server &amp;&amp; npm ci --omit=dev          # installation reproductible (fichier de verrouillage)
+chown -R gmao:gmao /var/lib/gmao-setram
+
+# 3. Base PostgreSQL
+sudo -u postgres psql -c &quot;CREATE USER gmao WITH PASSWORD 'MOT_DE_PASSE_ROBUSTE'&quot; \
+                      -c &quot;CREATE DATABASE gmao OWNER gmao&quot;
+
+# 4. Configuration (secrets)
+cp /opt/gmao-setram/deploy/gmao.env.example /etc/gmao-setram/gmao.env
+nano /etc/gmao-setram/gmao.env                            # DATABASE_URL, JWT_SECRET
+chown root:gmao /etc/gmao-setram/gmao.env &amp;&amp; chmod 640 /etc/gmao-setram/gmao.env
+
+# 5. Service
+cp /opt/gmao-setram/deploy/gmao.service /etc/systemd/system/
+systemctl daemon-reload &amp;&amp; systemctl enable --now gmao
+journalctl -u gmao -n 30                                  # mot de passe admin initial, « serveur démarré »
+
+# 6. Reverse proxy HTTPS (§ 6)
+cp /opt/gmao-setram/deploy/nginx.conf.example /etc/nginx/conf.d/gmao.conf
+nano /etc/nginx/conf.d/gmao.conf                          # nom DNS + chemins du certificat
+nginx -t &amp;&amp; systemctl reload nginx
+</code></pre>
+<p><code>HOST=127.0.0.1</code> dans <code>gmao.env</code> limite l'écoute de l'application à la machine (vérifié : le port 3000 n'est alors pas joignable depuis le réseau).</p>
+<hr />
+<h2>6. HTTPS, DNS et reverse proxy</h2>
+<ul>
+<li>Un <strong>certificat TLS valide</strong> (autorité de l'entreprise ou publique) et un <strong>nom DNS interne</strong> sont nécessaires. HTTPS est obligatoire :
+  les cookies de session sont marqués <code>Secure</code> et l'application envoie l'en-tête HSTS.</li>
+<li>Le fichier <code>deploy/nginx.conf.example</code> est <strong>testé</strong> : redirection 80→443, TLS 1.2/1.3, taille d'envoi 11 Mo, plafond de débit.</li>
+<li>Quel que soit le proxy, il <strong>doit transmettre</strong> <code>Host</code>, <code>X-Forwarded-For</code> et <code>X-Forwarded-Proto</code>, et l'application doit être
+  lancée avec <code>TRUST_PROXY=1</code> (un proxy devant l'application). Sans cela, la limitation des tentatives de connexion
+  s'appliquerait à l'adresse du proxy au lieu de celle de l'utilisateur.</li>
+<li><strong>Vérifié</strong> derrière nginx : 36 tentatives de connexion échouées avec un en-tête <code>X-Forwarded-For</code> falsifié à chaque essai →
+  les 30 premières reçoivent <code>401</code>, les suivantes <code>429</code> : l'usurpation de l'adresse ne contourne pas la limitation.</li>
+<li>Taille d'envoi : l'application refuse les fichiers &gt; 10 Mo (vérifié derrière nginx : 9 Mo accepté, 11 Mo refusé).</li>
+</ul>
+<hr />
+<h2>7. Premier démarrage</h2>
+<ol>
+<li>Au premier démarrage, l'application <strong>crée les tables</strong> (migrations automatiques, versionnées) et le compte <strong><code>admin</code></strong>.</li>
+<li>Son mot de passe est <code>ADMIN_INITIAL_PASSWORD</code> s'il est défini, sinon un mot de passe <strong>aléatoire affiché une seule fois</strong> dans les journaux
+   (<code>docker compose logs app</code> ou <code>journalctl -u gmao</code>). <strong>Le changement est exigé à la première connexion.</strong></li>
+<li>Se connecter, puis : <em>Administration → Comptes et droits d'accès</em> pour créer les comptes (droits par <strong>unité / système / volet</strong>).</li>
+<li><em>Administration → Import de données (Excel)</em> : charger équipements, articles, intervenants, prestataires… (modèle fourni, contrôle complet avant enregistrement).</li>
+<li>Lancer <code>scripts/verifier-installation.sh</code> (§ 9).</li>
+</ol>
+<blockquote>
+<p>Les valeurs par défaut (systèmes, arborescence technique, jours fériés 2026-2027) sont créées à la première connexion du compte <code>admin</code>.
+Les <strong>jours fériés</strong> et les <strong>dates religieuses</strong> (Aïd, etc.) doivent être mis à jour chaque année dans l'onglet <em>Intervenants</em>.</p>
+</blockquote>
+<hr />
+<h2>8. Variables d'environnement</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Défaut</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NODE_ENV</code></td>
+<td>—</td>
+<td><code>production</code> en exploitation</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>—</td>
+<td><code>postgres://utilisateur:mot_de_passe@hôte:5432/gmao</code>. <strong>Sans cette variable, l'application bascule en mode « base embarquée » (essai)</strong> : à ne pas utiliser en exploitation</td>
+</tr>
+<tr>
+<td><code>JWT_SECRET</code></td>
+<td>—</td>
+<td><strong>Obligatoire</strong>, ≥ 32 caractères, aléatoire. Le changer déconnecte tous les utilisateurs</td>
+</tr>
+<tr>
+<td><code>PORT</code></td>
+<td>3000</td>
+<td>Port d'écoute</td>
+</tr>
+<tr>
+<td><code>HOST</code></td>
+<td>toutes interfaces (Docker)</td>
+<td><code>127.0.0.1</code> hors Docker, derrière un proxy local</td>
+</tr>
+<tr>
+<td><code>COOKIE_SECURE</code></td>
+<td><code>true</code></td>
+<td>Cookie de session réservé à HTTPS</td>
+</tr>
+<tr>
+<td><code>TRUST_PROXY</code></td>
+<td>0</td>
+<td><code>1</code> = un reverse proxy devant l'application</td>
+</tr>
+<tr>
+<td><code>FILES_DIR</code></td>
+<td><code>&lt;DATA_DIR&gt;/files</code></td>
+<td>Dossier des photos (volume persistant)</td>
+</tr>
+<tr>
+<td><code>SESSION_HOURS</code></td>
+<td>8</td>
+<td>Durée d'une session</td>
+</tr>
+<tr>
+<td><code>ADMIN_INITIAL_PASSWORD</code></td>
+<td>aléatoire</td>
+<td>Mot de passe initial du compte <code>admin</code></td>
+</tr>
+<tr>
+<td><code>UNITS</code></td>
+<td>7 unités SETRAM</td>
+<td>Liste des unités, séparées par des virgules, pour en ajouter</td>
+</tr>
+<tr>
+<td><code>DEMO</code></td>
+<td>—</td>
+<td><strong>Ne jamais définir en exploitation</strong> (mode démonstration : comptes publics)</td>
+</tr>
+</tbody>
+</table>
+<p>Valeurs fixes : verrouillage d'un compte après <strong>5</strong> échecs pendant <strong>15 minutes</strong> ; mot de passe de <strong>10 caractères minimum</strong> ;
+maximum <strong>30</strong> tentatives de connexion par adresse et par fenêtre de 15 minutes.</p>
+<hr />
+<h2>9. Contrôle de l'installation</h2>
+<pre><code class="language-bash">./scripts/verifier-installation.sh https://gmao.setram.local
+VERIF_ID=admin VERIF_PW='…' ./scripts/verifier-installation.sh https://gmao.setram.local   # avec contrôle de session
+# Certificat auto-signé de test : INSECURE=1 ; serveur non encore dans le DNS : RESOLVE=gmao.setram.local:443:10.0.0.5
+</code></pre>
+<p>Le script <strong>ne modifie aucune donnée</strong> et vérifie notamment : disponibilité et base de données (<code>/api/health</code> → 503 si la base
+est injoignable), HTTPS, redirection 80→443, HSTS, <strong>protocoles TLS 1.0/1.1 refusés</strong>, validité du certificat (alerte à 30 jours),
+en-têtes de sécurité (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy), absence d'<code>X-Powered-By</code>, accès refusé sans session,
+protection CSRF, <strong>mode démonstration inactif</strong>, cookies <code>HttpOnly</code> / <code>Secure</code> / <code>SameSite</code>. Code de sortie ≠ 0 si un contrôle échoue : utilisable en supervision.</p>
+<p>Supervision : surveiller <code>GET /api/health</code> (200 <code>{"ok":true}</code>) ; l'image Docker embarque un <code>HEALTHCHECK</code>.</p>
+<hr />
+<h2>10. Sécurité</h2>
+<h3>Mesures en place (vérifiées par des tests automatiques)</h3>
+<ul>
+<li><strong>Mots de passe</strong> hachés (bcrypt, coût 12) ; aucun mot de passe par défaut ; changement obligatoire à la première connexion.</li>
+<li><strong>Verrouillage</strong> du compte après 5 échecs ; <strong>limitation de débit</strong> des connexions par adresse IP.</li>
+<li><strong>Sessions</strong> : cookie <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite</code> ; désactiver un compte <strong>coupe sa session immédiatement</strong>.</li>
+<li><strong>CSRF</strong> : toute écriture exige l'en-tête <code>X-Requested-With</code> (refus 403 sinon).</li>
+<li><strong>En-têtes</strong> : Content-Security-Policy stricte (aucun script ni ressource externe), HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy.</li>
+<li><strong>Droits</strong> vérifiés <strong>côté serveur</strong> par unité / système / volet (l'interface n'est qu'un confort) ; un utilisateur ne peut ni lire ni écrire hors de son périmètre.</li>
+<li><strong>Requêtes SQL paramétrées</strong> (aucune concaténation de données saisies).</li>
+<li><strong>Photos</strong> : type contrôlé par le <strong>contenu</strong> (JPEG/PNG/WebP uniquement — ni SVG, ni HTML, ni exécutable, même renommés), 10 Mo maximum, 12 par élément,
+  nommées par identifiant aléatoire sur le disque, servies avec <code>nosniff</code> et une politique <code>sandbox</code>.</li>
+<li><strong>Journal d'audit</strong> : connexions, échecs, créations, modifications <strong>avec valeurs avant/après</strong>, suppressions, imports, ajouts/suppressions de photos.</li>
+<li><strong>Aucun secret dans le code</strong> ; secrets uniquement par variables d'environnement ; valeurs d'exemple refusées au démarrage.</li>
+<li><strong>Dépendances</strong> : installation reproductible (<code>npm ci</code>), 0 vulnérabilité connue ; l'image Docker tourne en <strong>utilisateur non privilégié</strong>.</li>
+</ul>
+<h3>Limites connues — à arbitrer par la DSI / le RSSI</h3>
+<table>
+<thead>
+<tr>
+<th>Sujet</th>
+<th>État</th>
+<th>Recommandation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Annuaire d'entreprise (AD/LDAP), SSO, authentification à deux facteurs</td>
+<td><strong>Non pris en charge</strong></td>
+<td>Comptes locaux. À étudier si exigé par la politique de sécurité</td>
+</tr>
+<tr>
+<td>Politique de mot de passe</td>
+<td>10 caractères minimum ; pas d'expiration périodique ni d'historique</td>
+<td>Compléter par une procédure d'exploitation si nécessaire</td>
+</tr>
+<tr>
+<td>Antivirus sur les photos</td>
+<td>Aucun (contrôle de format uniquement)</td>
+<td>Analyse antivirale du volume <code>files</code> par la solution de l'entreprise</td>
+</tr>
+<tr>
+<td>Chiffrement au repos (base, photos, sauvegardes)</td>
+<td><strong>Non géré par l'application</strong></td>
+<td>Chiffrement disque / volume et chiffrement des sauvegardes côté infrastructure</td>
+</tr>
+<tr>
+<td>Haute disponibilité</td>
+<td>Instance unique ; photos sur disque local</td>
+<td>Sauvegardes + procédure de restauration testée (§ 11). Voir § 11 pour le multi-instances</td>
+</tr>
+<tr>
+<td>Test d'intrusion / audit de code externe</td>
+<td><strong>Non réalisé</strong></td>
+<td>À planifier avant ouverture au-delà de l'intranet</td>
+</tr>
+<tr>
+<td>Données personnelles</td>
+<td>Noms, matricules, <strong>taux horaires</strong>, habilitations (visibles des profils autorisés)</td>
+<td>Validation par le juriste / DPO au regard de la réglementation algérienne sur les données personnelles (loi 18-07) — à confirmer par vos services</td>
+</tr>
+<tr>
+<td>Exposition Internet</td>
+<td>Non recommandée</td>
+<td>Intranet / VPN. Si exposition : WAF, pare-feu applicatif et audit préalable</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>11. Exploitation</h2>
+<h3>Sauvegarde et restauration — <strong>à tester avant la mise en service</strong></h3>
+<p>Ce qu'il faut sauvegarder : <strong>la base PostgreSQL</strong> et <strong>le dossier des photos</strong>. Les deux scripts le font avec le même horodatage.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Docker</th>
+<th>Sans Docker</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sauvegarde</td>
+<td><code>./scripts/backup.sh</code> → <code>/var/backups/gmao/gmao_AAAA-MM-JJ_HHMM.sql.gz</code> + <code>gmao_files_….tar.gz</code></td>
+<td><code>./scripts/backup-sans-docker.sh</code></td>
+</tr>
+<tr>
+<td>Planification</td>
+<td><code>0 2 * * * /opt/gmao-setram-server/scripts/backup.sh</code></td>
+<td><code>0 2 * * * /opt/gmao-setram/scripts/backup-sans-docker.sh</code></td>
+</tr>
+<tr>
+<td>Restauration</td>
+<td><code>./scripts/restore.sh &lt;base.sql.gz&gt; [&lt;photos.tar.gz&gt;]</code></td>
+<td><code>gunzip -c base.sql.gz \| psql &lt;base&gt;</code> puis <code>tar -C /var/lib/gmao-setram -xzf photos.tar.gz</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Rétention par défaut : 30 jours (<code>KEEP_DAYS</code>). <strong>Copier les sauvegardes hors du serveur</strong> (autre machine / NAS) et les chiffrer.</li>
+<li><strong>Vérifié</strong> : sauvegarde d'une base de production de test, restauration dans une base vierge, données et photos retrouvées.
+  Le test de restauration sur <em>votre</em> infrastructure reste à faire une fois avant la mise en service, puis chaque trimestre.</li>
+</ul>
+<h3>Journaux</h3>
+<p>L'application écrit sur la sortie standard (<code>docker compose logs app</code> / <code>journalctl -u gmao</code>). Les mots de passe n'y figurent pas.
+Le <strong>journal d'audit métier</strong> est dans la base (table <code>audit_log</code>) et consultable par le super administrateur (<em>Administration</em>).</p>
+<h3>Mise à jour</h3>
+<ol>
+<li><strong>Sauvegarder</strong> (base + photos) ; noter la version actuelle.</li>
+<li>Remplacer les fichiers par la nouvelle version.</li>
+<li>Docker : <code>docker compose build &amp;&amp; docker compose up -d</code> · Sans Docker : <code>cd server &amp;&amp; npm ci --omit=dev &amp;&amp; systemctl restart gmao</code>.</li>
+<li>Les <strong>migrations de base s'appliquent automatiquement</strong> au démarrage (elles ajoutent ou convertissent des données, sans perte).</li>
+<li>Lancer <code>scripts/verifier-installation.sh</code> ; demander aux utilisateurs de recharger la page (F5).</li>
+<li><strong>Retour arrière</strong> : les migrations ne sont pas réversibles ; revenir à la version précédente suppose de <strong>restaurer la sauvegarde</strong> de l'étape 1.</li>
+</ol>
+<h3>Rotation des secrets</h3>
+<ul>
+<li><code>JWT_SECRET</code> : le remplacer puis redémarrer ; tous les utilisateurs devront se reconnecter.</li>
+<li>Mot de passe de la base : le modifier dans PostgreSQL <strong>et</strong> dans <code>.env</code> / <code>gmao.env</code>, puis redémarrer.</li>
+</ul>
+<h3>Cycle de vie des composants</h3>
+<p>Node.js 22 LTS est la version testée ; planifier le passage à la LTS suivante avant la fin de support de la 22 (à vérifier sur nodejs.org).
+Lancer <code>npm audit --omit=dev</code> dans <code>server/</code> au moins chaque trimestre. PostgreSQL 16 : suivre le calendrier de support de postgresql.org.</p>
+<h3>Plusieurs instances (pour information)</h3>
+<p>Les sessions sont portées par un jeton signé (aucune session stockée côté serveur), mais les photos sont sur disque local : plusieurs instances exigeraient un stockage
+partagé pour <code>FILES_DIR</code>. Non prévu ni testé.</p>
+<hr />
+<h2>12. Ce qui a été vérifié — et ce qui ne l'a pas été</h2>
+<table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>36 tests automatiques du serveur (droits, conflits, import, photos, numérotation, audit…)</td>
+<td>✅ passent sur <strong>PostgreSQL 16</strong> et sur la base embarquée</td>
+</tr>
+<tr>
+<td>168 tests automatiques de l'interface (calculs KPI, préventif, écrans, import Excel, photos, QR codes)</td>
+<td>✅ passent</td>
+</tr>
+<tr>
+<td>Installation propre depuis le fichier de verrouillage (<code>npm ci</code>) puis démarrage</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Application + PostgreSQL 16 + nginx 1.24 en HTTPS (certificat auto-signé), <code>NODE_ENV=production</code></td>
+<td>✅ (script de contrôle : 18 contrôles réussis, 0 échec)</td>
+</tr>
+<tr>
+<td>Limitation des connexions derrière nginx malgré un <code>X-Forwarded-For</code> falsifié ; limites d'envoi des photos</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Sauvegarde puis restauration d'une base de production de test (données + photos)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Port 3000 inaccessible depuis le réseau avec <code>HOST=127.0.0.1</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>npm audit</code> (dépendances de production)</td>
+<td>✅ 0 vulnérabilité (serveur) ; 2 de gravité <em>modérée</em> signalées côté interface (voir ci-dessous)</td>
+</tr>
+<tr>
+<td><strong>Construction de l'image Docker et <code>docker compose up</code></strong></td>
+<td>⚠️ <strong>Non exécutés</strong> (pas de Docker dans l'environnement de développement). Fichiers relus, étapes <code>npm ci</code> / démarrage reproduites hors conteneur. <strong>À valider au premier déploiement</strong></td>
+</tr>
+<tr>
+<td>Caddy (HTTPS, certificat d'entreprise)</td>
+<td>⚠️ Non testé (configuration relue)</td>
+</tr>
+<tr>
+<td>Unité systemd</td>
+<td>⚠️ Non testée en conditions réelles (syntaxe standard, sorties de test non disponibles sans systemd)</td>
+</tr>
+<tr>
+<td>Windows Server / IIS</td>
+<td>⚠️ Non testé</td>
+</tr>
+<tr>
+<td>Affichage sur vrais téléphones, impression PDF</td>
+<td>⚠️ Non testés (aucun navigateur dans l'environnement de développement)</td>
+</tr>
+<tr>
+<td>Charge (utilisateurs simultanés), test d'intrusion, audit de code externe</td>
+<td>❌ Non réalisés</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note sur <code>npm audit</code> (interface)</strong> : 2 alertes <em>modérées</em> concernent le paquet <code>uuid</code> utilisé indirectement par la bibliothèque
+d'export Excel (<code>exceljs</code>), exécutée <strong>dans le navigateur</strong> ; la faille décrite exige un appel avec un tampon fourni, ce que cette
+bibliothèque ne fait pas. Risque jugé non exploitable ici ; à surveiller lors des mises à jour.</p>
+<hr />
+<h2>13. Recette et pilote recommandés</h2>
+<p><strong>Recette technique (DSI)</strong> : § 9 sans échec ; test de restauration réussi ; certificat valide ; accès depuis un poste de chaque site ; supervision <code>/api/health</code> en place.</p>
+<p><strong>Recette fonctionnelle</strong> (compte <code>admin</code> puis comptes de test) :
+1. Créer un compte avec droits limités (une unité, un système) et vérifier qu'il ne voit que son périmètre.
+2. Importer un petit fichier Excel (modèle fourni) ; le recharger : aucun doublon.
+3. Déclarer une DI (au téléphone), générer le BT, le clôturer, imprimer le bon (PDF).
+4. Ajouter une photo à une DI ; scanner une étiquette QR d'équipement.
+5. Planifier un préventif ; consulter les indicateurs (KPI).
+6. Couper la base 30 secondes : <code>/api/health</code> passe en 503 puis revient ; l'application reprend sans redémarrage.</p>
+<p><strong>Pilote</strong> : 2 à 3 utilisateurs puis une unité pendant 2 à 4 semaines, avant généralisation aux 7 unités.</p>
+<hr />
+<h2>14. Annexes</h2>
+<h3>Windows Server (pistes — non testé)</h3>
+<p>Node.js 22 (MSI) + PostgreSQL 16 (installeur) ; exécuter <code>node src/start.js</code> comme <strong>service</strong> avec un gestionnaire de services (NSSM ou équivalent),
+variables d'environnement identiques au § 8 ; reverse proxy HTTPS avec IIS (URL Rewrite + Application Request Routing), nginx pour Windows ou
+le proxy d'entreprise, avec les en-têtes du § 6 ; sauvegardes par <code>pg_dump</code> planifié + copie du dossier des photos.</p>
+<h3>Contenu du dossier livré</h3>
+<table>
+<thead>
+<tr>
+<th>Fichier / dossier</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server/</code></td>
+<td>Application (API, migrations SQL, interface compilée dans <code>server/public</code>)</td>
+</tr>
+<tr>
+<td><code>web/</code></td>
+<td>Sources de l'interface et tests (pour la maintenance du code)</td>
+</tr>
+<tr>
+<td><code>docker-compose.yml</code>, <code>Caddyfile</code>, <code>Caddyfile.certificat-entreprise</code>, <code>.env.example</code></td>
+<td>Installation A</td>
+</tr>
+<tr>
+<td><code>deploy/</code></td>
+<td><code>gmao.service</code>, <code>nginx.conf.example</code>, <code>gmao.env.example</code> (installation B)</td>
+</tr>
+<tr>
+<td><code>scripts/</code></td>
+<td><code>verifier-installation.sh</code>, <code>backup.sh</code>, <code>restore.sh</code>, <code>backup-sans-docker.sh</code>, <code>verifier.sh</code> (tests), <code>assembler-paquet-windows.sh</code></td>
+</tr>
+<tr>
+<td><code>README.md</code>, <code>CHANGELOG.md</code></td>
+<td>Documentation fonctionnelle et historique des versions</td>
+</tr>
+</tbody>
+</table>
+<h3>Composants tiers (production)</h3>
+<p>Serveur : express 4, helmet 7, pg 8, jsonwebtoken 9, bcryptjs 2, cookie-parser, express-rate-limit, @electric-sql/pglite (base embarquée, mode essai).
+Interface : react 18, exceljs, qrcode. Licences : MIT, ISC, BSD-3-Clause, Apache-2.0 (une dépendance transitive à double licence MIT/GPL est utilisée sous licence MIT).</p>
+<h3>Dépannage rapide</h3>
+<table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>JWT_SECRET manquant</code> / « valeur d'exemple » au démarrage</td>
+<td>Variable absente, trop courte (&lt; 32) ou valeur d'exemple</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL contient encore le mot de passe d'exemple</code></td>
+<td><code>.env</code> non personnalisé (<code>DB_PASSWORD</code>)</td>
+</tr>
+<tr>
+<td>Page blanche / erreur 502</td>
+<td>L'application n'est pas démarrée (<code>docker compose ps</code>, <code>journalctl -u gmao</code>)</td>
+</tr>
+<tr>
+<td>Les utilisateurs sont déconnectés à chaque requête</td>
+<td><code>COOKIE_SECURE=true</code> mais accès en HTTP : utiliser HTTPS</td>
+</tr>
+<tr>
+<td>Trop de <code>429</code> pour tous les utilisateurs</td>
+<td><code>TRUST_PROXY</code> non défini derrière un proxy (toutes les requêtes semblent venir du proxy)</td>
+</tr>
+<tr>
+<td><code>/api/health</code> renvoie 503</td>
+<td>Base PostgreSQL injoignable</td>
+</tr>
+<tr>
+<td>Photos refusées (413)</td>
+<td>Fichier &gt; 10 Mo ; ou <code>client_max_body_size</code> du proxy trop bas</td>
+</tr>
+<tr>
+<td>Compte verrouillé</td>
+<td>5 échecs : attendre 15 minutes, ou réinitialiser par un super administrateur</td>
+</tr>
+</tbody>
+</table></body></html>
