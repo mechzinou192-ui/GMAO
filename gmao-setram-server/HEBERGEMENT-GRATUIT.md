@@ -59,12 +59,15 @@ un navigateur refuse de charger l'application depuis un simple fichier ; il faut
 À choisir si vous voulez que vos clients **travaillent ensemble** sur les mêmes données, avec le vrai serveur.
 Trois comptes gratuits ; environ 20 minutes.
 
-1. **GitHub** : créez un dépôt privé `gmao-setram` et envoyez-y le contenu du dossier `gmao-setram-server` (*Add file → Upload
-   files*). Le fichier `render.yaml` doit être à la racine du dépôt.
+1. **GitHub** : créez un dépôt privé et envoyez-y le dossier `gmao-setram-server` **ainsi que le fichier `render.yaml`**,
+   à la racine du dépôt (*Add file → Upload files*). Render ne lit `render.yaml` qu'à la racine du dépôt.
 2. **Neon** (https://neon.com) : *Create project*, puis *Connect* → copiez la *connection string* (`postgresql://…`). Si elle
    se termine par `&channel_binding=require`, supprimez cette partie.
 3. **Render** (https://render.com) : *New → Blueprint* → choisissez le dépôt → collez la chaîne Neon dans **DATABASE_URL** → *Apply*.
    Après 3 à 5 minutes, Render donne l'adresse `https://gmao-setram-demo-xxxx.onrender.com`.
+   *Sans Blueprint* (*New → Web Service*, langage **Docker**) : **Root Directory** = `gmao-setram-server/server`,
+   **Health Check Path** = `/api/health`, et les variables de `render.yaml` (`JWT_SECRET` : 40 caractères aléatoires).
+   `DATABASE_URL` est facultatif : sans lui, la base intégrée est utilisée (données perdues à chaque redéploiement).
 
 À savoir : le service gratuit **s'endort après ~15 minutes** sans visite (la visite suivante met environ une minute) ;
 les photos sont temporaires ; les données de démonstration sont remises à zéro toutes les 24 h ; n'utilisez pas la base

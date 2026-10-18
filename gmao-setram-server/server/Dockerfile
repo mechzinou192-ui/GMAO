@@ -5,10 +5,15 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY public ./public
-# Pièces jointes (photos) : volume persistant, propriété de l'utilisateur non privilégié
+# Données (base intégrée + pièces jointes) : volume persistant, propriété de l'utilisateur non privilégié
 RUN mkdir -p /data/files && chown -R node:node /data
-ENV FILES_DIR=/data/files
+ENV DATA_DIR=/data \
+    FILES_DIR=/data/files \
+    HOST=0.0.0.0 \
+    NODE_OPTIONS=--max-old-space-size=256
 USER node
+# Base intégrée créée dès la construction : évite le pic mémoire du premier démarrage (sans effet si DATABASE_URL est fourni)
+RUN JWT_SECRET=construction-uniquement-0123456789abcdef node src/prepare-db.js
 EXPOSE 3000
 # Contrôle de santé : le conteneur est « unhealthy » si l'application ne répond plus
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
