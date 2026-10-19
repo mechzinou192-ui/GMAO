@@ -11,12 +11,13 @@
  * de fichiers statiques suffit.
  */
 import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
+import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
 import { SEQUENCES, MAX_BATCH, sequenceKey, unitAbbr, currentYear, formatCode } from '../../../server/src/numbering-core.js';
 
 const UNITS = Object.keys(ABBR);
-const CLE = 'gmao-demo-statique-v1';
+const CLE = 'gmao-demo-statique-v3';
 const ATTACHABLE = new Set(['dis', 'bts']);
 const MAX_FICHIERS = 12, MAX_OCTETS = 10 * 1024 * 1024;
 const DEMO_BLOQUEE = 'Désactivé dans la version de démonstration.';
@@ -46,7 +47,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
     return { records, compteurs, audit: [], fichiers: {}, session: null };
   };
   const charger = () => {
-    try { const j = stockage && stockage.getItem(CLE); if (j) { const e = JSON.parse(j); if (e && e.records) return { fichiers: {}, ...e, fichiers: {} }; } } catch { /* état illisible : on repart de zéro */ }
+    try { const j = stockage && stockage.getItem(CLE); if (j) { const e = JSON.parse(j); if (e && e.records) return { ...e, fichiers: {} }; } } catch { /* état illisible : on repart de zéro */ }
     return initial();
   };
   const sauver = () => { try { stockage && stockage.setItem(CLE, JSON.stringify({ ...etat, fichiers: {} })); } catch { /* quota dépassé : sans importance pour une démo */ } };
@@ -96,10 +97,13 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
     changePassword: async () => { throw err(403, DEMO_BLOQUEE); },
 
     /* ───── données ───── */
-    list: async (collection, since) => {
+    list: async (collection, since, opts = {}) => {
       const user = actuel();
       const serverTime = new Date().toISOString();
       let rows = Object.values(col(collection));
+      const fenetre = lireFenetre(opts.fenetre);
+      if (Number.isNaN(fenetre)) throw err(400, 'fenetre invalide');
+      if (fenetre && !since) rows = rows.filter((r) => !horsFenetre(collection, r.data, r.updatedAt, fenetre));
       if (since) { const d = new Date(since); if (Number.isNaN(d.getTime())) throw err(400, 'since invalide'); rows = rows.filter((r) => new Date(r.updatedAt) > d); }
       else rows = rows.filter((r) => !r.deleted);
       rows.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));

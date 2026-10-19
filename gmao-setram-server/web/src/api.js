@@ -29,8 +29,8 @@ const apiReel = {
   me: () => call('GET', '/auth/me'),
   changePassword: (current, next) => call('POST', '/auth/change-password', { current, next }),
 
-  list: (collection, since) =>
-    call('GET', `/data/${collection}` + (since ? '?since=' + encodeURIComponent(since) : '')),
+  list: (collection, since, opts = {}) =>
+    call('GET', `/data/${collection}` + (since ? '?since=' + encodeURIComponent(since) : opts.fenetre ? '?fenetre=' + opts.fenetre : '')),
   save: (collection, id, { unit, system, data, version }) =>
     call('PUT', `/data/${collection}/${encodeURIComponent(id)}`, { unit, system, data, version }),
   remove: (collection, id) => call('DELETE', `/data/${collection}/${encodeURIComponent(id)}`),

@@ -19,9 +19,10 @@ const byCode = (x) => x.code;
 const asValueOf = (c) => !!(c.single || c.rows);
 const BASE = {
   equipements:  { id: byCode, meta: (x) => ({ unit: x.unit, system: x.system }) },
-  dis:          { id: byCode, newestFirst: true },
-  bts:          { id: byCode, newestFirst: true },
+  dis:          { id: byCode, newestFirst: true, fenetre: true },
+  bts:          { id: byCode, newestFirst: true, fenetre: true },
   planning:     { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
+  compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   pieces:       { id: byCode },
   dss:          { id: byCode, newestFirst: true },
   bs:           { id: byCode, newestFirst: true },
@@ -37,6 +38,16 @@ const BASE = {
   arborescence: { rows: REFERENTIELS.arborescence },
   feries:       { rows: REFERENTIELS.feries },
 };
+
+// Fenêtre de chargement : les DI / OT clos depuis plus de FENETRE_MOIS ne sont pas chargés au démarrage
+// (application rapide même après des années de données). chargerHistorique() recharge tout, sur demande.
+export const FENETRE_MOIS = 24;
+let historiqueComplet = false;
+export const historiqueCharge = () => historiqueComplet;
+export async function chargerHistorique() {
+  historiqueComplet = true;
+  await Promise.all([...flushers].filter((f) => f.fenetre).map((f) => f.refresh()));
+}
 
 export const hasPending = () => [...flushers].some((f) => f.pending());
 // Recharge toutes les listes depuis le serveur (après un import en masse)
@@ -99,7 +110,7 @@ export function useSynced(name, opts = {}) {
   const load = useCallback(async (allowSeed = true) => {
     const c = cfgRef.current;
     try {
-      const res = await api.list(name);
+      const res = await api.list(name, undefined, c.fenetre && !historiqueComplet ? { fenetre: FENETRE_MOIS } : undefined);
       since.current = res.serverTime;
       versions.current.clear();
       let next = build(res.items);
@@ -241,7 +252,7 @@ export function useSynced(name, opts = {}) {
     alive.current = true;
     load();
     const iv = setInterval(poll, POLL_MS);
-    const f = { pending: () => queue.current.size > 0 || flushing.current, flush: async () => { clearTimeout(timer.current); await flush(); }, refresh: () => load(false) };
+    const f = { pending: () => queue.current.size > 0 || flushing.current, flush: async () => { clearTimeout(timer.current); await flush(); }, refresh: () => load(false), fenetre: !!cfgRef.current.fenetre };
     flushers.add(f);
     return () => { alive.current = false; clearInterval(iv); clearTimeout(timer.current); flushers.delete(f); delete REG[name]; };
   }, []);

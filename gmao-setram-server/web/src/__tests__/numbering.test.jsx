@@ -14,15 +14,15 @@ describe('réservation de numéros auprès du serveur', () => {
     expect(api.nextCodes).toHaveBeenCalledWith('dis', { unit: 'Alger', variant: undefined, count: 1 });
   });
 
-  it('transmet la variante (BT préventif, type d’article)', async () => {
-    api.nextCodes.mockResolvedValue(['BT-PREV-ORN-2026-0001', 'BT-PREV-ORN-2026-0002']);
+  it('transmet la variante (OT préventif, type d’article)', async () => {
+    api.nextCodes.mockResolvedValue(['OT-PREV-ORN-2026-0001', 'OT-PREV-ORN-2026-0002']);
     await reserverNumeros('bts', { unit: 'Oran', variant: 'prev', count: 2 });
     expect(api.nextCodes).toHaveBeenCalledWith('bts', { unit: 'Oran', variant: 'prev', count: 2 });
   });
 
   it('découpe les très gros lots (le serveur accepte 200 numéros par demande)', async () => {
     let n = 0;
-    api.nextCodes.mockImplementation(async (_c, { count }) => Array.from({ length: count }, () => 'BT-' + ++n));
+    api.nextCodes.mockImplementation(async (_c, { count }) => Array.from({ length: count }, () => 'OT-' + ++n));
     const r = await reserverNumeros('bts', { unit: 'Alger', count: 450 });
     expect(r).toHaveLength(450);
     expect(new Set(r).size).toBe(450);

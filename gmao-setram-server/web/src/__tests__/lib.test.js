@@ -145,14 +145,14 @@ describe('maintenance préventive', () => {
     expect(datesFuturesPlan({ date: '2026-01-01', periode: 'Hebdomadaire' })).toHaveLength(53);
     expect(datesFuturesPlan({ periode: 'Mensuel' })).toEqual([]);
   });
-  it('BT préventif généré depuis un plan', () => {
+  it('OT préventif généré depuis un plan', () => {
     const pl = { code: 'PREV-ALG-0001', eq: 'CFO.ALG.SST.01', nom: 'Transformateur', periode: 'Mensuel', taches: ['Contrôle visuel', 'Serrage'], outillage: [{ code: 'O-001', qte: 1 }] };
-    const bt = buildBTPrev(pl, 'BT-PREV-ALG-2026-0001', '2026-10-06 12:00');
-    expect(bt).toMatchObject({ code: 'BT-PREV-ALG-2026-0001', plan: 'PREV-ALG-0001', eq: 'CFO.ALG.SST.01', type: 'Préventive', di: null, dateGeneration: '2026-10-06 12:00' });
+    const bt = buildBTPrev(pl, 'OT-PREV-ALG-2026-0001', '2026-10-06 12:00');
+    expect(bt).toMatchObject({ code: 'OT-PREV-ALG-2026-0001', plan: 'PREV-ALG-0001', eq: 'CFO.ALG.SST.01', type: 'Préventive', di: null, dateGeneration: '2026-10-06 12:00' });
     expect(bt.taches).toEqual([{ lib: 'Contrôle visuel', res: null, com: '' }, { lib: 'Serrage', res: null, com: '' }]);
     expect(bt.consigne).toContain('2 tâches');
   });
-  it('avancement d\'un BT', () => {
+  it('avancement d\'un OT', () => {
     expect(tRes({ res: 'NOK' })).toBe('NOK'); expect(tRes({ fait: true })).toBe('OK'); expect(tRes({})).toBeNull();
     expect(avancement({ taches: [{ res: 'OK' }, { fait: true }, {}, {}] })).toBe(50); expect(avancement({ taches: [] })).toBeNull(); expect(avancement({})).toBeNull();
   });
@@ -180,7 +180,7 @@ describe('rattachement aux systèmes', () => {
   });
 });
 
-describe('coût d\'un bon de travail', () => {
+describe('coût d\'un ordre de travail', () => {
   it('main-d\'œuvre + pièces + outillage + consommables ; article inconnu = 0', () => {
     const pieces = [{ code: 'P-001', prix: 100 }, { code: 'O-001', prix: 5000 }, { code: 'C-001', prix: 10 }];
     const bt = { intervenants: [{ temps: 2, taux: 1000 }, { temps: 1.5, taux: 2000 }], pieces: [{ code: 'P-001', qte: 3 }, { code: 'P-999', qte: 9 }], outillage: [{ code: 'O-001', qte: 1 }], consommables: [{ code: 'C-001', qte: 4 }] };
@@ -364,12 +364,12 @@ describe('KPI — criticité AMDEC et stratégie', () => {
     expect(r[0].annual).toBeCloseTo(23.5, 1); expect(r[0].band.label).toBe('Majeure'); expect(r[0].strat.id).toBe('MBF / RCM');
     expect(r[1]).toMatchObject({ count: 1, avgMin: 0, f: 3, g: 1, d: 2, crit: 6, dDefaut: true }); expect(r[1].strat.id).toBe('Corrective');
   });
-  it('AMDEC : gravité saisie sur les BT, regroupement par système', () => {
+  it('AMDEC : gravité saisie sur les OT, regroupement par système', () => {
     const { corr } = K.kpiCollect('Alger', { ...DATA, bts: BTS.map((b) => (b.code === 'B1' ? { ...b, gravite: 2 } : b.code === 'B2' ? { ...b, gravite: 3 } : b)) }, PER, 'x', null);
-    const r = K.kpiAmdec(corr, PER, { groupBy: 'Système', gravBase: 'Gravité saisie (BT)', equipements: EQ, nomSys: (c) => 'Sys ' + c });
+    const r = K.kpiAmdec(corr, PER, { groupBy: 'Système', gravBase: 'Gravité saisie (OT)', equipements: EQ, nomSys: (c) => 'Sys ' + c });
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ key: 'CFO', label: 'Sys CFO', count: 3, g: 3, nbGrav: 2, gMin: 2, gMax: 3, gDefaut: false });     // moyenne 2,5 → 3
-    const sansSaisie = K.kpiAmdec(corr, PER, { groupBy: 'Équipement', gravBase: 'Gravité saisie (BT)', equipements: EQ });
+    const sansSaisie = K.kpiAmdec(corr, PER, { groupBy: 'Équipement', gravBase: 'Gravité saisie (OT)', equipements: EQ });
     expect(sansSaisie.find((x) => x.key === 'CFO.ALG.SST.02').gDefaut).toBe(true);   // aucune gravité saisie : repli sur la durée d'arrêt
   });
 });

@@ -1,0 +1,741 @@
+// Application connectée : données synchronisées, actions métier, mise en page (menu, en-tête, onglets).
+import React,{useState,useEffect,useRef} from "react";
+import {ACCUEIL,ORG_DOM,ROLES} from "./constantes.js";
+import {XL_LOGO} from "./excel.js";
+import {ajouterReleve,dernier,etatPlanCompteur,isCompteurPlan} from "./lib/compteurs.js";
+import {addMonths,fmtD,frDate,todayStr} from "./lib/dates.js";
+import {CDC_ETATS,CONTRAT_SEUIL_MOIS,HAB_SEUIL_MOIS,contratInfo,habListe} from "./lib/echeances.js";
+import {FERIES_DEFAUT,congeAt,libConge} from "./lib/jours.js";
+import {kpiEqInfo,kpiUnitOf} from "./lib/kpi.js";
+import {buildBTPrev,datesPlanDansPlage,isPeriodePlan,occurrencesPlan,prochaineEcheance,tRes} from "./lib/preventif.js";
+import {codeDepuisAdresse} from "./lib/qr.js";
+import {SYSTEMS_SEED,TREE_STRUCT_SEED} from "./lib/referentiels-defaut.js";
+import {UNITS,UNIT_ABBR} from "./lib/unites.js";
+import {reserverNumeros} from "./numbering.js";
+import {Accueil} from "./pages/Accueil.jsx";
+import {AdminPage} from "./pages/Administration.jsx";
+import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
+import {Splash} from "./pages/Connexion.jsx";
+import {DIDetail,DIForm,DIPage} from "./pages/DemandesIntervention.jsx";
+import {IndicateursPage} from "./pages/Indicateurs.jsx";
+import {BTCreateForm,BTDetail,BTPage} from "./pages/OrdresTravail.jsx";
+import {Equipe,InterForm,PrestaForm} from "./pages/Personnel.jsx";
+import {PlanForm,Planning} from "./pages/Preventif.jsx";
+import {AchatForm,ArticleForm,BRForm,DSForm,DechargeForm,Magasin} from "./pages/Stock.jsx";
+import {REG,useSynced} from "./sync.js";
+import {Btn,Card,Modal,MotifForm} from "./ui/base.jsx";
+import {I} from "./ui/icones.jsx";
+
+export function GmaoApp({session,onLogout}){
+ const sa=session.superAdmin; const user=session.nom;
+ const unitsOk=sa?UNITS:UNITS.filter(u=>session.droits[u]);
+ const [unit,setUnit]=useState(unitsOk[0]||"");
+ const grant=sa?{systems:[],volets:[]}:(session.droits[unit]||{systems:[],volets:[]});
+ const sysOk=(code)=>sa||grant.systems.includes(code);
+ const kpiOk=(k)=>sa||!grant.kpi||grant.kpi.includes(k); // kpi absent = tout autorisé (comptes existants)
+ const tabOk=(i)=>i===ACCUEIL?true:i===7?sa:(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
+ const [tabRaw,setTabRaw]=useState(ACCUEIL);
+ const tab=tabOk(tabRaw)?tabRaw:Math.max(0,[0,1,2,3,4,5,6,7].findIndex(tabOk));
+ const setTab=(i)=>{if(tabOk(i))setTabRaw(i);};
+ const mobile=()=>typeof window!=="undefined"&&window.innerWidth<768;
+ const [sidebar,setSidebar]=useState(()=>!mobile());   // téléphone : menu fermé au démarrage
+ const allerA=(i)=>{setTab(i); if(mobile()) setSidebar(false);};
+ const [panneau,setPanneau]=useState(null);   // menu déroulant ouvert dans la barre du haut : "alertes" | "profil"
+ // Une seule création à la fois : évite un double clic pendant que le serveur attribue le numéro
+ const creating=useRef(false);
+ const unSeul=(fn)=>async(...a)=>{ if(creating.current) return; creating.current=true; try{ return await fn(...a); } finally{ creating.current=false; } };
+ const numeros=reserverNumeros;
+ const [diModal,setDiModal]=useState(null);
+ const [btModal,setBtModal]=useState(null);
+ const [diDetail,setDiDetail]=useState(null);
+ const [btDetail,setBtDetail]=useState(null);
+ const [dsModal,setDsModal]=useState(null);
+ const [brModal,setBrModal]=useState(false);
+ const [pieceForm,setPieceForm]=useState(null);
+ const [achatModal,setAchatModal]=useState(null);
+ const [dechargeModal,setDechargeModal]=useState(null);
+ const [decharges,setDecharges,sDch]=useSynced("decharges");
+ const [pieceModal,setPieceModal]=useState(null);
+ const [equipModal,setEquipModal]=useState(null);
+ const [equipDetail,setEquipDetail]=useState(null);
+ const [sousEquipModal,setSousEquipModal]=useState(null);
+ const [sousEquipDetail,setSousEquipDetail]=useState(null);
+ const [equipements,setEquipements,sEq]=useSynced("equipements");
+ const [systemsList,setSystemsList,sSys]=useSynced("systemes",{defaults:SYSTEMS_SEED,sa:session.superAdmin});
+ const [treeStruct,setTreeStruct,sTree]=useSynced("arborescence",{defaults:TREE_STRUCT_SEED,sa:session.superAdmin});
+ const [systemModal,setSystemModal]=useState(null);
+ const [subSystemModal,setSubSystemModal]=useState(null);
+ const [mesureList,setMesureList,sMes]=useSynced("mesures");
+ const [mesureModal,setMesureModal]=useState(null);
+ const [ctrlList,setCtrlList,sCtrl]=useSynced("controles");
+ const [organismes,setOrganismes,sOrg]=useSynced("organismes",{sa:session.superAdmin});
+ const [orgModal,setOrgModal]=useState(null);
+ const [prestataires,setPrestataires,sPre]=useSynced("prestataires");
+ const [prestaModal,setPrestaModal]=useState(null);
+ const [ctrlModal,setCtrlModal]=useState(null);
+ const [motifModal,setMotifModal]=useState(null);
+
+ function saveSystem(f){
+  if(f.mode==="add"){
+   const c=(f.code||"").toUpperCase().trim(); if(!c) return;
+   setSystemsList(s=>[...s,[c,f.nom||c]]);
+   setTreeStruct(t=>({...t,[c]:[]}));
+  } else {
+   setSystemsList(s=>s.map(([c,n])=>c===f.code?[c,f.nom]:[c,n]));
+  }
+  setSystemModal(null);
+ }
+ function saveSubSystem(f){
+  if(f.mode==="add"){
+   const c=(f.code||"").toUpperCase().trim(); if(!c) return;
+   setTreeStruct(t=>({...t,[f.systemCode]:[...(t[f.systemCode]||[]),{code:c,sub:f.nom||c}]}));
+  } else {
+   setTreeStruct(t=>({...t,[f.systemCode]:t[f.systemCode].map(s=>s.code===f.code?{...s,sub:f.nom}:s)}));
+  }
+  setSubSystemModal(null);
+ }
+
+ function saveEquipement(payload){
+  setEquipements(list=>{
+   const exists=list.some(e=>e.code===payload.code);
+   if(exists) return list.map(e=>e.code===payload.code?{...e,...payload}:e);
+   return [...list,{...payload,sousEquip:[]}];
+  });
+  setEquipModal(null);
+ }
+ function saveSousEquipement(payload){
+  const {parentCode,...se}=payload;
+  setEquipements(list=>list.map(e=>{
+   if(e.code!==parentCode) return e;
+   const cur=e.sousEquip||[];
+   const exists=cur.some(x=>x.code===se.code);
+   return {...e,sousEquip:exists?cur.map(x=>x.code===se.code?{...x,...se}:x):[...cur,se]};
+  }));
+  setSousEquipModal(null);
+ }
+ function removeSousEquip(parentCode,code){
+  setEquipements(list=>list.map(e=>e.code===parentCode?{...e,sousEquip:(e.sousEquip||[]).filter(x=>x.code!==code)}:e));
+ }
+
+ function saveMesure(payload){
+  setMesureList(list=>{
+   const exists=list.some(m=>m.code===payload.code);
+   if(exists) return list.map(m=>m.code===payload.code?{...m,...payload}:m);
+   return [...list,payload];
+  });
+  setMesureModal(null);
+ }
+
+ function saveCtrl(payload){
+  setCtrlList(list=>{
+   const exists=list.some(c=>c.code===payload.code);
+   if(exists) return list.map(c=>c.code===payload.code?{...c,...payload}:c);
+   return [...list,payload];
+  });
+  setCtrlModal(null);
+ }
+
+ function saveOrg(payload){
+  setOrganismes(list=>list.some(o=>o.code===payload.code)?list.map(o=>o.code===payload.code?{...o,...payload}:o):[...list,payload]);
+  setOrgModal(null);
+ }
+ function savePresta(f){
+  if(f.mode==="edit") setPrestataires(l=>l.map(x=>x.mat===f.data.mat?f.data:x));
+  else setPrestataires(l=>[...l,f.data]);
+  setPrestaModal(null);
+ }
+
+ function annulerDS(dsCode,motif){
+  setDss(d=>d.map(x=>x.code===dsCode?{...x,etat:"Annulé",motif:motif||"Non précisé"}:x));
+  setMotifModal(null);
+ }
+
+ const [dis,setDis,sDis]=useSynced("dis",{meta:(d)=>{const E=REG.equipements?REG.equipements.current:[];return {unit:kpiUnitOf(d.eq,E),system:kpiEqInfo(d.eq,E).system};}});
+
+ const [pieces,setPieces,sPie]=useSynced("pieces");
+
+ const [bts,setBts,sBts]=useSynced("bts",{meta:(d)=>{const E=REG.equipements?REG.equipements.current:[];return {unit:kpiUnitOf(d.eq,E),system:kpiEqInfo(d.eq,E).system};}});
+
+ const [dss,setDss,sDss]=useSynced("dss");
+ const [bsList,setBsList,sBs]=useSynced("bs");
+ const [brs,setBrs,sBrs]=useSynced("brs");
+
+ const [planModal,setPlanModal]=useState(null);
+ const [planning,setPlanning,sPla]=useSynced("planning");
+ const [compteursEq,setCompteursEq,sCpt]=useSynced("compteurs_eq");   // compteurs d'équipement (km, heures…)
+
+ const [interModal,setInterModal]=useState(null);
+ const [inter,setInter,sInt]=useSynced("intervenants");
+ const interAll=[...inter,...prestataires]; // internes + prestataires externes (ces derniers ne sont proposés que sur leurs équipements)
+
+ // DS créée par le Technicien/Chargé depuis un OT (ou seule) ; état initial "Transmis au Magasinier"
+ // sauf rupture de stock -> "En attente pièce" (et l'OT lié passe alors aussi "En attente pièce")
+ async function addDS(f){
+  const piece=pieces.find(p=>p.code===f.piece);
+  const nums=await numeros("dss"); if(!nums) return;
+  const dsCode=nums[0];
+  const suffisant = piece.stock>=f.qte;
+  const ds={code:dsCode,eq:f.eq,nom:f.nom,designation:f.designation,piece:piece.code,pieceNom:piece.nom,qte:f.qte,prix:piece.prix,bt:f.bt||null,etat:suffisant?"Transmis au Magasinier":"En attente pièce"};
+  setDss(d=>[ds,...d]);
+  if(!suffisant){
+   if(f.bt) setBts(bs=>bs.map(b=>b.code===f.bt?{...b,etat:"En attente pièce"}:b));
+  }
+  setDsModal(null);
+ }
+
+ // Le magasinier génère le BS à partir d'une DS "Transmis au Magasinier"
+ async function genererBS(dsCode){
+  const ds=dss.find(d=>d.code===dsCode);
+  if(!ds || ds.etat!=="Transmis au Magasinier") return;
+  const piece=pieces.find(p=>p.code===ds.piece);
+  if(!piece || piece.stock<ds.qte){ alert("Stock insuffisant pour générer le BS."); return; }
+  const nums=await numeros("bs"); if(!nums) return;
+  const bsCode=nums[0];
+  setBsList(b=>[{code:bsCode,ds:dsCode,piece:ds.piece,pieceNom:ds.pieceNom,qte:ds.qte,prix:ds.prix,etat:"À traiter"},...b]);
+  setDss(d=>d.map(x=>x.code===dsCode?{...x,etat:"BS généré",bs:bsCode}:x));
+ }
+
+ // Traitement du BS par le Magasinier : décrémente le stock, clôt le BS et la DS liée, débloque l'OT associé
+ function traiterBS(bsCode){
+  const bs=bsList.find(x=>x.code===bsCode);
+  setPieces(ps=>ps.map(p=>{
+   if(p.code!==bs.piece) return p;
+   const newStock=Math.max(p.stock-bs.qte,0);
+   return {...p,stock:newStock,mouvements:[...(p.mouvements||[]),{date:new Date().toISOString().slice(0,10),qte:bs.qte,type:"Sortie",ref:bs.code}]};
+  }));
+  setBsList(b=>b.map(x=>x.code===bsCode?{...x,etat:"Traité"}:x));
+  const ds=dss.find(d=>d.code===bs.ds);
+  if(ds){
+   setDss(d=>d.map(x=>x.code===ds.code?{...x,etat:"Traité"}:x));
+   if(ds.bt) setBts(b=>b.map(x=>x.code===ds.bt && x.etat==="En attente pièce"?{...x,etat:"En cours"}:x));
+  }
+ }
+
+ // Bon de Retour : réintègre une pièce non utilisée en stock
+ async function addBR(f){
+  const piece=pieces.find(p=>p.code===f.piece);
+  const nums=await numeros("brs"); if(!nums) return;
+  const brCode=nums[0];
+  setBrs(b=>[{code:brCode,piece:piece.code,pieceNom:piece.nom,qte:f.qte,prix:piece.prix},...b]);
+  setPieces(ps=>ps.map(p=>p.code===piece.code?{...p,stock:p.stock+f.qte,mouvements:[...(p.mouvements||[]),{date:new Date().toISOString().slice(0,10),qte:f.qte,type:"Retour",ref:brCode}]}:p));
+  setBrModal(false);
+ }
+
+ // L'OT est saisi par un autre intervenant (compte-rendu, temps, matières) puis clôturé.
+ async function savePlan(f){
+  if(f.mode==="edit") setPlanning(l=>l.map(x=>x.code===f.data.code?{...x,...f.data}:x));
+  else {
+   const nums=await numeros("planning",{unit}); if(!nums) return;
+   const code=nums[0];
+   setPlanning(l=>[...l,{...f.data,code,unit,dernier:""}]);
+  }
+  setPlanModal(null);
+ }
+
+ function saveCompteur(c){ setCompteursEq(l=>l.some(x=>x.code===c.code)?l.map(x=>x.code===c.code?c:x):[...l,c]); }
+
+ // Déclenchement manuel d'un plan : génère un OT préventif « En cours » avec la liste des tâches du plan
+async function declencherPlan(pl){
+  if(bts.some(b=>b.plan===pl.code && b.etat!=="Clôturé")) return;
+  const nums=await numeros("bts",{unit:pl.unit||unit,variant:"prev"}); if(!nums) return;
+  const code=nums[0];
+  const dateGeneration=new Date().toISOString().slice(0,16).replace("T"," ");
+  setBts(bs=>[buildBTPrev(pl,code,dateGeneration),...bs]);
+  setPlanning(l=>l.map(x=>x.code===pl.code?{...x,dernier:todayStr()}:x));
+ }
+
+ // Déclenche en une fois toutes les visites prévues (sur la plage choisie) qui n'ont pas déjà un OT ouvert
+ async function declencherLot(codesPlan){
+  const dateGeneration=new Date().toISOString().slice(0,16).replace("T"," ");
+  const eligibles=codesPlan.filter(c=>!bts.some(b=>b.plan===c && b.etat!=="Clôturé"));
+  if(eligibles.length){
+   // un numéro d'OT préventif par plan, réservé auprès du serveur (par unité)
+   const parUnite={};
+   eligibles.forEach(c=>{const pl=planning.find(x=>x.code===c); const u=(pl&&pl.unit)||unit; (parUnite[u]=parUnite[u]||[]).push(c);});
+   const attribues={};
+   for(const u of Object.keys(parUnite)){
+    const nums=await numeros("bts",{unit:u,variant:"prev",count:parUnite[u].length}); if(!nums) return;
+    parUnite[u].forEach((c,k)=>{attribues[c]=nums[k];});
+   }
+   const nouveaux=eligibles.map(c=>buildBTPrev(planning.find(x=>x.code===c),attribues[c],dateGeneration));
+   setBts(bs=>[...nouveaux,...bs]);
+  }
+  setPlanning(l=>l.map(x=>codesPlan.includes(x.code)?{...x,dernier:todayStr()}:x));
+ }
+
+const [notice,setNotice]=useState(null);
+ // Lien d'un QR code (?eq=CODE) : ouvre la déclaration d'une DI pour cet équipement, une seule fois
+ const lienEq=useRef(typeof window!=="undefined"?codeDepuisAdresse(window.location.search):null);
+ useEffect(()=>{
+  const code=lienEq.current; if(!code||sEq!=="ready") return;
+  lienEq.current=null;
+  try{ window.history.replaceState(null,"",window.location.pathname); }catch{ /* adresse non modifiable : sans importance */ }
+  const avis=(t)=>{setNotice(t); setTimeout(()=>setNotice(null),9000);};
+  const e=equipements.find(x=>x.code===code);
+  if(!e) return avis("QR code : équipement « "+code+" » introuvable ou hors de vos droits d'accès.");
+  if(!sa && !((session.droits[e.unit]||{}).volets||[]).includes(1)) return avis("QR code "+code+" : vous n'avez pas le droit de créer une demande d'intervention pour cette unité.");
+  setUnit(e.unit); setTab(1); setDiModal({prefill:{eq:e.code,nom:e.nom}});
+ },[sEq,equipements]);
+ const [syncErr,setSyncErr]=useState(null);
+ useEffect(()=>{let t;const h=(e)=>{setSyncErr(e.detail);clearTimeout(t);t=setTimeout(()=>setSyncErr(null),10000);};window.addEventListener("gmao:error",h);return()=>{window.removeEventListener("gmao:error",h);clearTimeout(t);};},[]);
+ const [feries,setFeries,sFer]=useSynced("feries",{defaults:FERIES_DEFAUT,sa:session.superAdmin});
+ setFeries(feries); // les helpers (calendrier, formulaires) lisent la liste courante
+ // Alertes : intervenants assignés (plans / OT ouverts) alors qu'ils sont en congé → à remplacer
+ const [alertesMasquees,setAlertesMasquees]=useState("");
+ const alertesConge=(()=>{
+  const out=[], auj=todayStr(), lim=addMonths(new Date(),12); const fin12=fmtD(lim);
+  planning.filter(x=>x.unit===unit&&!x.termine).forEach(pl=>{
+   const ds=datesPlanDansPlage(pl,auj,fin12);
+   (pl.assignes||[]).forEach(n=>{
+    const t=interAll.find(i=>i.nom===n); const hit=ds.filter(d=>congeAt(t,d));
+    if(hit.length) out.push({key:"P|"+pl.code+"|"+n+"|"+hit[0],kind:"plan",code:pl.code,label:pl.code+" — "+pl.nom,nom:n,dates:hit,c:congeAt(t,hit[0])});
+   });
+  });
+  bts.filter(b=>b.etat!=="Clôturé").forEach(b=>{
+   const d=(b.echeance&&b.echeance>auj)?b.echeance:auj;
+   (b.assignes||[]).forEach(n=>{
+    const t=interAll.find(i=>i.nom===n); const c=congeAt(t,d);
+    if(c) out.push({key:"B|"+b.code+"|"+n+"|"+d,kind:"bt",code:b.code,label:b.code+" — "+b.nom,nom:n,dates:[d],c});
+   });
+  });
+  return out;
+ })();
+ const alertesVisibles=alertesConge.filter(a=>alertesMasquees.indexOf(a.key)<0);
+ // Tâche « Non OK » sur un OT préventif : une DI corrective n'est créée que si l'intervenant le décide (Non OK ≠ forcément une panne : ex. manque de pièce de rechange)
+ async function genererDIsDefauts(bt,taches){
+  const now=new Date().toISOString().slice(0,16).replace("T"," ");
+  const eqObj=equipements.find(e=>e.code===bt.eq)||{};
+  const aCreer=taches.filter(t=>tRes(t)==="NOK" && !t.di && t.creerDI===true);
+  let codes=[];
+  if(aCreer.length){ codes=await numeros("dis",{unit:kpiUnitOf(bt.eq,equipements),count:aCreer.length}); if(!codes) return null; }
+  let k=0;
+  const nouvelles=[];
+  const out=taches.map(t=>{
+   if(tRes(t)==="NOK" && !t.di && t.creerDI===true){
+    const code=codes[k++];
+    nouvelles.push({code,eq:bt.eq,nom:bt.nom,designation:"Défaut constaté lors de l'OT préventif "+bt.code+" — Tâche : "+t.lib+" — "+(t.com||""),emplacement:eqObj.emplacement||"",dateEvt:now,dateCreation:now,perturb:false,demandeur:bt.assigne||"Maintenance",typeMaintenance:"Corrective",sousType:"Curative",etat:"À Transmettre",btOrigine:bt.code});
+    return {...t,di:code};
+   }
+   return t;
+  });
+  if(nouvelles.length){
+   setDis(ds=>[...nouvelles,...ds]);
+   setNotice(nouvelles.length+" DI corrective(s) créée(s) depuis "+bt.code+" : "+nouvelles.map(d=>d.code).join(", "));
+   setTimeout(()=>setNotice(null),7000);
+  }
+  return out;
+ }
+ async function saveBT(code,data){
+  const btx=bts.find(b=>b.code===code); if(data&&data.taches&&btx){ const t=await genererDIsDefauts(btx,data.taches); if(!t) return; data={...data,taches:t}; }
+  setBts(bs=>bs.map(b=>b.code===code?{...b,...data}:b));
+  setBtDetail(null);
+ }
+ async function cloturerBT(code,data){
+  const btx=bts.find(b=>b.code===code); if(data&&data.taches&&btx){ const t=await genererDIsDefauts(btx,data.taches); if(!t) return; data={...data,taches:t}; }
+  setBts(bs=>bs.map(b=>b.code===code?{...b,...(data||{}),etat:"Clôturé",dateCloture:new Date().toISOString().slice(0,16).replace("T"," ")}:b));
+  const bt=bts.find(b=>b.code===code);
+  if(bt && bt.di) setDis(ds=>ds.map(d=>d.code===bt.di?{...d,etat:"Traité"}:d));
+  // plan au compteur : le relevé saisi à la clôture est enregistré et remet le cycle du plan à zéro
+  let cumulCpt=null;
+  const plx=bt&&bt.plan?planning.find(x=>x.code===bt.plan):null;
+  if(plx && isCompteurPlan(plx)){
+   const c=compteursEq.find(x=>x.code===plx.compteur);
+   if(c && data && data.releveCompteur!==undefined && String(data.releveCompteur).trim()!==""){ const c2=ajouterReleve(c,{date:todayStr(),valeur:data.releveCompteur,par:user}); saveCompteur(c2); cumulCpt=dernier(c2).cumul; }
+   else if(c && dernier(c)) cumulCpt=dernier(c).cumul;
+  }
+  if(bt && bt.plan) setPlanning(l=>l.map(x=>{
+   if(x.code!==bt.plan) return x;
+   if(isCompteurPlan(x)) return {...x,valeurDernier:cumulCpt??x.valeurDernier,dernier:todayStr()};
+   if(isPeriodePlan(x)){
+    const nxt=occurrencesPlan(x).find(d=>d>x.date&&d>=todayStr());
+    return nxt?{...x,date:nxt,dernier:todayStr()}:{...x,dernier:todayStr(),termine:true};
+   }
+   return {...x,date:prochaineEcheance(x.date,x.periode),dernier:todayStr()};
+  }));
+  setBtDetail(null);
+ }
+
+
+ // Nouvel achat d'une pièce / d'un consommable / d'un outillage déjà existant : entrée en stock + mouvement
+ function addAchat(f){
+  setPieces(ps=>ps.map(p=>p.code===f.piece?{...p,stock:p.stock+f.qte,prix:f.prix>0?f.prix:p.prix,mouvements:[...(p.mouvements||[]),{date:f.date,qte:f.qte,type:"Achat",ref:f.ref||""}]}:p));
+  setAchatModal(null);
+ }
+
+ // Outillage et consommables sortent par décharge (pas de DS) : sortie de stock immédiate + mouvement
+ async function addDecharge(f){
+  const piece=pieces.find(p=>p.code===f.piece);
+  const nums=await numeros("decharges"); if(!nums) return;
+  const code=nums[0];
+  setDecharges(d=>[{code,piece:piece.code,pieceNom:piece.nom,categorie:piece.categorie,qte:f.qte,prix:piece.prix,recu:f.recu,bt:f.bt||null,date:f.date},...d]);
+  setPieces(ps=>ps.map(p=>p.code===piece.code?{...p,stock:p.stock-f.qte,mouvements:[...(p.mouvements||[]),{date:f.date,qte:f.qte,type:"Décharge",ref:code,detail:f.recu}]}:p));
+  setDechargeModal(null);
+ }
+
+ function saveInter(f){
+  if(f.mode==="edit") setInter(l=>l.map(x=>x.mat===f.data.mat?f.data:x));
+  else setInter(l=>[...l,f.data]);
+  setInterModal(null);
+ }
+
+ async function savePiece(f){
+  if(f.mode==="edit"){
+   setPieces(ps=>ps.map(x=>x.code===f.code?{...x,...f.data}:x));
+  } else {
+   const variant={"Pièce":"P","Outillage":"O","Consommable":"C"}[f.data.categorie];
+   const nums=await numeros("pieces",{variant}); if(!nums) return;
+   const code=nums[0];
+   const today=new Date().toISOString().slice(0,10);
+   setPieces(ps=>[...ps,{...f.data,code,mouvements:f.data.stock>0?[{date:today,qte:f.data.stock,type:"Achat"}]:[]}]);
+  }
+  setPieceForm(null);
+ }
+
+ async function addDI(f){
+  const nums=await numeros("dis",{unit:kpiUnitOf(f.eq,equipements)}); if(!nums) return;
+  setDis(ds=>[{code:nums[0],eq:f.eq,nom:f.nom,se:f.se||"",designation:f.designation,emplacement:f.emplacement,dateEvt:f.dateEvt,dateCreation:f.dateCreation,perturb:f.perturb==="Oui",demandeur:f.demandeur,typeMaintenance:f.typeMaintenance,sousType:f.typeMaintenance==="Corrective"?f.sousType:"",etat:"À Transmettre"},...ds]);
+  setDiModal(null);
+ }
+
+ // L'OT est une entité indépendante générée par le service Maintenance :
+ // soit à partir d'une DI existante (Corrective, et la DI passe alors à "Transmis"),
+ // soit directement par la maintenance sans DI (ex: Préventif).
+ async function addBT(f){
+  const nums=await numeros("bts",{unit:kpiUnitOf(f.eq,equipements)}); if(!nums) return;
+  const code=nums[0];
+  const dateGeneration=new Date().toISOString().slice(0,16).replace("T"," ");
+  const intervenants=(f.assignes||[]).map(nom=>{const t=interAll.find(i=>i.nom===nom);return {nom,fonction:t?t.poste:"",taux:t?t.taux:0,temps:0};});
+  setBts(bs=>[{code,di:f.di||null,eq:f.eq,nom:f.nom,type:f.type||(f.di?"Corrective — Curative":"Préventive"),consigne:f.consigne||"-",horaire:f.horaire||"Jour",consignation:f.consignation||"Non",exc:!!f.exc,motifExc:f.exc?(f.motifExc||""):"",assigne:(f.assignes||[]).join(", "),assignes:f.assignes||[],dateGeneration,
+   detection:0,gravite:0,dureeIntervention:0,tempsLogistique:0,panne:"-",cause:"-",effet:"-",intervenants,pieces:f.pieces||[],outillage:f.outillage||[],consommables:f.consommables||[],etat:"En cours"},...bs]);
+  if(f.di) setDis(ds=>ds.map(d=>d.code===f.di?{...d,etat:"Transmis"}:d));
+  setBtModal(null);
+  setDiDetail(null);
+ }
+
+ const tabs=[
+  {n:"Arborescence Technique",c:"Arborescence",ic:I.tree},
+  {n:"Demandes d'Intervention (DI)",c:"Demandes (DI)",ic:I.flag},
+  {n:"Ordres de Travail (OT)",c:"Ordres de travail",ic:I.wrench},
+  {n:"Planning Préventif",c:"Préventif",ic:I.cal},
+  {n:"Gestion de stock",c:"Gestion de stock",ic:I.store},
+  {n:"Gestion du personnel",c:"Gestion du personnel",ic:I.team},
+  {n:"Indicateurs de performance",c:"Indicateurs",ic:I.chart},
+  {n:"Administration",c:"Administration",ic:I.gear},
+  {n:"Accueil",c:"Accueil",ic:I.home},   // ACCUEIL = 8 : hors volets de droits (0 à 7)
+ ];
+
+ const inScope=(code)=>kpiUnitOf(code,equipements)===unit&&sysOk(kpiEqInfo(code,equipements).system);
+ const visEquip=sa?equipements:equipements.filter(e=>e.unit===unit&&sysOk(e.system));
+ const visSystems=sa?systemsList:systemsList.filter(([c])=>sysOk(c));
+ const cptDe=(p)=>compteursEq.find(c=>c.code===p.compteur);
+ // plan au compteur : sa « date » est l'échéance estimée d'après l'usage moyen (calculée, jamais saisie)
+ const visPlanning=(sa?planning:planning.filter(p=>p.unit===unit&&sysOk(p.sys))).map(p=>isCompteurPlan(p)?{...p,date:etatPlanCompteur(p,cptDe(p)).dateEstimee}:p);
+ const visCompteurs=sa?compteursEq:compteursEq.filter(c=>c.unit===unit&&sysOk(c.sys));
+ const visDis=sa?dis:dis.filter(d=>inScope(d.eq));
+ const visBts=sa?bts:bts.filter(b=>inScope(b.eq));
+ const sysAll=sa||systemsList.every(([c])=>grant.systems.includes(c));
+ const interOk=(p)=>sysAll||(p.externe?(p.systemes||[]).some(sysOk):grant.systems.some(c=>new RegExp("\\b"+c+"\\b","i").test(p.poste||"")));
+ const visInter=inter.filter(interOk), visPresta=prestataires.filter(interOk);
+ const critStock = pieces.filter(p=>p.stock<p.min);
+ const ctAl=visPresta.map(contratInfo).filter(c=>c.alerte); const ctRouge=ctAl.filter(c=>c.niveau==="rouge").length, ctOrange=ctAl.length-ctRouge;
+ const habAl=habListe(visInter); const habRouge=habAl.filter(x=>x.niveau==="rouge").length, habOrange=habAl.filter(x=>x.niveau==="orange").length;
+ const syncStates=[sEq,sSys,sTree,sMes,sCtrl,sOrg,sPre,sDch,sDss,sBs,sBrs,sFer,sDis,sBts,sPie,sPla,sInt,sCpt];
+ if(syncStates.includes("error")) return <Splash msg="Impossible de joindre le serveur GMAO." action={()=>window.location.reload()} actionLabel="Réessayer"/>;
+ if(!syncStates.every(s=>s==="ready")) return <Splash msg="Chargement des données…"/>;
+
+ const ordreMenu=[ACCUEIL,0,1,2,3,4,5,6,7];
+ const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0);
+ const alerteRouge=(tabOk(5)&&(ctRouge+habRouge)>0)||(tabOk(4)&&critStock.length>0);
+ const initiales=(user||"?").replace(/^Démo — /,"").split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("");
+ const alertesItems=[
+  tabOk(5)&&ctAl.length>0&&{k:"ct",rouge:ctRouge>0,titre:"Contrats prestataires",txt:(ctRouge>0?ctRouge+" expiré(s)":"")+(ctRouge>0&&ctOrange>0?" · ":"")+(ctOrange>0?ctOrange+" à renouveler sous "+CONTRAT_SEUIL_MOIS+" mois — préparer le cahier des charges":""),go:5},
+  tabOk(5)&&(habRouge+habOrange)>0&&{k:"hab",rouge:habRouge>0,titre:"Habilitations",txt:(habRouge>0?habRouge+" expirée(s)":"")+(habRouge>0&&habOrange>0?" · ":"")+(habOrange>0?habOrange+" à renouveler sous "+HAB_SEUIL_MOIS+" mois":""),go:5},
+  tabOk(4)&&critStock.length>0&&{k:"stk",rouge:true,titre:"Stock critique",txt:critStock.length+" pièce(s) sous le seuil min",go:4},
+ ].filter(Boolean);
+ return (
+ <div className="gm-app min-h-screen flex flex-col" style={{paddingTop:"env(safe-area-inset-top,0px)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+  <header className="gm-top">
+   <button onClick={()=>setSidebar(s=>!s)} className="gm-icon-btn" aria-label="Menu" data-testid="menu-bouton">{I.menu}</button>
+   <button className="gm-brand" onClick={()=>allerA(ACCUEIL)} title="Accueil"><img src={XL_LOGO} alt="SETRAM"/><span className="gm-brand-app hidden sm:flex">GMAO<small>Gestion de la maintenance</small></span></button>
+   <div className="flex-1"/>
+   <label className="gm-unit hidden md:flex" title="Unité opérationnelle">{I.pin}
+    <select value={unit} onChange={e=>setUnit(e.target.value)} aria-label="Unité opérationnelle">{unitsOk.map(u=><option key={u}>{u}</option>)}</select>
+   </label>
+   <div className="relative">
+    <button className="gm-icon-btn relative" onClick={()=>{setPanneau(p=>p==="alertes"?null:"alertes");}} aria-label="Alertes" title="Alertes">{I.bell}
+     {nbAlertes>0&&<span className={"gm-dot "+(alerteRouge?"is-red":"is-amber")}>{nbAlertes}</span>}</button>
+    {panneau==="alertes"&&<><div className="fixed inset-0 z-40" onClick={()=>setPanneau(null)}/>
+     <div className="gm-pop right-0 w-80">
+      <div className="gm-pop-head">Alertes à traiter</div>
+      {alertesItems.length===0&&<div className="gm-pop-empty">Aucune alerte en cours.</div>}
+      {alertesItems.map(a=><button key={a.k} className="gm-pop-item" onClick={()=>{setPanneau(null);setTab(a.go);}}>
+       <span className={"gm-pop-ic "+(a.rouge?"is-red":"is-amber")}>{I.alert}</span><span><b>{a.titre}</b><small>{a.txt}</small></span></button>)}
+     </div></>}
+   </div>
+   <div className="relative">
+    <button className="gm-user" onClick={()=>setPanneau(p=>p==="profil"?null:"profil")} aria-label="Profil utilisateur">
+     <span className="gm-avatar">{initiales}</span>
+     <span className="gm-user-txt hidden lg:block"><b>{user}</b><small>{sa?"Super administrateur":session.role}</small></span>
+     <span className="hidden lg:block gm-chev">{I.chev}</span>
+    </button>
+    {panneau==="profil"&&<><div className="fixed inset-0 z-40" onClick={()=>setPanneau(null)}/>
+     <div className="gm-pop right-0 w-64">
+      <div className="gm-pop-user"><span className="gm-avatar">{initiales}</span><span><b>{user}</b><small>{sa?"Super administrateur":session.role}</small></span></div>
+      <button className="gm-pop-item" onClick={()=>{setPanneau(null);onLogout();}}><span className="gm-pop-ic">{I.logout}</span><span><b>Se déconnecter</b></span></button>
+     </div></>}
+   </div>
+  </header>
+
+  <div className="flex flex-1 min-h-0">
+  {sidebar && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={()=>setSidebar(false)} data-testid="menu-fond"/>}
+  {sidebar && <aside className="gm-rail fixed inset-y-0 left-0 z-40 overflow-y-auto md:sticky md:top-[60px] md:h-[calc(100vh-60px)] md:z-auto shrink-0 flex flex-col" data-testid="menu-lateral">
+   <div className="gm-rail-unit md:hidden">
+    <div className="gm-rail-label">Unité</div>
+    <select value={unit} onChange={e=>{setUnit(e.target.value); setSidebar(false);}} aria-label="Unité opérationnelle (menu)">{unitsOk.map(u=><option key={u}>{u}</option>)}</select>
+   </div>
+   <nav className="gm-rail-nav flex flex-col">
+    {ordreMenu.map(i=>!tabOk(i)?null:(
+     <button key={i} onClick={()=>allerA(i)} title={tabs[i].n} className={"gm-rail-item"+(tab===i?" is-active":"")} aria-current={tab===i?"page":undefined}>
+      <span className="gm-rail-ic">{tabs[i].ic}
+       {i===5&&(habRouge+habOrange+ctAl.length>0)&&<span className={"gm-count "+((habRouge+ctRouge)>0?"is-red":"is-amber")} title="Habilitations et contrats prestataires à traiter">{habRouge+habOrange+ctAl.length}</span>}
+       {i===4&&critStock.length>0&&<span className="gm-count is-red" title="Articles sous le seuil minimum">{critStock.length}</span>}
+      </span>{tabs[i].c}
+     </button>))}
+   </nav>
+   <div className="gm-rail-foot mt-auto">v1.12</div>
+  </aside>}
+
+  <div className="flex-1 min-w-0 flex flex-col">
+  <div className="gm-strip">
+   {tab!==ACCUEIL&&<button className="gm-strip-tab" onClick={()=>allerA(ACCUEIL)}>{I.home}<span className="hidden sm:inline">Accueil</span></button>}
+   <div className="gm-strip-tab is-active">{tabs[tab].ic}<h1 className="gm-title truncate">{tabs[tab].n}</h1></div>
+   <div className="gm-strip-unit">Unité <b>{unit}</b></div>
+  </div>
+  <main className="gm-main flex-1 min-w-0 p-3 md:p-5">
+   {tabOk(5)&&alertesVisibles.length>0 && <div className="mb-4 rounded-xl border border-rose-700 bg-rose-900/30 p-3">
+    <div className="flex justify-between items-start gap-2">
+     <div className="text-sm font-semibold text-rose-300">⚠ Intervenant en congé — changez l'intervenant ({alertesVisibles.length})</div>
+     <button className="text-xs text-slate-400 hover:text-slate-200" onClick={()=>setAlertesMasquees(m=>m+alertesVisibles.map(a=>a.key).join("~"))}>Masquer</button>
+    </div>
+    <div className="mt-2 space-y-1.5">{alertesVisibles.slice(0,6).map(a=><div key={a.key} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-900 rounded-lg px-2 py-1.5">
+     <span className="text-slate-300"><b className="text-rose-300">{a.nom}</b> est en congé {libConge(a.c)}, mais est assigné à <span className="text-sky-400">{a.label}</span> ({a.kind==="plan"?"prévu le "+a.dates.slice(0,3).map(frDate).join(", ")+(a.dates.length>3?"…":""):"OT en cours"}).</span>
+     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white text-xs" onClick={()=>{ if(a.kind==="plan"){const pl=planning.find(x=>x.code===a.code); setTab(3); setPlanModal({mode:"edit",item:pl});} else {setTab(2); setBtDetail(a.code);} }}>Changer l'intervenant</Btn>
+    </div>)}
+    {alertesVisibles.length>6 && <div className="text-xs text-slate-400">… et {alertesVisibles.length-6} autre(s) alerte(s).</div>}</div>
+   </div>}
+
+   {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
+     onGo={allerA} onNewDI={()=>setDiModal({})} onNewOT={()=>setBtModal({di:null})} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={(c)=>setBtDetail(c)}/>}
+   {tab===1 && <DIPage dis={visDis} bts={visBts} onNewDI={()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={(di)=>setBtModal({di})}/>}
+   {tab===2 && <BTPage bts={visBts} pieces={pieces} onNouveauBT={()=>setBtModal({di:null})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===0 && <Arbo unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
+     onAddEquip={(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
+     onOpenEquip={setEquipDetail}
+     onCreateDI={(equip)=>setDiModal({prefill:{eq:equip.code,nom:equip.nom}})}
+     onAddSousEquip={(equip)=>setSousEquipModal({mode:"add",equip})}
+     onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
+     onRemoveSousEquip={removeSousEquip}
+     onAddSystem={()=>setSystemModal({mode:"add",code:"",nom:""})}
+     onEditSystem={(code,nom)=>setSystemModal({mode:"edit",code,nom})}
+     onAddSubSystem={(systemCode)=>setSubSystemModal({mode:"add",systemCode,code:"",nom:""})}
+     onEditSubSystem={(systemCode,code,nom)=>setSubSystemModal({mode:"edit",systemCode,code,nom})}
+     mesureList={mesureList} ctrlList={ctrlList} onAddCtrl={()=>setCtrlModal({mode:"add"})} onEditCtrl={(c)=>setCtrlModal({mode:"edit",item:c})} organismes={organismes} onAddOrg={()=>setOrgModal({mode:"add"})} onEditOrg={(o)=>setOrgModal({mode:"edit",item:o})}
+         onAddMesure={()=>setMesureModal({mode:"add"})}
+     onEditMesure={(item)=>setMesureModal({mode:"edit",item})}/>}
+   {!tabOk(tab) && <Card><div className="text-sm text-slate-400">Aucun volet n'est accessible pour votre compte sur cette unité. Contactez le super administrateur.</div></Card>}
+   {tab===7 && sa && <AdminPage systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,organismes,mesures:mesureList,controles:ctrlList}}/>}
+   {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
+   {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
+   {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
+   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
+  </main>
+  </div>
+  </div>
+
+  {diModal && <Modal title="Nouvelle Demande d'Intervention (DI) — Service Exploitation" onClose={()=>setDiModal(null)}>
+   <DIForm prefill={diModal.prefill} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} demandeur={user} onSubmit={unSeul(addDI)}/>
+  </Modal>}
+
+  {btModal && <Modal title={btModal.di? "Générer un OT depuis "+btModal.di.code+" — Service Maintenance" : "Nouvel OT (Préventif) — Service Maintenance"} onClose={()=>setBtModal(null)}>
+   <BTCreateForm di={btModal.di} inter={interAll} pieces={pieces} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} onSubmit={unSeul(addBT)}/>
+  </Modal>}
+
+  {diDetail && (()=>{const d=dis.find(x=>x.code===diDetail); if(!d) return null; const btLie=bts.find(b=>b.di===d.code);
+   return <Modal wide title={"Demande d'Intervention — "+d.code} onClose={()=>setDiDetail(null)}>
+    <DIDetail di={d} bt={btLie} onGenererBT={()=>{setDiDetail(null);setBtModal({di:d});}} onOpenBT={()=>{setDiDetail(null);setTab(2);setBtDetail(btLie.code);}}/>
+   </Modal>;})()}
+
+  {notice && <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-emerald-700 text-emerald-50 text-sm rounded-xl px-4 py-3 shadow-lg">✓ {notice}</div>}
+  {syncErr && <div className="fixed bottom-4 left-4 z-[70] max-w-md bg-rose-700 text-rose-50 text-sm rounded-xl px-4 py-3 shadow-lg" onClick={()=>setSyncErr(null)}>⚠ {syncErr}</div>}
+
+  {btDetail && (()=>{const b=bts.find(x=>x.code===btDetail); if(!b) return null;
+   const plb=b.plan?planning.find(p=>p.code===b.plan):null; const cptB=plb&&isCompteurPlan(plb)?cptDe(plb)||null:null;
+   return <Modal wide title={"Ordre de Travail — "+b.code} onClose={()=>setBtDetail(null)}>
+    <BTDetail key={b.code} bt={b} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)}
+     onCreateDS={(item)=>{setBtDetail(null);setDsModal({prefill:{eq:b.eq,nom:b.nom,piece:item.code,qte:item.qte,bt:b.code}});}}/>
+   </Modal>;})()}
+
+  {equipModal && <Modal title={equipModal.mode==="edit"?"Modifier l'équipement — "+equipModal.equip.code:"Créer un équipement — "+equipModal.system+"."+UNIT_ABBR[equipModal.unit]+"."+equipModal.subCode} onClose={()=>setEquipModal(null)}>
+   <EquipForm modal={equipModal} count={equipModal.mode==="add"?equipements.filter(e=>e.system===equipModal.system&&e.subCode===equipModal.subCode&&e.unit===equipModal.unit).length:0} onSubmit={saveEquipement}/>
+  </Modal>}
+
+  {equipDetail && (()=>{const ed=equipements.find(x=>x.code===equipDetail.code)||equipDetail; const sousL=ed.sousEquip||[];
+   return <Modal title={"Fiche équipement — "+ed.code} onClose={()=>setEquipDetail(null)}>
+   <div className="text-sm space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+     <div><span className="text-slate-500">Code :</span> {ed.code}</div>
+     <div><span className="text-slate-500">Nom :</span> {ed.nom}</div>
+     <div><span className="text-slate-500">Prix :</span> {ed.prix.toLocaleString()} DA</div>
+     <div><span className="text-slate-500">Unité :</span> {ed.unit}</div>
+     <div className="col-span-2"><span className="text-slate-500">Emplacement :</span> {ed.emplacement||"—"}</div>
+    </div>
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="text-slate-400 font-medium mb-1">Constructeur</div>
+     {ed.constructeur.nom||"—"} {ed.constructeur.contact&&"— "+ed.constructeur.contact}<br/>{ed.constructeur.tel} {ed.constructeur.email&&"— "+ed.constructeur.email}
+    </div>
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>
+     {ed.fournisseurs.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom} — {f.tel} — {f.email}</div>)}
+    </div>
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="text-slate-400 font-medium mb-1">Prestataire(s) externe(s) intervenant sur le système {ed.system}</div>
+     {(()=>{const l=prestataires.filter(x=>(x.systemes||[]).includes(ed.system)); return l.length===0?<div className="text-slate-600">Aucun prestataire externe sur le système {ed.system}.</div>:l.map(x=><div key={x.mat} className="py-0.5">◦ {x.nom}{x.tel?" — "+x.tel:""}</div>);})()}
+    </div>
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="flex items-center justify-between mb-1"><span className="text-slate-400 font-medium">Sous-équipements ({sousL.length})</span>
+      <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousEquipModal({mode:"add",equip:ed});}}>+ Sous-équipement</Btn></div>
+     {sousL.length===0 && <div className="text-slate-600">Aucun sous-équipement.</div>}
+     {sousL.map(se=><div key={se.code} onClick={()=>setSousEquipDetail({equip:ed,se})} className="py-0.5 cursor-pointer hover:text-sky-400">◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</div>)}
+    </div>
+    <div className="flex justify-end gap-2">
+     <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setEquipDetail(null)}>Fermer</Btn>
+     <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setEquipModal({mode:"edit",equip:ed});setEquipDetail(null);}}>Modifier</Btn>
+     <Btn onClick={()=>{setDiModal({prefill:{eq:ed.code,nom:ed.nom}});setEquipDetail(null);}}>Créer une DI</Btn>
+    </div>
+   </div>
+  </Modal>;})()}
+
+  {sousEquipModal && <Modal title={sousEquipModal.mode==="edit"?"Modifier le sous-équipement — "+sousEquipModal.se.code:"Créer un sous-équipement — "+sousEquipModal.equip.code} onClose={()=>setSousEquipModal(null)}>
+   <SousEquipForm modal={sousEquipModal} count={sousEquipModal.mode==="add"?(equipements.find(x=>x.code===sousEquipModal.equip.code)||sousEquipModal.equip).sousEquip?.length||0:0} onSubmit={saveSousEquipement}/>
+  </Modal>}
+
+  {sousEquipDetail && (()=>{
+   const parent=equipements.find(x=>x.code===sousEquipDetail.equip.code)||sousEquipDetail.equip;
+   const se=(parent.sousEquip||[]).find(x=>x.code===sousEquipDetail.se.code)||sousEquipDetail.se;
+   return <Modal title={"Fiche sous-équipement — "+se.code} onClose={()=>setSousEquipDetail(null)}>
+   <div className="text-sm space-y-3">
+    <div className="text-xs text-slate-500">Équipement parent : <span className="text-sky-400">{parent.code}</span> — {parent.nom}</div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+     <div><span className="text-slate-500">Code :</span> {se.code}</div>
+     <div><span className="text-slate-500">Nom :</span> {se.nom}</div>
+    </div>
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>
+     {se.fournisseurs.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom} — {f.tel} — {f.email}</div>)}
+    </div>
+    <div className="flex justify-end gap-2">
+     <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
+     <Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}>Supprimer</Btn>
+     <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>
+     <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code}});setSousEquipDetail(null);}}>Créer une DI</Btn>
+    </div>
+   </div>
+  </Modal>;})()}
+
+  {systemModal && <Modal title={systemModal.mode==="edit"?"Modifier le système":"Ajouter un système"} onClose={()=>setSystemModal(null)}>
+   <SystemForm modal={systemModal} onSubmit={saveSystem}/>
+  </Modal>}
+
+  {subSystemModal && <Modal title={subSystemModal.mode==="edit"?"Modifier le sous-système":"Ajouter un sous-système"} onClose={()=>setSubSystemModal(null)}>
+   <SubSystemForm modal={subSystemModal} onSubmit={saveSubSystem}/>
+  </Modal>}
+
+  {orgModal && <Modal title={orgModal.mode==="edit"?"Modifier l'organisme — "+orgModal.item.nom:"Ajouter un organisme"} onClose={()=>setOrgModal(null)}>
+   <OrgForm modal={orgModal} list={organismes} onSubmit={saveOrg}/>
+  </Modal>}
+
+  {prestaModal && <Modal wide title={prestaModal.mode==="edit"?"Modifier le prestataire — "+prestaModal.item.nom:"Ajouter un prestataire externe"} onClose={()=>setPrestaModal(null)}>
+   <PrestaForm mode={prestaModal.mode} item={prestaModal.item} existing={prestataires} systemsList={systemsList} onSubmit={savePresta}/>
+  </Modal>}
+
+  {ctrlModal && <Modal title={ctrlModal.mode==="edit"?"Modifier le contrôle — "+ctrlModal.item.code:"Ajouter un équipement au contrôle réglementaire"} onClose={()=>setCtrlModal(null)}>
+   <CtrlForm modal={ctrlModal} list={ctrlList} organismes={organismes} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} onSubmit={saveCtrl}/>
+  </Modal>}
+
+  {mesureModal && <Modal title={mesureModal.mode==="edit"?"Modifier l'appareil — "+mesureModal.item.code:"Ajouter un appareil de mesure"} onClose={()=>setMesureModal(null)}>
+   <MesureForm modal={mesureModal} count={mesureList.length} organismes={organismes} onSubmit={saveMesure}/>
+  </Modal>}
+
+  {motifModal && <Modal title="Annuler la DS — motif" onClose={()=>setMotifModal(null)}>
+   <MotifForm onSubmit={(motif)=>annulerDS(motifModal.ds,motif)}/>
+  </Modal>}
+
+  {dsModal && <Modal title="Nouvelle Demande de Sortie (DS) — Pièces" onClose={()=>setDsModal(null)}>
+   <DSForm pieces={pieces.filter(p=>p.categorie==="Pièce")} bts={bts} prefill={dsModal.prefill} onSubmit={unSeul(addDS)}/>
+  </Modal>}
+
+  {brModal && <Modal title="Nouveau Bon de Retour (BR)" onClose={()=>setBrModal(false)}>
+   <BRForm pieces={pieces} onSubmit={unSeul(addBR)}/>
+  </Modal>}
+
+  {planModal && <Modal wide title={planModal.mode==="edit"?"Plan préventif — "+planModal.item.code:"Nouveau plan préventif"} onClose={()=>setPlanModal(null)}>
+   <PlanForm mode={planModal.mode} item={planModal.item} compteurs={visCompteurs} systemsList={systemsList} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} inter={interAll} pieces={pieces} onSubmit={unSeul(savePlan)}/>
+  </Modal>}
+
+  {interModal && <Modal wide title={interModal.mode==="edit"?"Modifier l'intervenant — "+interModal.item.nom:"Ajouter un intervenant"} onClose={()=>setInterModal(null)}>
+   <InterForm mode={interModal.mode} item={interModal.item} existing={inter} systemsList={systemsList} onSubmit={saveInter}/>
+  </Modal>}
+
+  {achatModal && <Modal title="Nouvel achat / réapprovisionnement" onClose={()=>setAchatModal(null)}>
+   <AchatForm pieces={pieces} prefill={achatModal.prefill} onSubmit={addAchat}/>
+  </Modal>}
+
+  {dechargeModal && <Modal title="Décharge — Outillage / Consommable" onClose={()=>setDechargeModal(null)}>
+   <DechargeForm pieces={pieces.filter(p=>p.categorie!=="Pièce")} inter={inter} bts={bts.filter(b=>b.etat!=="Clôturé")} prefill={dechargeModal.prefill} onSubmit={unSeul(addDecharge)}/>
+  </Modal>}
+
+  {pieceForm && <Modal wide title={pieceForm.mode==="edit"?"Modifier — "+pieceForm.piece.code+" "+pieceForm.piece.nom:"Ajouter — "+pieceForm.categorie} onClose={()=>setPieceForm(null)}>
+   <ArticleForm mode={pieceForm.mode} piece={pieceForm.piece} categorie={pieceForm.categorie} onSubmit={unSeul(savePiece)}/>
+  </Modal>}
+
+  {pieceModal && <Modal title={"Fiche "+pieceModal.categorie+" — "+pieceModal.code} onClose={()=>setPieceModal(null)}>
+   <div className="text-sm space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+     <div><span className="text-slate-500">Nom :</span> {pieceModal.nom}</div>
+     <div><span className="text-slate-500">Catégorie :</span> {pieceModal.categorie}</div>
+     <div><span className="text-slate-500">Code :</span> {pieceModal.code}</div>
+     <div><span className="text-slate-500">Référence :</span> {pieceModal.ref}</div>
+     <div><span className="text-slate-500">N° Série :</span> {pieceModal.serie}</div>
+     <div><span className="text-slate-500">Prix unitaire :</span> {pieceModal.prix.toLocaleString()} DA</div>
+     <div><span className="text-slate-500">Stock actuel :</span> {pieceModal.stock}</div>
+     <div><span className="text-slate-500">Seuils :</span> min {pieceModal.min} / max {pieceModal.max}</div>
+    </div>
+    <div className="border-t border-slate-700 pt-2">
+     <div className="text-xs text-slate-400 font-medium mb-1">Constructeur</div>
+     <div className="text-xs text-slate-300">{pieceModal.constructeur.nom} — {pieceModal.constructeur.contact}<br/>{pieceModal.constructeur.tel} — {pieceModal.constructeur.email}</div>
+    </div>
+    <div className="border-t border-slate-700 pt-2">
+     <div className="text-xs text-slate-400 font-medium mb-1">Fournisseur 1</div>
+     <div className="text-xs text-slate-300">{pieceModal.fourn1.nom} — {pieceModal.fourn1.tel} — {pieceModal.fourn1.email}</div>
+    </div>
+    {pieceModal.fourn2.nom && <div className="border-t border-slate-700 pt-2">
+     <div className="text-xs text-slate-400 font-medium mb-1">Fournisseur 2</div>
+     <div className="text-xs text-slate-300">{pieceModal.fourn2.nom} — {pieceModal.fourn2.tel} — {pieceModal.fourn2.email}</div>
+    </div>}
+    <div className="border-t border-slate-700 pt-2">
+     {(()=>{const mv=pieceModal.mouvements||[];const isSortie=m=>m.type==="Sortie"||m.type==="Décharge";
+      const Ligne=({m})=><div className="text-xs text-slate-300 flex justify-between gap-2"><span>{m.date} — {m.type}{m.ref?" ("+m.ref+")":""}{m.detail?" — "+m.detail:""}</span><span>Qté {m.qte}</span></div>;
+      const ent=mv.filter(m=>!isSortie(m)),sor=mv.filter(isSortie);
+      return <><div className="text-xs text-emerald-400 font-medium mb-1">Entrées (achats / retours)</div>
+       {ent.length===0?<div className="text-xs text-slate-500">Aucune entrée.</div>:ent.map((m,i)=><Ligne key={i} m={m}/>)}
+       <div className="text-xs text-rose-400 font-medium mt-3 mb-1">Sorties ({pieceModal.categorie==="Pièce"?"bons de sortie":"décharges"})</div>
+       {sor.length===0?<div className="text-xs text-slate-500">Aucune sortie.</div>:sor.map((m,i)=><Ligne key={i} m={m}/>)}</>;})()}
+    </div>
+    <div className="flex justify-end gap-2 flex-wrap"><Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={()=>{setAchatModal({prefill:pieceModal.code});setPieceModal(null);}}>Nouvel achat</Btn>{pieceModal.categorie!=="Pièce" && <Btn cls="bg-amber-700 hover:bg-amber-600" onClick={()=>{setDechargeModal({prefill:pieceModal.code});setPieceModal(null);}}>Décharge</Btn>}<Btn cls="bg-sky-700 hover:bg-sky-600" onClick={()=>{setPieceForm({mode:"edit",piece:pieceModal});setPieceModal(null);}}>Modifier</Btn><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setPieceModal(null)}>Fermer</Btn></div>
+   </div>
+  </Modal>}
+ </div>);
+}
+
+/* ===== Accueil : tableau de bord (menus favoris, infos DI / OT, alertes, planning) =====
+   N'affiche que les blocs des volets autorisés pour le compte connecté. */

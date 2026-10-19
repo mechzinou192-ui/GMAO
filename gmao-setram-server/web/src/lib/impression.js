@@ -1,4 +1,4 @@
-// Bon de travail imprimable (A4) : document HTML autonome, prévu pour « Imprimer » ou « Enregistrer au format PDF ».
+// Ordre de travail imprimable (A4) : document HTML autonome, prévu pour « Imprimer » ou « Enregistrer au format PDF ».
 // Fonction pure : retourne du texte, ne touche ni à la fenêtre ni aux données.
 import {tRes} from "./preventif.js";
 import {coutBT} from "./couts.js";
@@ -55,7 +55,7 @@ export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date
  const d=imprimeLe instanceof Date?imprimeLe:new Date(imprimeLe);
  const quand=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 
- return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Bon de travail ${esc(bt.code)}</title><style>${CSS}</style></head><body>
+ return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Ordre de travail ${esc(bt.code)}</title><style>${CSS}</style></head><body>
 <div class="entete"><div><div class="soc">${esc(societe)} — GMAO</div><h1>BON DE TRAVAIL</h1></div>
 <div><div class="code">${esc(bt.code)}</div><div style="text-align:right"><span class="etat">${esc(bt.etat||"")}</span></div></div></div>
 
@@ -88,6 +88,6 @@ ${prev?"":`<h2>Constat</h2>
 <div class="tot">Main-d'œuvre : ${nb(c.mo)} DA — Matières : ${nb(c.mat)} DA — <b>Total : ${nb(c.total)} DA</b></div>
 
 <div class="sign"><div>Intervenant (nom, date, signature)</div><div>Responsable maintenance (visa)</div><div>Exploitation — consignation / restitution (visa)</div></div>
-<div class="pied">${esc(societe)} — GMAO · Bon de travail ${esc(bt.code)} · imprimé le ${quand}</div>
+<div class="pied">${esc(societe)} — GMAO · Ordre de travail ${esc(bt.code)} · imprimé le ${quand}</div>
 </body></html>`;
 }

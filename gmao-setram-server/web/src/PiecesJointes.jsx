@@ -5,7 +5,7 @@ import { reduirePhoto } from './photo.js';
 
 const heure = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
 
-// Photos d'une DI ou d'un BT : prendre / choisir, voir en grand, supprimer.
+// Photos d'une DI ou d'un OT : prendre / choisir, voir en grand, supprimer.
 export default function PiecesJointes({ collection, recordId, lectureSeule = false }) {
   const [fichiers, setFichiers] = useState(null);
   const [erreur, setErreur] = useState('');

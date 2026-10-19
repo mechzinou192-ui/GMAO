@@ -68,7 +68,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
     const existants = Object.keys(api._etat().records.dis).filter((id) => id.startsWith(`DI-ALG-${AN}-`)).map((id) => Number(id.slice(-4)));
     const [a, b] = await api.nextCodes('dis', { unit: 'Alger', count: 2 });
     expect(a).toBe(`DI-ALG-${AN}-${String(Math.max(...existants) + 1).padStart(4, '0')}`); expect(b.endsWith(String(Math.max(...existants) + 2).padStart(4, '0'))).toBe(true);
-    expect((await api.nextCodes('bts', { unit: 'Oran', variant: 'prev' }))[0]).toMatch(new RegExp(`^BT-PREV-ORN-${AN}-\\d{4}$`));
+    expect((await api.nextCodes('bts', { unit: 'Oran', variant: 'prev' }))[0]).toMatch(new RegExp(`^OT-PREV-ORN-${AN}-\\d{4}$`));
     expect((await api.nextCodes('pieces', { variant: 'P' }))[0]).toMatch(/^P-0\d\d$/);
     await expect(api.nextCodes('dis', { unit: 'Paris' })).rejects.toMatchObject({ status: 400 });
     await expect(api.nextCodes('dis', { unit: 'Alger', count: 0 })).rejects.toMatchObject({ status: 400 });
@@ -163,7 +163,7 @@ describe('application complète en mode site statique', () => {
 
   it('connexion par un profil, liste des DI avec les données de démonstration, ouverture du détail', async () => {
     await seConnecter('Responsable maintenance');
-    onglet(/Demandes d'Intervention/);
+    onglet(/Demandes/);
     const cartes = await screen.findByTestId('di-cartes');
     const code = Object.keys(apiSite._etat().records.dis).filter((id) => id.startsWith('DI-ALG-')).sort().reverse()[0];   // unité courante : Alger
     await waitFor(() => expect(document.body.textContent).toContain(code));
@@ -172,7 +172,7 @@ describe('application complète en mode site statique', () => {
 
   it('création d\'une DI par l\'interface : numéro attribué, DI enregistrée', async () => {
     await seConnecter('Responsable maintenance');
-    onglet(/Demandes d'Intervention/);
+    onglet(/Demandes/);
     fireEvent.click(await screen.findByText('Nouvelle DI'));
     const select = await waitFor(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value.startsWith('CFO.ALG'))); if (!s) throw new Error('equipements'); return s; });
     fireEvent.change(select, { target: { value: 'CFO.ALG.SST.01' } });
@@ -191,6 +191,47 @@ describe('application complète en mode site statique', () => {
     for (const b of boutons) { fireEvent.click(b); await new Promise((r) => setTimeout(r, 30)); expect(document.body.textContent.length).toBeGreaterThan(200); }
     const fatales = erreurs.mock.calls.filter((c) => /The above error occurred|Uncaught|Cannot read/.test(String(c[0])));
     expect(fatales).toEqual([]);
+  });
+
+  it('compteurs : plans au compteur, relevé contrôlé, relevé exigé à la clôture de l’OT', async () => {
+    await seConnecter('Responsable maintenance');
+    await waitFor(() => expect(document.body.textContent).toContain('Compteurs : plans à déclencher'));     // alerte sur l'accueil
+    onglet(/Préventif/);
+    fireEvent.click(await screen.findByText('Compteurs (km, heures)'));
+    await waitFor(() => expect(document.body.textContent).toContain('Révision bogie (30 000 km)'));
+    expect(document.body.textContent).toContain('MR.ALG.BOG.01-KM');
+    // relevé : une valeur inférieure au dernier relevé est refusée, une valeur supérieure est enregistrée
+    const ligne = screen.getAllByText('MR.ALG.BOG.01-KM').find((e) => e.tagName === 'TD');
+    fireEvent.click(ligne);
+    const champ = await screen.findByLabelText(/Valeur lue/);
+    fireEvent.change(champ, { target: { value: '10' } });
+    fireEvent.click(screen.getByText('Enregistrer le relevé'));
+    expect(await screen.findByText(/inférieure au dernier relevé/)).toBeTruthy();
+    const avant = apiSite._etat().records.compteurs_eq['MR.ALG.BOG.01-KM'].data.releves.length;
+    fireEvent.change(champ, { target: { value: '999999' } });
+    fireEvent.click(screen.getByText('Enregistrer le relevé'));
+    await waitFor(() => expect(apiSite._etat().records.compteurs_eq['MR.ALG.BOG.01-KM'].data.releves.length).toBe(avant + 1), { timeout: 4000 });
+    // déclenchement du plan dépassé puis clôture : le relevé du compteur est obligatoire
+    const lignePlan = screen.getByText('Contrôle usure disques de frein (10 000 km)').closest('tr');
+    fireEvent.click(within(lignePlan).getByText('Déclencher'));
+    const ot = await waitFor(() => { const b = Object.values(apiSite._etat().records.bts || {}).find((r) => r.data.plan && r.data.etat === 'En cours' && r.data.eq === 'MR.ALG.BOG.02'); if (!b) throw new Error('OT'); return b; }, { timeout: 4000 });
+    expect(ot.id).toMatch(/^OT-PREV-ALG-/);
+    onglet(/Ordres de travail/);
+    fireEvent.click((await screen.findAllByText(ot.id))[0]);
+    const bloc = await screen.findByTestId('releve-cloture');
+    expect(bloc.textContent).toContain('Obligatoire pour clôturer');
+  });
+
+  it('accueil : tableau de bord limité aux volets autorisés', async () => {
+    await seConnecter('Exploitation');
+    await waitFor(() => expect(document.body.textContent).toContain('Mes infos DI'));
+    const txt = document.body.textContent;
+    expect(txt).toContain('Mes menus favoris'); expect(txt).toContain("Nouvelle demande d'intervention");
+    expect(txt).not.toContain('Mes infos OT'); expect(txt).not.toContain('Stock critique'); expect(txt).not.toContain('Mon planning');
+    cleanup(); apiSite._reinitialiser();
+    await seConnecter('Super administrateur');
+    await waitFor(() => expect(document.body.textContent).toContain('Mes infos OT'));
+    expect(document.body.textContent).toContain('Mon planning');
   });
 
   it('technicien : ne voit que son périmètre ; direction : voit les indicateurs', async () => {

@@ -46,7 +46,7 @@ export function kpiEqInfo(code,equipements){
  const e=(equipements||[]).find(x=>x.code===code); if(e) return {system:e.system,sub:e.subCode,eq:e};
  const seg=String(code||"").split("."); return {system:seg[0]||"",sub:seg[2]||"",eq:null};
 }
-export function kpiSeOf(item,equipements){ // code du sous-équipement visé par une DI / un BT ("" = équipement entier)
+export function kpiSeOf(item,equipements){ // code du sous-équipement visé par une DI / un OT ("" = équipement entier)
  if(item&&item.se) return item.se;
  const e=(equipements||[]).find(x=>x.code===(item&&item.eq)); const t=(item&&item.nom)||"";
  const x=e&&(e.sousEquip||[]).find(y=>t.includes(y.code)); return x?x.code:"";
@@ -86,14 +86,14 @@ export function kpiCollect(unit,data,per,parcMode,flt){
  });
  const parc=(equipements||[]).filter(e=>e.unit===unit&&kpiMatch({eq:e.code,nom:""},flt&&{...flt,se:""},equipements)).length;
  const codes=new Set(); corr.forEach(r=>codes.add(r.di.eq)); prev.forEach(b=>codes.add(b.eq));
- // Parc de référence : méthode d'origine = équipements distincts ayant au moins une DI/BT sur la période ;
+ // Parc de référence : méthode d'origine = équipements distincts ayant au moins une DI/OT sur la période ;
  // option « Arborescence » = tous les équipements de l'unité dans l'arborescence technique.
  const nbEquip=parcMode==="Arborescence complète"&&parc>0?parc:Math.max(codes.size,1);
  return {corr,prev,nbEquip,parc,nbActifs:codes.size};
 }
 
 /* ---------- Durée d'indisponibilité d'une panne ---------- */
-// fin = clôture du BT ; début = date de l'événement de la DI.
+// fin = clôture de l'OT ; début = date de l'événement de la DI.
 // Valeur de secours = durée d'intervention + temps logistique quand une date manque ou que l'écart est négatif.
 export function kpiPanneHeures(r,per,hoursRef){
  const secours=kpiHeures(r.bt);
@@ -120,7 +120,7 @@ export function kpiCalc(corr,prev,per,nbEquip){
  const hCorr=corr.reduce((s,r)=>s+kpiHeures(r.bt),0);
  const hTotal=hPrev+hCorr;
  const tcp=hTotal>0?hPrev/hTotal:0, tcc=hTotal>0?hCorr/hTotal:0;
- // TMP : BT préventifs clôturés / BT préventifs (hors annulés)
+ // TMP : OT préventifs clôturés / OT préventifs (hors annulés)
  const prevActifs=prev.filter(b=>b.etat!=="Annulé");
  const btClosed=prevActifs.filter(b=>b.etat==="Clôturé").length, btDenom=prevActifs.length;
  const tmp=btDenom>0?btClosed/btDenom:0;
@@ -289,9 +289,9 @@ export function kpiAmdec(corr,per,opt){
   const f=kpiScoreF(annual);
   const avgMin=g.count?g.minutes/g.count:0;
   const gDuree=kpiScoreG(avgMin);
-  // G saisie : moyenne arrondie des gravités (1 à 4) saisies sur les BT du groupe
+  // G saisie : moyenne arrondie des gravités (1 à 4) saisies sur les OT du groupe
   const gSaisie=g.grav.length?Math.max(1,Math.min(4,Math.round(g.grav.reduce((s,v)=>s+v,0)/g.grav.length))):null;
-  const useSaisie=gravBase==="Gravité saisie (BT)";
+  const useSaisie=gravBase==="Gravité saisie (OT)";
   const gs=useSaisie&&gSaisie!==null?gSaisie:gDuree;
   const gDefaut=useSaisie&&gSaisie===null; // aucune gravité saisie : repli sur la durée d'arrêt
   const dSaisie=g.det.length?Math.max(1,Math.min(4,Math.round(g.det.reduce((s,v)=>s+v,0)/g.det.length))):null;

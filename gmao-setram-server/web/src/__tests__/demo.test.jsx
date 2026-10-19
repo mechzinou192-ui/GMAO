@@ -70,14 +70,14 @@ import App from '../App.jsx';
 describe('écran de connexion — instance de démonstration', () => {
   beforeEach(() => { cleanup(); vi.clearAllMocks(); api.me.mockResolvedValue({ user: null }); });
   it('affiche le bandeau, des profils cliquables qui remplissent le formulaire, et se connecte', async () => {
-    api.demo.mockResolvedValue({ demo: true, resetHeures: 24, comptes: [{ id: 'demo.admin', nom: 'Démo — Super administrateur', motDePasse: 'Demo2026-Admin', description: 'Accès complet.' }, { id: 'demo.technicien', nom: 'Démo — Technicien', motDePasse: 'Demo2026-Tech', description: 'Traite les DI et BT.' }] });
+    api.demo.mockResolvedValue({ demo: true, resetHeures: 24, comptes: [{ id: 'demo.admin', nom: 'Démo — Super administrateur', motDePasse: 'Demo2026-Admin', description: 'Accès complet.' }, { id: 'demo.technicien', nom: 'Démo — Technicien', motDePasse: 'Demo2026-Tech', description: 'Traite les DI et OT.' }] });
     api.login.mockResolvedValue({ user: { id: 'demo.technicien', nom: 'Tech', role: 'Technicien', superAdmin: false, mustChangePw: false, droits: {} } });
     render(<App />);
     const bandeau = await screen.findByTestId('bandeau-demo');
     expect(bandeau.textContent).toContain('Version de démonstration'); expect(bandeau.textContent).toContain('toutes les 24 h');
     fireEvent.click(screen.getByText('Technicien'));
     expect(screen.getByDisplayValue('demo.technicien')).toBeTruthy(); expect(screen.getByDisplayValue('Demo2026-Tech')).toBeTruthy();
-    expect(bandeau.textContent).toContain('Traite les DI et BT.');
+    expect(bandeau.textContent).toContain('Traite les DI et OT.');
     fireEvent.click(screen.getByText('Se connecter'));
     await waitFor(() => expect(api.login).toHaveBeenCalledWith('demo.technicien', 'Demo2026-Tech', false));
   });

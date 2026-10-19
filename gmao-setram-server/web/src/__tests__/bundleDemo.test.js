@@ -31,7 +31,7 @@ describe.skipIf(!present)('site statique construit (dist-demo)', () => {
     await attendre(() => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Se connecter'));
     [...document.querySelectorAll('button')].find((b) => b.textContent === 'Se connecter').click();
     await attendre(() => document.querySelector('[data-testid="menu-lateral"]'));
-    [...document.querySelectorAll('nav button')].find((b) => /Demandes d'Intervention/.test(b.textContent)).click();
+    [...document.querySelectorAll('nav button')].find((b) => /Demandes/.test(b.textContent)).click();
     const cartes = await attendre(() => { const c = document.querySelector('[data-testid="di-cartes"]'); return c && /DI-[A-Z]{3}-\d{4}-\d{4}/.test(c.textContent) ? c : null; });
     expect(cartes.textContent).toMatch(/DI-ALG-\d{4}-\d{4}/);
   }, 30000);

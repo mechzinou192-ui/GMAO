@@ -1,4 +1,4 @@
-// Maintenance préventive : périodicités, occurrences d'un plan, génération d'un BT préventif.
+// Maintenance préventive : périodicités, occurrences d'un plan, génération d'un OT préventif.
 import {addMonths,fmtD,occurrence,parseD,todayStr} from "./dates.js";
 export const PERIODES=["Hebdomadaire","Mensuel","Trimestriel","Semestriel","Annuel"];
 export function prochaineEcheance(dateStr,per){
@@ -31,12 +31,14 @@ export const tRes=(t)=>t.res||(t.fait?"OK":null);
 export const avancement=(b)=>{const t=b.taches||[];return t.length?Math.round(t.filter(x=>tRes(x)).length/t.length*100):null;};
 export function datesPlanDansPlage(p,deb,fin){
  const out=[]; if(p.termine||!p.date) return out;
+ if(p.declenchement==="Compteur") return p.date>=deb&&p.date<=fin?[p.date]:[];   // plan compteur : date estimée unique
  if(isPeriodePlan(p)) return occurrencesPlan(p).filter(x=>x>=p.date&&x>=deb&&x<=fin);
  const base=parseD(p.date);
  for(let i=0;i<600;i++){const x=fmtD(occurrence(base,p.periode,i)); if(x>fin) break; if(x>=deb) out.push(x);}
  return out;
 }
 export function datesFuturesPlan(f){
+ if(f.declenchement==="Compteur") return f.date?[f.date]:[];
  if(!f.date||!f.periode) return [];
  const out=[]; const base=parseD(f.date); const lim=addMonths(base,12);
  for(let i=0;i<60;i++){const d=occurrence(base,f.periode,i); if(d>lim) break; out.push(fmtD(d));}

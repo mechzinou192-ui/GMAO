@@ -81,13 +81,15 @@ describe('scan d\'un QR code dans l\'application', () => {
   });
   it('sans paramètre : comportement habituel', async () => {
     render(<App />);
-    await screen.findByText('Arborescence Technique', { selector: 'nav button' });
+    await screen.findByText('Arborescence', { selector: 'nav button' });
+    expect(document.body.textContent).toContain('Mes menus favoris');                   // ouverture sur le tableau de bord
     expect(screen.queryByText(/Nouvelle Demande d'Intervention/)).toBeNull();
   });
   it('bouton « Étiquettes QR » : planche imprimable avec un QR par équipement de l\'unité', async () => {
     const w = { document: { open: vi.fn(), write: vi.fn(), close: vi.fn() }, focus: vi.fn(), print: vi.fn() };
     const ouvrir = vi.spyOn(window, 'open').mockReturnValue(w);
     render(<App />);
+    fireEvent.click(await screen.findByText('Arborescence', { selector: 'nav button' }));
     fireEvent.click(await screen.findByText('🏷 Étiquettes QR'));
     await waitFor(() => expect(ouvrir).toHaveBeenCalled());
     const html = w.document.write.mock.calls[0][0];

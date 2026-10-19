@@ -39,7 +39,7 @@ describe('useSynced', () => {
     expect(api.save).not.toHaveBeenCalled();
   });
 
-  it('DI/BT : unité et système déduits de la fonction meta', async () => {
+  it('DI/OT : unité et système déduits de la fonction meta', async () => {
     api.list.mockResolvedValue({ items: [], serverTime: 't' });
     api.save.mockResolvedValue({ version: 1 });
     const { result } = renderHook(() => useSynced('dis', { meta: d => ({ unit: 'Oran', system: 'CFO:' + d.eq }) }));

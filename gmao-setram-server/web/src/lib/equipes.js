@@ -6,7 +6,7 @@ export const SYN_SYS=[["BILLETTIQUE",["billet","valideur","dat ","portillon"]],
  ["CFA",["caméra","camera","enregistreur","haut-parleur","interphon","horloge"]],
  ["ELM",["groupe électrogène","groupe electrogene","tgbt"]],
  ["BO",["abri quai","bâtiment","batiment","extincteur"]],
- ["EQI",["pont roulant","torus","tour en fosse"]]];
+ ["ED",["pont roulant","torus","tour en fosse"]]];
 export function systemeDe(eqCode,nom,equipements){
  const e=equipements.find(x=>x.code===eqCode)||equipements.find(x=>(x.nom||"").toLowerCase()===(nom||"").toLowerCase());
  if(e) return e.system;

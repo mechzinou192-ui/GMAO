@@ -33,13 +33,13 @@ describe('PiecesJointes', () => {
     expect(screen.getByText('Photos (2)')).toBeTruthy();
   });
   it('aucune photo : message', async () => {
-    render(<PiecesJointes collection="bts" recordId="BT-1" />);
+    render(<PiecesJointes collection="bts" recordId="OT-1" />);
     await screen.findByText('Aucune photo.');
   });
   it('ajout : enregistre d\'abord l\'élément, réduit la photo, l\'envoie, puis recharge la liste', async () => {
     api.listFiles.mockResolvedValueOnce([]).mockResolvedValue([PH('n1', 'terrain.jpg')]);
     api.uploadFile.mockResolvedValue(PH('n1', 'terrain.jpg'));
-    render(<PiecesJointes collection="bts" recordId="BT-1" />);
+    render(<PiecesJointes collection="bts" recordId="OT-1" />);
     await screen.findByText('Aucune photo.');
     const f = new File(['x'], 'IMG_0042.heic', { type: 'image/heic' });
     choisir('Prendre une photo', [f]);
@@ -47,7 +47,7 @@ describe('PiecesJointes', () => {
     expect(flushAll).toHaveBeenCalled();
     expect(reduirePhoto).toHaveBeenCalledWith(f);
     const [col, id, blob, nom] = api.uploadFile.mock.calls[0];
-    expect([col, id, nom, blob.type]).toEqual(['bts', 'BT-1', 'IMG_0042.jpg', 'image/jpeg']);   // toujours envoyée en JPEG réduit
+    expect([col, id, nom, blob.type]).toEqual(['bts', 'OT-1', 'IMG_0042.jpg', 'image/jpeg']);   // toujours envoyée en JPEG réduit
     await waitFor(() => expect(screen.getAllByTestId('photo')).toHaveLength(1));
   });
   it('plusieurs images choisies d\'un coup : toutes envoyées', async () => {
