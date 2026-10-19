@@ -1,5 +1,64 @@
 # Journal des modifications
 
+## 1.12.0 — compteurs, restructuration, fenêtre de chargement, dossiers pilote et sécurité
+
+### Restructuration du code de l'interface
+- `App.jsx` (3 100 lignes) découpé en **16 modules** : un fichier par écran (`pages/`), composants communs (`ui/`), constantes,
+  application connectée (`GmaoApp.jsx`). Aucun changement de comportement (tous les tests inchangés passent).
+- **Analyse statique réactivée** (`.eslintrc.json` était absent) : `npm run lint` contrôle tout `src/` — 0 erreur.
+
+### Performance : fenêtre de chargement
+- Les **DI et OT clos depuis plus de 24 mois** ne sont plus chargés au démarrage (`?fenetre=24`) ; tout ce qui est ouvert reste chargé.
+- Indicateurs : bandeau **« Charger l'historique complet »** quand la période commence avant la fenêtre.
+- Serveur : **pré-filtre SQL par unité autorisée** avant le contrôle ligne par ligne ; index `(collection, updated_at)` et
+  `(collection, etat)` (migration `005`).
+
+### Sécurité
+- Interface : dépendance `uuid` (via l'export Excel) forcée en 11.1.1 → **`npm audit` production : 0 vulnérabilité** (serveur et interface).
+- **`SECURITE-PRE-AUDIT.md`** : mesures en place, contrôles faits, périmètre du test d'intrusion, points à arbitrer par le RSSI.
+
+### Documentation
+- **`GUIDE-UTILISATEUR.md`** (par profil, captures d'écran), **`PLAN-PILOTE.md`** (12 semaines, indicateurs de réussite, risques),
+  générateur `scripts/generer-docs.py` (versions `.html` imprimables).
+
+### Maintenance conditionnelle par compteur (km, heures, cycles)
+- **Compteurs d'équipement** (Préventif › onglet « Compteurs ») : création, relevés datés, historique, usage moyen / jour,
+  remplacement du compteur sans perte du cumul, export Excel (compteurs, relevés, plans).
+- **Relevés contrôlés** : valeur numérique, jamais dans le futur, jamais inférieure au dernier relevé (sauf remplacement déclaré).
+- **Plans déclenchés au compteur** : pas (ex. 30 000 km), seuil d'alerte (90 % par défaut), valeur au dernier passage ;
+  états « Planifié / À déclencher / En retard », jauge de consommation, date d'échéance estimée (usage des 90 derniers jours),
+  intégration au planning, à l'agenda et à la plage de déclenchement.
+- **Clôture d'un OT issu d'un plan compteur** : relevé du compteur obligatoire ; il est enregistré et remet le cycle du plan à zéro.
+- **Accueil** : bloc « Compteurs : plans à déclencher ».
+- **Droits** : nouvelle collection `compteurs_eq` — lecture : Arborescence, OT, Préventif, Indicateurs ; saisie : OT ou Préventif
+  (nouveau paramètre `writeVolets` côté serveur).
+- Démonstration : 8 compteurs (rames, groupe électrogène, pont roulant) et 6 plans au compteur.
+- Tests : 178 côté interface, 39 côté serveur.
+
+## 1.11.0 — mise en page type GMAO du marché (Mainti4) et nouveaux libellés
+- **Accueil (tableau de bord)** : menus favoris en tuiles de couleur, compteurs « Mes infos DI » et « Mes infos OT »,
+  alertes (contrats, habilitations, stock), DI en retard (> 48 h sans OT), OT ouverts depuis plus de 7 jours,
+  planning préventif des 14 prochains jours, stock critique. Chaque bloc n'apparaît que si le volet est autorisé.
+- **Menu latéral en barre d'icônes sombre** (icône + libellé court), en-tête pleine largeur avec logo SETRAM,
+  bandeau d'onglets (Accueil / module courant).
+- **Bons de Travail (BT) → Ordres de Travail (OT)** : tous les libellés, exports Excel, impression ;
+  nouveaux numéros `OT-ALG-2026-0001` / `OT-PREV-ALG-2026-0001` (le compteur continue : pas de doublon avec les anciens `BT-…`).
+- **Arborescence : système EQI → ED (Équipement Dépôt)** dans les référentiels par défaut et la démonstration.
+- **Magasin & Achats → Gestion de stock** ; **Intervenants → Gestion du personnel** (noms de modules et de volets de droits).
+- Démonstration statique : clé de stockage `v2` (les anciennes données de démonstration du navigateur sont ignorées).
+- Tests : 169 côté interface (dont l'accueil limité aux droits), 37 côté serveur.
+
+## 1.10.0 — refonte visuelle (charte SETRAM)
+- **Charte** : couleurs du logo SETRAM (bleu marine `#2A3B90`, cyan `#2DC3EA`), police **Montserrat** (corps 11 pt),
+  embarquée dans l'application (`@fontsource/montserrat`, aucun appel externe : CSP inchangée).
+- **Mise en page type GMAO** : menu latéral sombre groupé par domaine (Patrimoine, Maintenance, Ressources, Pilotage, Système),
+  barre supérieure fixe (fil d'Ariane, sélecteur d'unité, cloche d'alertes, menu profil / déconnexion).
+- Alertes (contrats, habilitations, stock critique) regroupées dans la cloche ; compteurs sur Magasin et Intervenants.
+- Onglets secondaires soulignés (Arborescence, Indicateurs, Administration), tuiles d'indicateurs avec filet de couleur,
+  tableaux denses (en-têtes en capitales, survol de ligne), pastilles d'état douces, fenêtres avec en-tête fixe.
+- Écran de connexion scindé (présentation + formulaire), adapté au téléphone.
+- Aucune logique métier modifiée. Tests : 168 côté interface, tous verts.
+
 ## 1.9.0 — dossier de remise à la DSI
 - **`DOSSIER-DSI.md` / `.html`** : architecture, flux et ports, dimensionnement, deux modes d'installation (Docker Compose, sans Docker),
   HTTPS, variables, premier démarrage, sauvegarde / restauration, mise à jour et retour arrière, sécurité (mesures et limites),

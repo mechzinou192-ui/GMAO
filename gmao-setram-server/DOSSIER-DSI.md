@@ -1,6 +1,6 @@
 # GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)
 
-**Version de l'application : 1.9.0** · Public : DSI / RSSI / administrateurs système · Langue : français
+**Version de l'application : 1.12** · Public : DSI / RSSI / administrateurs système · Langue : français
 
 Ce document permet à la DSI d'**héberger, sécuriser, sauvegarder, superviser et mettre à jour** l'application sur son
 infrastructure. Il dit aussi, sans détour, **ce qui a été vérifié et ce qui ne l'a pas été** (§ 12).
@@ -11,12 +11,12 @@ infrastructure. Il dit aussi, sans détour, **ce qui a été vérifié et ce qui
 
 | | |
 |---|---|
-| **Nature** | Application web (GMAO : demandes d'intervention, bons de travail, préventif, magasin, indicateurs) pour 7 unités |
+| **Nature** | Application web (GMAO : demandes d'intervention, ordres de travail, préventif, magasin, indicateurs) pour 7 unités |
 | **Architecture** | Navigateur → reverse proxy HTTPS → application Node.js → base PostgreSQL. Aucun autre composant |
 | **Accès** | Intranet (recommandé) ; utilisable sur téléphone / tablette (navigateur) |
 | **Connexions sortantes** | **Aucune.** Pas de CDN, pas de police externe, pas de service tiers : l'application fonctionne sans accès Internet |
 | **Authentification** | Comptes locaux (mot de passe haché). **Pas d'annuaire AD/LDAP ni de SSO** dans cette version (§ 10) |
-| **Données** | Fiches équipements, DI, BT, stocks, personnel de maintenance (nom, matricule, taux horaire, habilitations), photos |
+| **Données** | Fiches équipements, DI, OT, stocks, personnel de maintenance (nom, matricule, taux horaire, habilitations), photos |
 | **Instances** | **Une seule instance** (pas de haute disponibilité intégrée, § 11) |
 | **Dépendances** | 8 paquets Node côté serveur ; **0 vulnérabilité connue** (`npm audit`, 13/10/2026) ; licences permissives (MIT, ISC, BSD, Apache-2.0) |
 
@@ -52,7 +52,7 @@ infrastructure. Il dit aussi, sans détour, **ce qui a été vérifié et ce qui
 | Ressource | Minimum | Recommandé | Mesuré |
 |---|---|---|---|
 | CPU | 1 vCPU | 2 vCPU | — |
-| Mémoire | 2 Go | 4 Go | Application ≈ **75–82 Mo** avec le jeu de démonstration (68 équipements, 86 DI, 93 BT) |
+| Mémoire | 2 Go | 4 Go | Application ≈ **75–82 Mo** avec le jeu de démonstration (68 équipements, 86 DI, 93 OT) |
 | Disque | 20 Go | 40 Go | Photo ≈ 200–400 Ko après réduction sur le téléphone : 50 photos/jour ≈ 4–6 Go/an |
 | Réseau | 100 Mb/s | — | — |
 
@@ -337,7 +337,7 @@ bibliothèque ne fait pas. Risque jugé non exploitable ici ; à surveiller lors
 **Recette fonctionnelle** (compte `admin` puis comptes de test) :
 1. Créer un compte avec droits limités (une unité, un système) et vérifier qu'il ne voit que son périmètre.
 2. Importer un petit fichier Excel (modèle fourni) ; le recharger : aucun doublon.
-3. Déclarer une DI (au téléphone), générer le BT, le clôturer, imprimer le bon (PDF).
+3. Déclarer une DI (au téléphone), générer l'OT, le clôturer, imprimer le bon (PDF).
 4. Ajouter une photo à une DI ; scanner une étiquette QR d'équipement.
 5. Planifier un préventif ; consulter les indicateurs (KPI).
 6. Couper la base 30 secondes : `/api/health` passe en 503 puis revient ; l'application reprend sans redémarrage.

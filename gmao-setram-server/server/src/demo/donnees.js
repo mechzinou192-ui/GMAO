@@ -1,5 +1,5 @@
 /*
- * Données FICTIVES de démonstration : équipements, DI, BT, préventif, magasin, personnel...
+ * Données FICTIVES de démonstration : équipements, DI, OT, préventif, magasin, personnel...
  * Entièrement déterministes (même graine => mêmes données) et calées sur la date du jour, pour que les
  * indicateurs (KPI), alertes d'habilitations et échéances aient toujours un contenu réaliste.
  * Aucune donnée réelle : noms, téléphones et adresses sont inventés (domaines en .example).
@@ -24,7 +24,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
   const ajoutH = (off, h, m, plusH) => { const t = off * 24 * 60 + h * 60 + m + Math.round(plusH * 60); const o = Math.floor(t / 1440), r = t - o * 1440; return horo(o, Math.floor(r / 60), r % 60); };
   const annee = (off) => Number(jourDe(off).slice(0, 4));
 
-  const col = { equipements: [], intervenants: [], prestataires: [], organismes: [], mesures: [], controles: [], pieces: [], dis: [], bts: [], planning: [] };
+  const col = { equipements: [], intervenants: [], prestataires: [], organismes: [], mesures: [], controles: [], pieces: [], dis: [], bts: [], planning: [], compteurs_eq: [] };
   const compteurs = new Map();                          // 'nom|scope|annee' -> dernier numéro
   const suivant = (nom, scope, an) => { const k = `${nom}|${scope}|${an}`; const n = (compteurs.get(k) || 0) + 1; compteurs.set(k, n); return n; };
 
@@ -37,7 +37,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
     MR: { BOG: ['Bogie Rame 02', 'Disque de frein Rame 04'], TRC: ['Onduleur Rame 04'], PRT: ['Porte passager Rame 01'], CLM: ['Groupe HVAC Rame 03'] },
     ELM: { GRP: ['Groupe électrogène Dépôt', 'TGBT Atelier Central'] },
     BO: { STA: ['Abri quai Station Centrale'], DEP: ['Bâtiment Atelier Central'], HVI: ['Extincteur Atelier'] },
-    EQI: { PNT: ['Pont roulant 10T'], TOR: ['Torus Dépôt'], TRF: ['Tour en fosse Atelier'] },
+    ED: { PNT: ['Pont roulant 10T'], TOR: ['Torus Dépôt'], TRF: ['Tour en fosse Atelier'] },
   };
   const PAR_UNITE = {
     Alger: null,                                                             // tout le catalogue
@@ -130,7 +130,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
   });
   compteurs.set('pieces:P||0', cptCat.Pièce); compteurs.set('pieces:O||0', cptCat.Outillage); compteurs.set('pieces:C||0', cptCat.Consommable);
 
-  /* ───── DI et BT correctifs ───── */
+  /* ───── DI et OT correctifs ───── */
   const DESIGN = {
     CFO: [['Surchauffe anormale', 'Ventilation obstruée', 'Nettoyage et contrôle de la ventilation'], ['Déclenchement intempestif du disjoncteur', 'Seuil de protection déréglé', 'Réglage des protections'], ['Odeur de brûlé en cellule', 'Connexion desserrée', 'Resserrage et contrôle thermographique']],
     CFA: [['Image absente sur la caméra', 'Alimentation défaillante', "Remplacement de l'alimentation"], ['Haut-parleur inaudible', 'Amplificateur en défaut', "Remplacement de l'amplificateur"], ['Horloge désynchronisée', 'Perte de liaison réseau', 'Reconfiguration du synchronisme']],
@@ -139,10 +139,10 @@ export function genererDemo(now = new Date(), graine = 2026) {
     MR: [['Porte qui ne se ferme pas', 'Joint déformé', 'Remplacement du joint'], ['Bruit au freinage', 'Plaquettes usées', 'Remplacement des plaquettes'], ['Climatisation inopérante', 'Fuite de fluide', 'Réparation et recharge']],
     ELM: [['Groupe électrogène ne démarre pas', 'Batterie déchargée', 'Remplacement de la batterie']],
     BO: [['Fuite en toiture', 'Étanchéité dégradée', "Reprise de l'étanchéité"]],
-    EQI: [['Pont roulant à-coups au levage', 'Frein à régler', 'Réglage du frein']],
+    ED: [['Pont roulant à-coups au levage', 'Frein à régler', 'Réglage du frein']],
   };
   const tachesCorr = ['Sécuriser la zone / consigner', 'Diagnostiquer la panne', 'Réparer ou remplacer', 'Essai de fonctionnement', 'Remise en service'];
-  const techPar = { CFO: 'MT-1001', CFA: 'MT-1002', MR: 'MT-1003', BILLETTIQUE: 'MT-1004', ELM: 'MT-1008', BO: 'MT-1008', VOIE: 'MT-1009', EQI: 'MT-1008' };
+  const techPar = { CFO: 'MT-1001', CFA: 'MT-1002', MR: 'MT-1003', BILLETTIQUE: 'MT-1004', ELM: 'MT-1008', BO: 'MT-1008', VOIE: 'MT-1009', ED: 'MT-1008' };
   const interDe = (mat) => INTER.find((x) => x[0] === mat);
   const NB_DI = { Alger: 46, Oran: 14, Constantine: 7, 'Sidi Bel Abbès': 4, Ouargla: 3, Sétif: 3, Mostaganem: 3 };
   const demandeurs = ['Agent exploitation', 'Chef de station', 'Régulation', 'Conducteur'];
@@ -173,10 +173,10 @@ export function genererDemo(now = new Date(), graine = 2026) {
         perturb: rnd() < 0.18, demandeur: pick(demandeurs), typeMaintenance: 'Corrective', sousType: 'Curative', etat: etatDI };
       col.dis.push({ id: code, unit, system: eq.system, data: di });
       if (etatDI === 'À Transmettre' || etatDI === 'Annulé') return;
-      // BT lié
+      // OT lié
       const tech = interDe(techPar[eq.system] || 'MT-1001');
       const nb = suivant('bts', abr, an);
-      const bcode = `BT-${abr}-${an}-${pad(nb, 4)}`;
+      const bcode = `OT-${abr}-${an}-${pad(nb, 4)}`;
       const duree = entre(1, 6), log = entre(0, 2);
       const clos = etatDI === 'Traité';
       const piece = piecesDef[entre(0, 11)];
@@ -195,10 +195,10 @@ export function genererDemo(now = new Date(), graine = 2026) {
     });
   }
 
-  /* ───── Préventif : plans + BT générés ───── */
+  /* ───── Préventif : plans + OT générés ───── */
   const PLANS = {
     Alger: [['CFO.ALG.SST.01', 'Mensuel', 'Contrôle thermographique'], ['CFO.ALG.SST.02', 'Trimestriel', 'Contrôle du jeu de barres'], ['CFA.ALG.VDO.01', 'Trimestriel', 'Nettoyage et contrôle caméra'],
-      ['MR.ALG.BOG.01', 'Mensuel', 'Inspection du bogie'], ['BILLETTIQUE.ALG.PTL.01', 'Hebdomadaire', 'Contrôle du portillon'], ['EQI.ALG.PNT.01', 'Semestriel', 'Contrôle du pont roulant']],
+      ['MR.ALG.BOG.01', 'Mensuel', 'Inspection du bogie'], ['BILLETTIQUE.ALG.PTL.01', 'Hebdomadaire', 'Contrôle du portillon'], ['ED.ALG.PNT.01', 'Semestriel', 'Contrôle du pont roulant']],
     Oran: [['CFO.ORN.SST.01', 'Mensuel', 'Contrôle thermographique'], ['MR.ORN.BOG.01', 'Mensuel', 'Inspection du bogie']],
     Constantine: [['MR.CST.BOG.01', 'Mensuel', 'Inspection du bogie']],
   };
@@ -219,7 +219,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
       for (let k = passees; k >= 1; k--) {
         const off = dernierOff - pas * (k - 1) - 0;
         const an = annee(off);
-        const bc = `BT-PREV-${abr}-${an}-${pad(suivant('bts:prev', abr, an), 4)}`;
+        const bc = `OT-PREV-${abr}-${an}-${pad(suivant('bts:prev', abr, an), 4)}`;
         const ok = rnd() < 0.85;
         col.bts.push({ id: bc, unit, system: eq.system, data: { code: bc, di: null, plan: code, eq: eq.code, nom: eq.nom, type: 'Préventive', consigne: `Visite ${periode.toLowerCase()} — ${eq.nom}`, horaire: 'Jour', consignation: eq.system === 'CFO' ? 'Oui' : 'Non', exc: false, motifExc: '',
           assigne: tech[1], assignes: [tech[1]], dateGeneration: horo(off, 7, 30), detection: 0, gravite: 0, dureeIntervention: ok ? entre(1, 3) : 0, tempsLogistique: ok ? 0 : 0, panne: '-', cause: '-', effet: '-',
@@ -227,6 +227,43 @@ export function genererDemo(now = new Date(), graine = 2026) {
           taches: taches.map((lib) => ({ lib, res: ok ? 'OK' : null, com: '' })), etat: ok ? 'Clôturé' : 'En cours', ...(ok ? { dateCloture: horo(off, 11, 0) } : {}) } });
       }
     }
+  }
+
+  /* ───── Compteurs d'équipement (km des rames, heures des groupes) + plans déclenchés au compteur ───── */
+  const CPT = [   // [équipement, grandeur, unité, valeur il y a 120 j, usage / jour]
+    ['MR.ALG.BOG.01', 'Kilométrage', 'km', 412000, 210], ['MR.ALG.BOG.02', 'Kilométrage', 'km', 388500, 195], ['MR.ALG.TRC.01', 'Kilométrage', 'km', 405200, 205],
+    ['MR.ALG.PRT.01', 'Kilométrage', 'km', 399800, 190], ['MR.ORN.BOG.01', 'Kilométrage', 'km', 251000, 180], ['MR.CST.BOG.01', 'Kilométrage', 'km', 198400, 170],
+    ['ELM.ALG.GRP.01', 'Heures de fonctionnement', 'h', 6120, 2.4], ['ED.ALG.PNT.01', 'Heures de fonctionnement', 'h', 3310, 1.6],
+  ];
+  const cptVal = {};
+  for (const [eqCode, grandeur, unite, v0, parJour] of CPT) {
+    const unit = Object.keys(ABBR).find((u) => eqCode.split('.')[1] === ABBR[u]);
+    const eq = (eqParUnite[unit] || []).find((e) => e.code === eqCode); if (!eq) continue;
+    const code = `${eqCode}-${unite === 'km' ? 'KM' : 'H'}`;
+    const releves = []; let v = v0;
+    for (let off = -120, pasJ = 0; off <= -1; pasJ = entre(6, 8), off += pasJ) {
+      v += parJour * pasJ * (0.85 + rnd() * 0.3);
+      releves.push({ date: jourDe(off), valeur: unite === 'km' ? Math.round(v) : Math.round(v * 10) / 10, par: 'Démo — relevé atelier' });
+    }
+    cptVal[code] = releves[releves.length - 1].valeur;
+    col.compteurs_eq.push({ id: code, unit, system: eq.system, data: { code, eq: eqCode, nom: eq.nom, unit, sys: eq.system, grandeur, unite, releves } });
+  }
+  const PLANS_CPT = [   // [compteur, pas, part déjà consommée, intitulé, tâches]
+    ['MR.ALG.BOG.01-KM', 30000, 0.93, 'Révision bogie (30 000 km)', ['Contrôle des roues et du profil', 'Contrôle des suspensions', 'Graissage', 'Contrôle des freins']],
+    ['MR.ALG.BOG.02-KM', 10000, 1.06, 'Contrôle usure disques de frein (10 000 km)', ['Mesure de l\'épaisseur des disques', 'Contrôle des garnitures']],
+    ['MR.ALG.TRC.01-KM', 50000, 0.41, 'Visite onduleur de traction (50 000 km)', ['Nettoyage des filtres', 'Contrôle des connexions', 'Relevé des défauts']],
+    ['MR.ORN.BOG.01-KM', 15000, 0.62, 'Visite bogie (15 000 km)', ['Contrôle visuel', 'Graissage', 'Contrôle des freins']],
+    ['ELM.ALG.GRP.01-H', 250, 0.91, 'Vidange groupe électrogène (250 h)', ['Vidange huile moteur', 'Remplacement filtre à huile', 'Contrôle courroies']],
+    ['ED.ALG.PNT.01-H', 500, 0.35, 'Contrôle câbles et freins du pont (500 h)', ['Contrôle des câbles', 'Essai du frein de levage', 'Contrôle des fins de course']],
+  ];
+  for (const [cpt, pasCpt, part, intitule, taches] of PLANS_CPT) {
+    const c = col.compteurs_eq.find((x) => x.id === cpt); if (!c) continue;
+    const { unit, eq: eqCode, nom, sys } = c.data; const abr = ABBR[unit];
+    const code = `PREV-${abr}-${pad(suivant('planning', abr, 0), 4)}`;
+    const tech = interDe(techPar[sys] || 'MT-1001');
+    const valeurDernier = Math.round(cptVal[cpt] - pasCpt * part);
+    col.planning.push({ id: code, unit, system: sys, data: { code, unit, sys, eq: eqCode, nom, periode: 'Compteur', date: '', dernier: jourDe(-entre(20, 60)), declenchement: 'Compteur', compteur: cpt, pas: pasCpt, seuil: 90, valeurDernier,
+      assignes: [tech[1]], taches, outillage: [{ code: 'O-002', qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: 'Non', intitule } });
   }
 
   // compteurs du serveur : la numérotation continue après les données de démonstration
@@ -240,9 +277,9 @@ export function genererDemo(now = new Date(), graine = 2026) {
     { id: 'demo.admin', nom: 'Démo — Super administrateur', role: 'Super Admin', password: 'Demo2026-Admin', superAdmin: true, droits: {},
       description: 'Accès complet : administration, import Excel, tous les écrans.' },
     { id: 'demo.responsable', nom: 'Démo — Responsable maintenance', role: 'Responsable', password: 'Demo2026-Resp', superAdmin: false, droits: tous([0, 1, 2, 3, 4, 5, 6], ['Alger', 'Oran', 'Constantine']),
-      description: 'Pilote la maintenance : DI, BT, préventif, magasin, indicateurs (Alger, Oran, Constantine).' },
+      description: 'Pilote la maintenance : DI, OT, préventif, magasin, indicateurs (Alger, Oran, Constantine).' },
     { id: 'demo.technicien', nom: 'Démo — Technicien', role: 'Technicien', password: 'Demo2026-Tech', superAdmin: false, droits: { Alger: { systems: ['CFO', 'CFA', 'BILLETTIQUE'], volets: [0, 1, 2, 3] } },
-      description: 'Voit et traite les DI / BT de son périmètre (courants forts et faibles, billettique — Alger).' },
+      description: 'Voit et traite les DI / OT de son périmètre (courants forts et faibles, billettique — Alger).' },
     { id: 'demo.exploitation', nom: 'Démo — Exploitation', role: 'Exploitation', password: 'Demo2026-Expl', superAdmin: false, droits: tous([1], ['Alger', 'Oran']),
       description: "Déclare des anomalies (DI) — l'usage typique sur le terrain, au téléphone ou via un QR code." },
     { id: 'demo.magasin', nom: 'Démo — Magasinier', role: 'Magasinier', password: 'Demo2026-Mag', superAdmin: false, droits: tous([4], ['Alger']),

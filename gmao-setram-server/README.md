@@ -1,5 +1,29 @@
 # GMAO SETRAM
 
+## Documents
+
+| Document | Pour qui |
+|---|---|
+| [`DOSSIER-DSI.md`](DOSSIER-DSI.md) | DSI / RSSI : installation, HTTPS, sauvegardes, exploitation |
+| [`GUIDE-UTILISATEUR.md`](GUIDE-UTILISATEUR.md) | Utilisateurs : utilisation au quotidien, par profil |
+| [`PLAN-PILOTE.md`](PLAN-PILOTE.md) | Direction / chef de projet : pilote sur une unité, indicateurs de réussite |
+| [`SECURITE-PRE-AUDIT.md`](SECURITE-PRE-AUDIT.md) | RSSI / auditeur : mesures en place, périmètre du test d'intrusion |
+
+Versions imprimables (`.html`, images intégrées) : `python3 scripts/generer-docs.py`.
+
+## Structure du code de l'interface (`web/src`)
+
+| Fichier | Contenu |
+|---|---|
+| `App.jsx` | Point d'entrée : session, connexion |
+| `GmaoApp.jsx` | Application connectée : données synchronisées, actions métier, menu / en-tête / onglets |
+| `pages/*.jsx` | Un fichier par écran : Accueil, Arborescence, DemandesIntervention, OrdresTravail, Preventif, Compteurs, Stock, Personnel, Indicateurs, Administration, Connexion |
+| `ui/base.jsx`, `ui/icones.jsx` | Composants communs (badges, cartes, fenêtres, champs…) et icônes |
+| `lib/*.js` | Règles métier pures et testées : dates, préventif, compteurs, KPI, échéances, coûts |
+| `sync.js`, `api.js` | Synchronisation avec le serveur (fenêtre de chargement, conflits, file d'attente) |
+
+Contrôles : `npm test` (tests), `npm run lint` (références non définies, code mort).
+
 > **Remise à la DSI : lire d'abord [`DOSSIER-DSI.md`](DOSSIER-DSI.md)** (installation, HTTPS, sauvegardes, sécurité, ce qui a été vérifié ou non). Version imprimable : `DOSSIER-DSI.html`. — Serveur
 
 Socle serveur de la GMAO : base PostgreSQL partagée entre les 7 unités, authentification sécurisée,
@@ -55,7 +79,7 @@ Si SETRAM dispose d'une autorité de certification interne, on peut la remplacer
 | CSRF / XSS | en-tête `X-Requested-With` obligatoire, CSP stricte (aucun script externe) |
 | Concurrence | verrou optimiste (`version`) : erreur 409 si deux personnes modifient le même objet |
 | Traçabilité | `audit_log` : connexions, échecs, créations, modifications **avec avant/après des rubriques changées**, suppressions (contenu conservé), imports |
-| Numérotation | numéros de DI, BT, DS, BS, BR, décharges, plans préventifs et articles **attribués par le serveur** (jamais de doublon) |
+| Numérotation | numéros de DI, OT, DS, BS, BR, décharges, plans préventifs et articles **attribués par le serveur** (jamais de doublon) |
 | Suppression | logique (rien n'est perdu), historique conservé |
 
 ## 4. Modèle de droits
@@ -67,9 +91,9 @@ Identique à l'interface : pour chaque utilisateur, **par unité** → liste de 
 | 0 Arborescence | `equipements` | par unité + système |
 | 0 Arborescence | `mesures`, `controles`, `organismes`, `systemes`, `arborescence` | partagé (toutes unités) |
 | 1 DI | `dis` | par unité + système (déduits de l'équipement visé) |
-| 2 BT | `bts` | par unité + système |
+| 2 OT | `bts` | par unité + système |
 | 3 Planning préventif | `planning` | par unité + système |
-| 4 Magasin & Achats | `pieces`, `dss`, `bs`, `brs`, `decharges` | partagé (magasin central) |
+| 4 Gestion de stock | `pieces`, `dss`, `bs`, `brs`, `decharges` | partagé (magasin central) |
 | 5 Intervenants | `intervenants`, `prestataires`, `feries` | partagé |
 | 6 Indicateurs | lecture seule des collections nécessaires aux KPI | — |
 
@@ -87,27 +111,27 @@ un document au même instant obtiennent deux numéros différents.
 | Document | Format | Compteur |
 |---|---|---|
 | DI | `DI-ALG-2026-0042` | par unité, repart de 1 chaque année |
-| BT | `BT-ALG-2026-0042` | par unité, par année |
-| BT préventif | `BT-PREV-ALG-2026-0042` | par unité, par année |
+| OT | `OT-ALG-2026-0042` | par unité, par année |
+| OT préventif | `OT-PREV-ALG-2026-0042` | par unité, par année |
 | Plan préventif | `PREV-ALG-0042` | par unité, continu |
 | DS / BS / BR / Décharge | `DS-2026-0042`, `BS-…`, `BR-…`, `DCH-…` | magasin central, par année |
 | Articles | `P-001` (pièce), `O-001` (outillage), `C-001` (consommable) | continu |
 
-- L'**unité** d'une DI ou d'un BT est celle de l'équipement visé ; l'**année** est l'année civile à Alger.
-- Les anciens codes (`DI-2026-015`, `BT-3312`…) restent valides ; un numéro déjà utilisé est automatiquement sauté.
+- L'**unité** d'une DI ou d'un OT est celle de l'équipement visé ; l'**année** est l'année civile à Alger.
+- Les anciens codes (`DI-2026-015`, `OT-3312`…) restent valides ; un numéro déjà utilisé est automatiquement sauté.
 - Si le serveur est injoignable au moment de créer un document, **rien n'est créé** et un message l'indique (on ne risque
   plus de doublon). Un numéro réservé puis non utilisé n'est pas réattribué : la suite peut comporter des trous.
 - Pour une unité ajoutée via `UNITS`, l'abréviation est formée des 3 premières lettres (modifiable dans `server/src/numbering.js`).
 
-## 4 sexies. Téléphone, tablette et impression du bon de travail
+## 4 sexies. Téléphone, tablette et impression du ordre de travail
 
 - **Téléphone** : le menu devient un tiroir (bouton ☰, fermé au démarrage, se referme après chaque choix) ;
-  les listes **DI** et **BT** s'affichent en **cartes** (au toucher : ouverture du détail) au lieu d'un tableau à
+  les listes **DI** et **OT** s'affichent en **cartes** (au toucher : ouverture du détail) au lieu d'un tableau à
   11 colonnes ; les formulaires passent sur une colonne ; les champs ne déclenchent plus le zoom automatique d'iPhone ;
   les fenêtres occupent presque tout l'écran. Sur ordinateur, rien ne change.
-- **Imprimer / PDF** : dans le détail d'un BT, bouton « 🖨 Imprimer / PDF » → bon de travail A4 (identification,
+- **Imprimer / PDF** : dans le détail d'un OT, bouton « 🖨 Imprimer / PDF » → ordre de travail A4 (identification,
   consigne, tâches avec cases, constat, temps, intervenants, matières, coût, cases de signature). Dans la boîte de
-  dialogue d'impression, choisir « Enregistrer au format PDF ». Un BT en cours s'imprime avec des cases vides à
+  dialogue d'impression, choisir « Enregistrer au format PDF ». Un OT en cours s'imprime avec des cases vides à
   remplir sur le terrain. Si rien ne s'ouvre, autoriser les fenêtres pop-up pour le site.
 - Pas encore adaptés au téléphone : le calendrier du planning préventif (grille de 7 colonnes) et les écrans
   d'administration — utilisables, mais plus à l'aise sur tablette ou ordinateur.
@@ -130,9 +154,9 @@ la démo consomme ~500 Mo de mémoire : utilisez une vraie base PostgreSQL (≈ 
 
 ## 4 octies. Photos et QR codes
 
-**Photos (pièces jointes)** — dans le détail d'une DI ou d'un BT : « 📷 Prendre une photo » (appareil photo du téléphone) ou
+**Photos (pièces jointes)** — dans le détail d'une DI ou d'un OT : « 📷 Prendre une photo » (appareil photo du téléphone) ou
 « 🖼 Choisir ». La photo est réduite sur le téléphone (1600 px, JPEG) puis envoyée ; on la touche pour l'agrandir, ✕ pour la supprimer.
-- Mêmes droits que la DI / le BT concerné (unité, système, volet), vérifiés côté serveur ; 12 photos maximum par élément, 10 Mo maximum par envoi.
+- Mêmes droits que la DI / l'OT concerné (unité, système, volet), vérifiés côté serveur ; 12 photos maximum par élément, 10 Mo maximum par envoi.
 - Le serveur contrôle le **contenu** : JPEG, PNG ou WebP uniquement (ni SVG, ni HTML, ni exécutable, même renommés).
 - Stockage : volume Docker `gmao_files` (`/data/files`) ; dossier `donnees/files` pour le paquet Windows. **Inclus dans `backup.sh` / `restore.sh`.**
 - Ajout et suppression sont inscrits au journal d'audit.
@@ -159,9 +183,9 @@ Le lien contient l'adresse du serveur : imprimer les étiquettes **depuis l'adre
 | `lib/dates.js` | formats, ajout de mois (fin de mois ramenée au dernier jour), échéances sans dérive |
 | `lib/jours.js` | jours fériés, week-end vendredi-samedi, congés |
 | `lib/echeances.js` | habilitations, contrats prestataires, péremption des appareils de mesure |
-| `lib/preventif.js` | périodicités, occurrences d'un plan, génération d'un BT préventif, avancement |
+| `lib/preventif.js` | périodicités, occurrences d'un plan, génération d'un OT préventif, avancement |
 | `lib/equipes.js` | rattachement équipement / intervenant à un système |
-| `lib/couts.js` | coût d'un bon de travail |
+| `lib/couts.js` | coût d'un ordre de travail |
 | `lib/kpi.js` | MTTR, MTBF, disponibilité, TMP/TMC, récurrence, RH, stock, AMDEC |
 | `lib/unites.js` | unités d'exploitation et abréviations |
 
@@ -268,7 +292,7 @@ npm run build    # écrit dans ../server/public ; puis : docker compose up -d --
 - **Codes encore générés côté poste** : seuls les référentiels saisis par les administrateurs (équipements et
   sous-équipements `SYS.UNITÉ.SOUS.NN`, mesures `M-`, contrôles `R-`, organismes `ORG-`, prestataires `EXT-`).
   En cas de saisie simultanée, la seconde personne est prévenue (« ce code existe déjà »). Les documents d'exploitation
-  (DI, BT, DS, BS, BR, décharges, plans, articles) sont numérotés par le serveur (voir § 4 bis).
+  (DI, OT, DS, BS, BR, décharges, plans, articles) sont numérotés par le serveur (voir § 4 bis).
 - **Jours fériés** : la liste par défaut couvre 2026 et 2027 (fêtes fixes + dates religieuses prévisionnelles, à confirmer selon l'observation de la lune). Prévoir d'ajouter 2028 et au-delà dans l'onglet Intervenants.
 - **Rafraîchissement** des données des autres utilisateurs toutes les 15 s (pas de temps réel instantané).
 - **Données réelles** (équipements, personnel, stock) à saisir ou importer : l'import en masse existe côté API

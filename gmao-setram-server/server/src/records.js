@@ -3,6 +3,7 @@ import { pool, q, audit } from './db.js';
 import { config } from './config.js';
 import { COLLECTIONS, canRead, canWrite } from './rights.js';
 import { SEQUENCES, sequenceKey, reserveCodes, MAX_BATCH } from './numbering.js';
+import { ARCHIVABLES, lireFenetre, limiteFenetre } from './archives-core.js';
 
 export const dataRouter = Router(); // monté derrière authRequired + mustNotChangePw
 
@@ -57,12 +58,24 @@ export function resolveUnit(def, raw) {
 
 // Lecture : ?unit=Alger (optionnel pour super admin / multi-unités)
 // &since=ISO pour ne récupérer que les changements (suppressions incluses)
+// &fenetre=N (mois) : DI / OT clos depuis plus de N mois laissés de côté (voir archives-core.js)
 dataRouter.get('/:collection', collectionOf, async (req, res) => {
   const serverTime = new Date().toISOString();
   const { unit, since } = req.query;
+  const fenetre = lireFenetre(req.query.fenetre);
+  if (Number.isNaN(fenetre)) return res.status(400).json({ error: 'fenetre invalide' });
   const params = [req.params.collection];
   let sql = 'SELECT * FROM records WHERE collection=$1';
   if (unit) { params.push(String(unit)); sql += ` AND unit=$${params.length}`; }
+  // Pré-filtre en base sur les unités autorisées (le contrôle fin ligne par ligne reste fait ci-dessous)
+  if (!req.user.super_admin && !req.def.shared && !req.def.readAll) {
+    params.push(Object.keys(req.user.droits || {})); sql += ` AND unit = ANY($${params.length})`;
+  }
+  if (fenetre && ARCHIVABLES[req.params.collection] && !since) {
+    params.push(ARCHIVABLES[req.params.collection]); const pe = params.length;
+    params.push(limiteFenetre(fenetre)); const pl = params.length;
+    sql += ` AND NOT (data->>'etat' = ANY($${pe}) AND updated_at < $${pl})`;
+  }
   if (since) {
     const d = new Date(String(since));
     if (isNaN(d)) return res.status(400).json({ error: 'since invalide' });

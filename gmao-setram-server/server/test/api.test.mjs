@@ -86,7 +86,7 @@ test('le technicien ne peut écrire que dans son périmètre', async () => {
   assert.equal(r.status, 200);
   assert.equal((await tech.call('PUT', '/data/equipements/EQ-2', { ...eq, unit: 'Oran', system: 'CFO' })).status, 403);   // autre unité
   assert.equal((await tech.call('PUT', '/data/equipements/EQ-3', { ...eq, unit: 'Alger', system: 'VOIE' })).status, 403); // autre système
-  assert.equal((await tech.call('PUT', '/data/bts/BT-1', { data: {}, unit: 'Alger', system: 'CFO' })).status, 403);       // volet 2 non accordé
+  assert.equal((await tech.call('PUT', '/data/bts/OT-1', { data: {}, unit: 'Alger', system: 'CFO' })).status, 403);       // volet 2 non accordé
   assert.equal((await tech.call('PUT', '/data/pieces/P-1', { data: { nom: 'x' } })).status, 403);                         // volet 4 (magasin) non accordé
   assert.equal((await tech.call('PUT', '/data/intervenants/MT-1', { data: { nom: 'x' } })).status, 403);                  // volet 5 non accordé
   assert.equal((await tech.call('PUT', '/data/systemes/main', { data: { list: [] } })).status, 200);                     // référentiel : volet 0 suffit
@@ -166,11 +166,11 @@ test('numérotation : format, séquence par unité, lot', async () => {
   assert.deepEqual(r.body.codes, [`DI-ALG-${YEAR}-0003`, `DI-ALG-${YEAR}-0004`, `DI-ALG-${YEAR}-0005`]);
 });
 
-test('numérotation : BT, BT préventif, plan, magasin et articles', async () => {
+test('numérotation : OT, OT préventif, plan, magasin et articles', async () => {
   const code = async (col, body) => (await admin.call('POST', `/data/${col}/next-code`, body)).body.codes[0];
-  assert.equal(await code('bts', { unit: 'Sétif' }), `BT-SET-${YEAR}-0001`);
-  assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `BT-PREV-SET-${YEAR}-0001`);
-  assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `BT-PREV-SET-${YEAR}-0002`);
+  assert.equal(await code('bts', { unit: 'Sétif' }), `OT-SET-${YEAR}-0001`);
+  assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0001`);
+  assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0002`);
   assert.equal(await code('planning', { unit: 'Sidi Bel Abbès' }), 'PREV-SBA-0001');
   assert.equal(await code('dss', {}), `DS-${YEAR}-0001`);
   assert.equal(await code('bs', {}), `BS-${YEAR}-0001`);
@@ -205,7 +205,7 @@ test('numérotation : droits et validations', async () => {
   assert.equal(r.status, 200);
   assert.match(r.body.codes[0], new RegExp(`^DI-ALG-${YEAR}-\\d{4}$`));
   assert.equal((await u.call('POST', '/data/dis/next-code', { unit: 'Oran' })).status, 403);   // autre unité
-  assert.equal((await u.call('POST', '/data/bts/next-code', { unit: 'Alger' })).status, 403);  // volet BT non accordé
+  assert.equal((await u.call('POST', '/data/bts/next-code', { unit: 'Alger' })).status, 403);  // volet OT non accordé
   assert.equal((await u.call('POST', '/data/dss/next-code', {})).status, 403);                 // volet Magasin non accordé
   assert.equal((await u.call('POST', '/data/pieces/next-code', { variant: 'P' })).status, 403);
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Paris' })).status, 400);
@@ -216,6 +216,40 @@ test('numérotation : droits et validations', async () => {
   assert.equal((await admin.call('POST', '/data/pieces/next-code', { variant: 'Z' })).status, 404);
   assert.equal((await admin.call('POST', '/data/equipements/next-code', { unit: 'Alger' })).status, 404); // pas de numérotation serveur
   assert.equal((await anon.call('POST', '/data/dis/next-code', { unit: 'Alger' })).status, 401);
+});
+
+test('compteurs d’équipement : relevés autorisés au volet OT ou Préventif, lecture par les indicateurs', async () => {
+  const cpt = { data: { code: 'MR.ALG.BOG.01-KM', eq: 'MR.ALG.BOG.01', unite: 'km', releves: [{ date: '2026-10-01', valeur: 1000 }] }, unit: 'Alger', system: 'MR' };
+  const ot = await newUser('cpt.ot', { Alger: { systems: ['MR'], volets: [2] } });
+  const prev = await newUser('cpt.prev', { Alger: { systems: ['MR'], volets: [3] } });
+  const expl = await newUser('cpt.expl', { Alger: { systems: ['MR'], volets: [1] } });
+  const kpi = await newUser('cpt.kpi', { Alger: { systems: ['MR'], volets: [6] } });
+  assert.equal((await prev.call('PUT', '/data/compteurs_eq/MR.ALG.BOG.01-KM', cpt)).status, 200);
+  const lu = await ot.call('GET', '/data/compteurs_eq');
+  assert.equal(lu.status, 200); assert.equal(lu.body.items.length, 1);
+  const v = lu.body.items[0].version;
+  assert.equal((await ot.call('PUT', '/data/compteurs_eq/MR.ALG.BOG.01-KM', { ...cpt, version: v, data: { ...cpt.data, releves: [...cpt.data.releves, { date: '2026-10-10', valeur: 2500 }] } })).status, 200);
+  assert.equal((await ot.call('PUT', '/data/compteurs_eq/MR.ORN.BOG.01-KM', { ...cpt, unit: 'Oran' })).status, 403);          // autre unité
+  assert.equal((await ot.call('PUT', '/data/compteurs_eq/CFO.ALG.SST.01-H', { ...cpt, system: 'CFO' })).status, 403);         // autre système
+  assert.equal((await expl.call('PUT', '/data/compteurs_eq/MR.ALG.BOG.02-KM', cpt)).status, 403);                             // volet DI seul
+  assert.equal((await expl.call('GET', '/data/compteurs_eq')).body.items.length, 0);
+  assert.equal((await kpi.call('GET', '/data/compteurs_eq')).body.items.length, 1);
+  assert.equal((await kpi.call('PUT', '/data/compteurs_eq/MR.ALG.BOG.02-KM', cpt)).status, 403);                              // lecture seule
+});
+
+test('fenêtre de chargement : OT clos anciens laissés de côté, ouverts toujours chargés, historique sur demande', async () => {
+  const mk = (id, etat) => admin.call('PUT', `/data/bts/${id}`, { data: { code: id, etat }, unit: 'Sétif', system: 'CFO' });
+  for (const [id, etat] of [['OT-F-1', 'Clôturé'], ['OT-F-2', 'En cours'], ['OT-F-3', 'Clôturé']]) assert.equal((await mk(id, etat)).status, 200);
+  await q("UPDATE records SET updated_at = now() - interval '30 months' WHERE collection='bts' AND id IN ('OT-F-1','OT-F-2')");
+  const ids = async (qs) => (await admin.call('GET', '/data/bts' + qs)).body.items.map((r) => r.id).filter((x) => x.startsWith('OT-F-')).sort();
+  assert.deepEqual(await ids('?fenetre=24'), ['OT-F-2', 'OT-F-3']);      // ancien mais ouvert : chargé ; ancien et clos : laissé de côté
+  assert.deepEqual(await ids(''), ['OT-F-1', 'OT-F-2', 'OT-F-3']);         // historique complet
+  assert.deepEqual(await ids('?fenetre=48'), ['OT-F-1', 'OT-F-2', 'OT-F-3']);
+  assert.equal((await admin.call('GET', '/data/bts?fenetre=abc')).status, 400);
+  assert.equal((await admin.call('GET', '/data/bts?fenetre=1')).status, 400);
+  // pré-filtre par unité : un utilisateur d'Alger ne reçoit rien de Sétif
+  const alg = await newUser('fen.alg', { Alger: { systems: ['CFO'], volets: [2] } });
+  assert.deepEqual((await alg.call('GET', '/data/bts')).body.items.filter((r) => r.id.startsWith('OT-F-')), []);
 });
 
 test('numérotation : le millésime suit l’année civile d’Alger', () => {
@@ -383,12 +417,12 @@ test('migration 003 : anciennes fiches « main » converties en lignes, puis rej
 test('référentiels : deux modifications simultanées sur deux éléments différents ne se gênent pas', async () => {
   const get = async (c, id) => (await admin.call('GET', `/data/${c}`)).body.items.find(i => i.id === id);
   await admin.call('PUT', '/data/systemes/ELM', { data: { code: 'ELM', nom: 'Électromécanique', ordre: 3 } });
-  await admin.call('PUT', '/data/systemes/EQI', { data: { code: 'EQI', nom: 'Équip. Info.', ordre: 4 } });
-  const a = await get('systemes', 'ELM'), b = await get('systemes', 'EQI');
+  await admin.call('PUT', '/data/systemes/ED', { data: { code: 'ED', nom: 'Équipement Dépôt', ordre: 4 } });
+  const a = await get('systemes', 'ELM'), b = await get('systemes', 'ED');
   // deux administrateurs modifient CHACUN un système, à partir de la même version de départ
   const [r1, r2] = await Promise.all([
     admin.call('PUT', '/data/systemes/ELM', { data: { ...a.data, nom: 'Électromécanique (A)' }, version: a.version }),
-    admin.call('PUT', '/data/systemes/EQI', { data: { ...b.data, nom: 'Équip. Info. (B)' }, version: b.version }),
+    admin.call('PUT', '/data/systemes/ED', { data: { ...b.data, nom: 'Équipement Dépôt (B)' }, version: b.version }),
   ]);
   assert.equal(r1.status, 200); assert.equal(r2.status, 200);                      // avant : le second aurait reçu un conflit
   // le conflit subsiste, à juste titre, pour le MÊME élément
@@ -464,7 +498,7 @@ test('pièces jointes : taille maximale et nombre maximal par élément', async 
   assert.equal(r13.status, 409); assert.match(r13.body.error, /Maximum 12/);
 });
 
-test('pièces jointes : mêmes droits que la DI / le BT correspondant', async () => {
+test('pièces jointes : mêmes droits que la DI / l’OT correspondant', async () => {
   const f = (await upload(admin, { collection: 'dis', recordId: 'DI-F1' }, JPEG)).body;
   const alger = await newUser('pj.alger', { Alger: { systems: ['CFO'], volets: [1] } });
   const oran = await newUser('pj.oran', { Oran: { systems: ['CFO'], volets: [1] } });
@@ -589,8 +623,8 @@ test('démo : jeu de données cohérent (références, formats, dates, droits)',
   const disParCode = new Map(c.dis.map(r => [r.id, r]));
   for (const r of c.bts) {
     const e = eqParCode.get(r.data.eq); assert.ok(e, r.id); assert.equal(r.unit, e.unit);
-    if (r.data.di) { assert.ok(disParCode.has(r.data.di), `${r.id} → ${r.data.di}`); assert.equal(disParCode.get(r.data.di).data.eq, r.data.eq); assert.match(r.id, /^BT-[A-Z]{3}-20\d\d-\d{4}$/); }
-    else assert.match(r.id, /^BT-PREV-[A-Z]{3}-20\d\d-\d{4}$/);
+    if (r.data.di) { assert.ok(disParCode.has(r.data.di), `${r.id} → ${r.data.di}`); assert.equal(disParCode.get(r.data.di).data.eq, r.data.eq); assert.match(r.id, /^OT-[A-Z]{3}-20\d\d-\d{4}$/); }
+    else assert.match(r.id, /^OT-PREV-[A-Z]{3}-20\d\d-\d{4}$/);
     if (r.data.etat === 'Clôturé') assert.ok(r.data.dateCloture > r.data.dateGeneration, r.id);
   }
   const traites = c.dis.filter(r => r.data.etat === 'Traité'); assert.ok(traites.every(r => c.bts.some(b => b.data.di === r.id && b.data.etat === 'Clôturé')));

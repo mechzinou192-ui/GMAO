@@ -1,10 +1,5 @@
-<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Dossier DSI</title><style>body{font:14px/1.55 -apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}
-h1{color:#2b3593;border-bottom:3px solid #2b3593;padding-bottom:6px}h2{color:#2b3593;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}
-table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}
-code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}
-blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}
-@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)</h1>
-<p><strong>Version de l'application : 1.9.0</strong> · Public : DSI / RSSI / administrateurs système · Langue : français</p>
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Dossier DSI</title><style>body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}img{max-width:100%;border:1px solid #dde;border-radius:6px;margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre,img{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)</h1>
+<p><strong>Version de l'application : 1.12</strong> · Public : DSI / RSSI / administrateurs système · Langue : français</p>
 <p>Ce document permet à la DSI d'<strong>héberger, sécuriser, sauvegarder, superviser et mettre à jour</strong> l'application sur son
 infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et ce qui ne l'a pas été</strong> (§ 12).</p>
 <hr />
@@ -19,7 +14,7 @@ infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et 
 <tbody>
 <tr>
 <td><strong>Nature</strong></td>
-<td>Application web (GMAO : demandes d'intervention, bons de travail, préventif, magasin, indicateurs) pour 7 unités</td>
+<td>Application web (GMAO : demandes d'intervention, ordres de travail, préventif, magasin, indicateurs) pour 7 unités</td>
 </tr>
 <tr>
 <td><strong>Architecture</strong></td>
@@ -39,7 +34,7 @@ infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et 
 </tr>
 <tr>
 <td><strong>Données</strong></td>
-<td>Fiches équipements, DI, BT, stocks, personnel de maintenance (nom, matricule, taux horaire, habilitations), photos</td>
+<td>Fiches équipements, DI, OT, stocks, personnel de maintenance (nom, matricule, taux horaire, habilitations), photos</td>
 </tr>
 <tr>
 <td><strong>Instances</strong></td>
@@ -118,7 +113,7 @@ infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et 
 <td>Mémoire</td>
 <td>2 Go</td>
 <td>4 Go</td>
-<td>Application ≈ <strong>75–82 Mo</strong> avec le jeu de démonstration (68 équipements, 86 DI, 93 BT)</td>
+<td>Application ≈ <strong>75–82 Mo</strong> avec le jeu de démonstration (68 équipements, 86 DI, 93 OT)</td>
 </tr>
 <tr>
 <td>Disque</td>
@@ -576,7 +571,7 @@ bibliothèque ne fait pas. Risque jugé non exploitable ici ; à surveiller lors
 <p><strong>Recette fonctionnelle</strong> (compte <code>admin</code> puis comptes de test) :
 1. Créer un compte avec droits limités (une unité, un système) et vérifier qu'il ne voit que son périmètre.
 2. Importer un petit fichier Excel (modèle fourni) ; le recharger : aucun doublon.
-3. Déclarer une DI (au téléphone), générer le BT, le clôturer, imprimer le bon (PDF).
+3. Déclarer une DI (au téléphone), générer l'OT, le clôturer, imprimer le bon (PDF).
 4. Ajouter une photo à une DI ; scanner une étiquette QR d'équipement.
 5. Planifier un préventif ; consulter les indicateurs (KPI).
 6. Couper la base 30 secondes : <code>/api/health</code> passe en 503 puis revient ; l'application reprend sans redémarrage.</p>

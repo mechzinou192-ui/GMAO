@@ -1,8 +1,8 @@
 // Droits d'accès : logique PURE (sans accès à la configuration ni à la base), partagée avec la démonstration en navigateur.
 /*
  * Volets (identiques à l'interface) :
- * 0 Arborescence · 1 DI · 2 BT · 3 Planning préventif · 4 Magasin & Achats
- * 5 Intervenants · 6 Indicateurs de performance
+ * 0 Arborescence · 1 DI · 2 OT · 3 Planning préventif · 4 Gestion de stock
+ * 5 Gestion du personnel · 6 Indicateurs de performance
  */
 export const VOLET_INDICATEURS = 6;
 
@@ -11,11 +11,14 @@ export const VOLET_INDICATEURS = 6;
 //              a le volet dans AU MOINS une unité (comme dans l'interface : magasin central, intervenants…)
 //  - readVolets : volets supplémentaires autorisés en LECTURE (ex. Indicateurs, ou DI qui lisent les équipements)
 //  - readAll : lisible par tout utilisateur connecté (référentiels : systèmes, arborescence, jours fériés)
+//  - writeVolets : volets autorisés en ÉCRITURE quand il y en a plusieurs (sinon : volet)
 export const COLLECTIONS = {
   equipements:  { volet: 0, readVolets: [0, 1, 2, 3, 6] },
   dis:          { volet: 1, readVolets: [1, 6] },
   bts:          { volet: 2, readVolets: [2, 6] },
   planning:     { volet: 3, readVolets: [3, 6] },
+  // compteurs d'équipement (km, heures…) : relevés saisis par le préventif ou par le technicien à la clôture d'un OT
+  compteurs_eq: { volet: 3, writeVolets: [2, 3], readVolets: [0, 2, 3, 6] },
   pieces:       { volet: 4, shared: true, readVolets: [4, 6] },
   dss:          { volet: 4, shared: true },
   bs:           { volet: 4, shared: true },
@@ -69,6 +72,7 @@ export function canRead(user, collection, unit, system) {
 export function canWrite(user, collection, unit, system) {
   const def = COLLECTIONS[collection];
   if (!def) return false;
-  if (def.shared) return voletAny(user, def.volet);
-  return voletOk(user, unit, def.volet) && systemOk(user, unit, system);
+  const volets = def.writeVolets || [def.volet];
+  if (def.shared) return volets.some((v) => voletAny(user, v));
+  return volets.some((v) => voletOk(user, unit, v)) && systemOk(user, unit, system);
 }

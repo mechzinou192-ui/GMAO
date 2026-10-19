@@ -6,12 +6,12 @@
  *   perUnit          = un compteur par unité, abréviation dans le code (DI-ALG-2026-0042)
  *   yearly           = le compteur repart de 1 chaque année civile (fuseau Africa/Algiers)
  *
- * Exemples : DI-ALG-2026-0001 · BT-ORN-2026-0007 · BT-PREV-ALG-2026-0003 · DS-2026-0012 · P-001
+ * Exemples : DI-ALG-2026-0001 · OT-ORN-2026-0007 · OT-PREV-ALG-2026-0003 · DS-2026-0012 · P-001
  */
 export const SEQUENCES = {
   dis:          { collection: 'dis',        prefix: 'DI',      perUnit: true,  yearly: true,  pad: 4 },
-  bts:          { collection: 'bts',        prefix: 'BT',      perUnit: true,  yearly: true,  pad: 4 },
-  'bts:prev':   { collection: 'bts',        prefix: 'BT-PREV', perUnit: true,  yearly: true,  pad: 4 },
+  bts:          { collection: 'bts',        prefix: 'OT',      perUnit: true,  yearly: true,  pad: 4 },
+  'bts:prev':   { collection: 'bts',        prefix: 'OT-PREV', perUnit: true,  yearly: true,  pad: 4 },
   planning:     { collection: 'planning',   prefix: 'PREV',    perUnit: true,  yearly: false, pad: 4 },
   dss:          { collection: 'dss',        prefix: 'DS',      perUnit: false, yearly: true,  pad: 4 },
   bs:           { collection: 'bs',         prefix: 'BS',      perUnit: false, yearly: true,  pad: 4 },

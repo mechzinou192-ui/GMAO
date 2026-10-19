@@ -55,7 +55,7 @@ export async function resetDemo(now = new Date()) {
 export async function initDemo() {
   if (!config.demo) return;
   console.log('\n*** MODE DÉMONSTRATION ACTIF : comptes publics, données fictives, remises à zéro régulières. NE PAS UTILISER AVEC DE VRAIES DONNÉES. ***\n');
-  if (!(await demoDejaPresente())) { const d = await seedDemo(); console.log(`[démo] données créées : ${d.collections.dis.length} DI, ${d.collections.bts.length} BT, ${d.collections.equipements.length} équipements.`); }
+  if (!(await demoDejaPresente())) { const d = await seedDemo(); console.log(`[démo] données créées : ${d.collections.dis.length} DI, ${d.collections.bts.length} OT, ${d.collections.equipements.length} équipements.`); }
   if (config.demoResetHours > 0) {
     const t = setInterval(() => resetDemo().then(() => console.log('[démo] remise à zéro effectuée')).catch((e) => console.error('[démo] échec de la remise à zéro', e)), config.demoResetHours * 3600 * 1000);
     t.unref();

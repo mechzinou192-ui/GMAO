@@ -1,0 +1,164 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Pré-audit sécurité</title><style>body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}img{max-width:100%;border:1px solid #dde;border-radius:6px;margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre,img{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier de pré-audit sécurité</h1>
+<p><strong>Version de l'application : 1.12</strong> · Public : RSSI, DSI, prestataire d'audit</p>
+<p>Ce dossier prépare l'<strong>audit de sécurité externe</strong> (test d'intrusion et revue de code) demandé avant toute mise en production. Il récapitule ce qui est en place, ce qui a été contrôlé lors du développement, et ce que l'auditeur doit vérifier. <strong>Il ne remplace pas l'audit externe</strong>, qui n'a pas été réalisé.</p>
+<hr />
+<h2>1. Contrôles réalisés pendant le développement</h2>
+<table>
+<thead>
+<tr>
+<th>Contrôle</th>
+<th>Résultat (19/10/2026)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs)</td>
+<td>39 / 39 réussis</td>
+</tr>
+<tr>
+<td>Tests automatiques interface</td>
+<td>178 / 178 réussis</td>
+</tr>
+<tr>
+<td>Analyse statique (ESLint : variables non définies, code mort)</td>
+<td>0 erreur</td>
+</tr>
+<tr>
+<td><code>npm audit</code> dépendances de <strong>production</strong> — serveur</td>
+<td>0 vulnérabilité</td>
+</tr>
+<tr>
+<td><code>npm audit</code> dépendances de <strong>production</strong> — interface</td>
+<td>0 vulnérabilité (bibliothèque <code>uuid</code> utilisée par l'export Excel forcée en version corrigée 11.1.1)</td>
+</tr>
+<tr>
+<td><code>npm audit</code> dépendances de <strong>développement</strong> — interface</td>
+<td>15 alertes (Vite 5, Vitest 2 et leurs dépendances) : outils de construction et de test, <strong>non livrés en production</strong>. Montée de version Vite / Vitest à planifier</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. Mesures de sécurité en place</h2>
+<table>
+<thead>
+<tr>
+<th>Domaine</th>
+<th>Mesure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authentification</td>
+<td>Mots de passe hachés (bcrypt, coût 12) ; aucun mot de passe par défaut ; changement obligatoire au premier accès ; 10 caractères minimum avec lettre et chiffre</td>
+</tr>
+<tr>
+<td>Force brute</td>
+<td>Verrouillage du compte après 5 échecs ; limitation du débit des connexions par adresse IP</td>
+</tr>
+<tr>
+<td>Session</td>
+<td>Cookie <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Strict</code>, 8 h ; invalidée si le compte est désactivé ou le mot de passe changé</td>
+</tr>
+<tr>
+<td>Autorisations</td>
+<td>Contrôle <strong>côté serveur</strong> à chaque requête, par unité / système / module ; lecture filtrée ligne par ligne ; pré-filtre SQL par unité</td>
+</tr>
+<tr>
+<td>CSRF</td>
+<td>En-tête <code>X-Requested-With</code> obligatoire sur toutes les requêtes API</td>
+</tr>
+<tr>
+<td>Injection</td>
+<td>Requêtes SQL paramétrées uniquement</td>
+</tr>
+<tr>
+<td>XSS / en-têtes</td>
+<td>CSP stricte (aucun script ni ressource externe, police embarquée) ; HSTS ; <code>nosniff</code> ; <code>frame-ancestors 'none'</code> ; React échappe les contenus affichés</td>
+</tr>
+<tr>
+<td>Fichiers</td>
+<td>Photos contrôlées par leur <strong>contenu</strong> (JPEG / PNG / WebP), 10 Mo, 12 par élément, nom aléatoire, servies en <code>sandbox</code></td>
+</tr>
+<tr>
+<td>Traçabilité</td>
+<td>Journal d'audit : connexions, échecs, créations, modifications (avant / après), suppressions, imports, photos</td>
+</tr>
+<tr>
+<td>Intégrité</td>
+<td>Verrou optimiste (conflit 409) ; numérotation attribuée par le serveur ; suppression logique</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td>Variables d'environnement uniquement ; valeurs d'exemple refusées au démarrage</td>
+</tr>
+<tr>
+<td>Exécution</td>
+<td>Image Docker en utilisateur non privilégié ; service systemd durci</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Périmètre demandé à l'auditeur</h2>
+<p><strong>Test d'intrusion (boîte grise, 3 à 5 jours) :</strong>
+1. Authentification : force brute, énumération de comptes, fixation et vol de session, réinitialisation de mot de passe.
+2. <strong>Contrôle d'accès</strong> (priorité) : avec un compte limité (une unité, un système, un module), tenter de lire et modifier les données d'une autre unité, d'un autre système ou d'un autre module — API <code>/api/data/*</code>, <code>/api/files</code>, <code>/api/import</code>, numérotation.
+3. Élévation de privilège vers le super administrateur (<code>/api/users</code>).
+4. Injections (SQL, JSON, en-têtes) et XSS stockée (désignations, commentaires, noms de fichiers).
+5. Téléversement de fichiers : contournement du contrôle de type, fichiers polyglottes, volume.
+6. Configuration HTTPS du reverse proxy (protocoles, suites, certificats) et en-têtes.
+7. Déni de service applicatif : imports volumineux, requêtes sans fenêtre de chargement.</p>
+<p><strong>Revue de code ciblée (1 à 2 jours) :</strong> <code>server/src/auth.js</code>, <code>rights-core.js</code>, <code>records.js</code>, <code>files.js</code>, <code>importer.js</code>, <code>users.js</code>.</p>
+<p><strong>Livrables attendus :</strong> rapport classé par criticité, preuves, recommandations, puis contre-audit après corrections.</p>
+<hr />
+<h2>4. Points ouverts à arbitrer par le RSSI</h2>
+<table>
+<thead>
+<tr>
+<th>Sujet</th>
+<th>État</th>
+<th>Piste</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Annuaire d'entreprise (AD / LDAP), SSO, double authentification</td>
+<td>Non pris en charge</td>
+<td>À développer si la politique l'exige (priorité si plus de 50 comptes)</td>
+</tr>
+<tr>
+<td>Antivirus sur les photos</td>
+<td>Contrôle de format seulement</td>
+<td>Analyse du volume <code>files</code> par l'antivirus de l'entreprise</td>
+</tr>
+<tr>
+<td>Chiffrement au repos</td>
+<td>Non géré par l'application</td>
+<td>Chiffrement des disques et des sauvegardes côté infrastructure</td>
+</tr>
+<tr>
+<td>Exposition Internet</td>
+<td>Non recommandée</td>
+<td>Intranet / VPN ; sinon WAF et audit préalable obligatoire</td>
+</tr>
+<tr>
+<td>Données personnelles</td>
+<td>Noms, matricules, taux horaires, habilitations</td>
+<td>Avis du DPO / juriste (loi 18-07) avant le pilote</td>
+</tr>
+<tr>
+<td>Notifications e-mail</td>
+<td>Absentes</td>
+<td>Si ajoutées : serveur SMTP interne, aucun contenu sensible dans les messages</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. Préparation de l'audit</h2>
+<ul>
+<li>[ ] Environnement de recette identique à la production (même proxy, même configuration), <strong>sans données réelles</strong></li>
+<li>[ ] Mode démonstration (<code>DEMO=1</code>) <strong>désactivé</strong></li>
+<li>[ ] 4 comptes de test : super administrateur, responsable 2 unités, technicien 1 système, exploitation</li>
+<li>[ ] Code source et ce dossier remis à l'auditeur</li>
+<li>[ ] <code>scripts/verifier-installation.sh</code> exécuté sans échec</li>
+<li>[ ] Sauvegarde faite avant l'audit, restauration testée après</li>
+</ul></body></html>

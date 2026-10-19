@@ -10,9 +10,9 @@ sans rien installer. Coût : **0 DA**.
 
 Un écran de connexion avec un bandeau « Version de démonstration » et des boutons de profils : **Super administrateur,
 Responsable maintenance, Technicien, Exploitation, Magasinier, Direction.** Un clic remplit l'identifiant et le mot de passe.
-Données réalistes : 68 équipements dans 7 unités, 86 DI, 93 BT, préventif, magasin, habilitations avec alertes, indicateurs
-sur 3 mois. Tous les écrans fonctionnent : création de DI et de BT, indicateurs, import Excel, photos, étiquettes QR,
-impression du bon de travail, affichage sur téléphone.
+Données réalistes : 68 équipements dans 7 unités, 86 DI, 93 OT, préventif, magasin, habilitations avec alertes, indicateurs
+sur 3 mois. Tous les écrans fonctionnent : création de DI et d'OT, indicateurs, import Excel, photos, étiquettes QR,
+impression du ordre de travail, affichage sur téléphone.
 
 ---
 
@@ -20,7 +20,7 @@ impression du bon de travail, affichage sur téléphone.
 
 Le fichier `gmao-setram-demo-site.zip` contient le dossier **`site`** : un site complet de 5 fichiers (1,5 Mo). Il n'a besoin
 d'**aucun serveur et d'aucune base de données** : le « serveur » est simulé dans le navigateur du visiteur, avec exactement les
-mêmes règles que le vrai (droits par unité / système / volet, numérotation des DI et BT, conflits, import tout-ou-rien).
+mêmes règles que le vrai (droits par unité / système / volet, numérotation des DI et OT, conflits, import tout-ou-rien).
 
 ### Avec Netlify Drop (le plus rapide)
 1. Dézippez `gmao-setram-demo-site.zip` : vous obtenez un dossier **`site`**.
