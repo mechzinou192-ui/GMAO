@@ -1,0 +1,28 @@
+# Dépendances et builds
+node_modules/
+dist/
+build/
+
+# Secrets et configuration locale
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Données locales (base intégrée, sauvegardes)
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+data/
+backups/
+*.dump
+
+# Journaux et fichiers système
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
