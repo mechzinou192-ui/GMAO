@@ -20,6 +20,7 @@ export const I={
  bell:<Icon cls="w-5 h-5" p={<><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></>}/>,
  pin:<Icon p={<><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></>}/>,
  chev:<Icon p={<path d="m6 9 6 6 6-6"/>}/>,
+ gauge:<Icon p={<><path d="M12 14l4-4"/><path d="M3.3 17a9 9 0 1 1 17.4 0"/><circle cx="12" cy="14" r="1.5"/></>}/>,
  home:<Icon p={<><path d="M3 11 12 3l9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></>}/>,
  plus2:<Icon cls="w-6 h-6" p={<path d="M12 5v14M5 12h14"/>}/>,
  logout:<Icon p={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></>}/>,

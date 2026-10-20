@@ -1,6 +1,7 @@
 // Constantes et données de départ partagées par plusieurs écrans.
 
 
+export const MATERIAUX=9;  // onglet « Gestion et suivi des matériaux » (appareils de mesure, contrôles réglementaires, organismes)
 export const ACCUEIL=8;   // onglet « Accueil » (tableau de bord), indépendant des volets de droits 0 à 7
 
 export function seedEquipements(){
@@ -48,4 +49,4 @@ export function posteOptions(systemsList){
 export const KPI_VUES=[["Synthèse","Synthèse"],["Équipements","Équipements"],["Ressources humaines","Ressources humaines"],["Stock","Stock"],["Criticité (AMDEC)","Criticité (AMDEC)"],["Référentiel","Référentiel"]];
 export const KPI_BLOCS=[["syn:ing","Synthèse › Indicateurs d'ingénierie (MTTR, MTBF, disponibilité…)"],["syn:real","Synthèse › Indicateurs de réalisation (TCP, TCC, TMP, TMC)"],["syn:taux","Synthèse › Taux de panne, d'intervention, récurrence"],["syn:comp","Synthèse › Comparatif des unités"]];
 export const KPI_ALL=[...KPI_VUES,...KPI_BLOCS].map(x=>x[0]);
-export const VOLETS=["Arborescence Technique","Demandes d'Intervention (DI)","Ordres de Travail (OT)","Planning Préventif","Gestion de stock","Gestion du personnel","Indicateurs de performance"];
+export const VOLETS=["Arborescence technique et matériaux","Demandes d'Intervention (DI)","Ordres de Travail (OT)","Planning Préventif","Gestion de stock","Gestion du personnel","Indicateurs de performance"];

@@ -27,6 +27,8 @@ export function occurrencesPlan(p){
 }
 export const buildBTPrev=(pl,code,dateGeneration)=>({code,di:null,plan:pl.code,eq:pl.eq,nom:pl.nom,type:"Préventive",consigne:"Plan "+pl.code+" — "+pl.periode+" ("+pl.taches.length+" tâches)",horaire:pl.horaire||"Jour",consignation:pl.consignation||"Non",assigne:(pl.assignes||[]).join(", "),assignes:pl.assignes||[],echeance:pl.date,dateGeneration,
  taches:pl.taches.map(t=>({lib:t,res:null,com:""})),detection:0,gravite:0,dureeIntervention:0,tempsLogistique:0,panne:"-",cause:"-",effet:"-",intervenants:[],pieces:[],outillage:(pl.outillage||[]).map(x=>({...x})),consommables:(pl.consommables||[]).map(x=>({...x})),etat:"En cours"});
+// Nature d'un OT : préventif (issu d'un plan ou de type « Préventive ») ou correctif (issu d'une DI ou hors DI correctif)
+export const estOTPreventif=(b)=>!!b&&(b.type==="Préventive"||!!b.plan);
 export const tRes=(t)=>t.res||(t.fait?"OK":null);
 export const avancement=(b)=>{const t=b.taches||[];return t.length?Math.round(t.filter(x=>tRes(x)).length/t.length*100):null;};
 export function datesPlanDansPlage(p,deb,fin){

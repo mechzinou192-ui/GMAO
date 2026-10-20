@@ -1,5 +1,20 @@
 # Journal des modifications
 
+## 1.13.0 — modules réorganisés, règle DS, filtre préventif, tableau de bord graphique
+- **Gestion de la maintenance corrective** (remplace « Demandes d'intervention ») : onglets **DI** et **OT correctifs**
+  (visibles selon les droits DI / OT).
+- **Gestion des ordres de travail (OT)** : **OT préventifs uniquement** (issus d'un plan ou créés « Nouvel OT préventif »).
+- **Gestion et suivi des matériaux** (nouveau module) : appareils de mesure, contrôles réglementaires et organismes,
+  retirés de l'Arborescence (droits : volet Arborescence, renommé « Arborescence technique et matériaux »).
+- **Règle DS / clôture** : toute DS rattachée à un OT le passe « En attente pièce » ; l'OT ne peut pas être clôturé tant
+  qu'une DS n'est pas traitée (BS traité) ou annulée ; il ne repasse « En cours » que lorsque **toutes** ses DS sont soldées.
+- **Préventif : filtre par intervenant** (plans, agenda, plage de déclenchement, plans au compteur).
+- **Indicateurs › Tableau de bord** (nouvel onglet par défaut) : chiffres clés avec variation vs période précédente,
+  activité sur 12 mois, disponibilité et MTTR mensuels (avec cible), charge préventive / corrective, pannes par système,
+  top 10 des équipements, disponibilité par unité. Graphiques SVG sans bibliothèque externe, infobulles au survol
+  et au clavier, tableau de données sous chaque graphe, palette validée (contraste et daltonisme).
+- Tests : 182 côté interface, 39 côté serveur.
+
 ## 1.12.0 — compteurs, restructuration, fenêtre de chargement, dossiers pilote et sécurité
 
 ### Restructuration du code de l'interface

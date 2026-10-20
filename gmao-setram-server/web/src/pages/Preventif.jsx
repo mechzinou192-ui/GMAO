@@ -12,9 +12,22 @@ import {CompteursPage,statutBadge} from "./Compteurs.jsx";
 
 export function Planning(props){
  const [vue,setVue]=useState("plans");
+ const [pers,setPers]=useState("");
+ // filtre par intervenant assigné : s'applique aux plans, à l'agenda, à la plage de déclenchement et aux plans au compteur
+ const personnes=[...new Set(props.planning.filter(p=>p.unit===props.unit).flatMap(p=>p.assignes||(p.assigne?[p.assigne]:[])))].sort((a,b)=>a.localeCompare(b,"fr"));
+ const persOk=pers&&personnes.includes(pers)?pers:"";
+ const planning=persOk?props.planning.filter(p=>(p.assignes||(p.assigne?[p.assigne]:[])).includes(persOk)):props.planning;
+ const bts=persOk?props.bts.filter(b=>!b.plan||planning.some(p=>p.code===b.plan)):props.bts;
  return (<div className="space-y-4">
-  <SubTabs value={vue} onChange={setVue} items={[["plans","Plans préventifs"],["compteurs","Compteurs (km, heures)"]]}/>
-  {vue==="plans"?<PlanningPlans {...props}/>:<CompteursPage compteurs={props.compteurs} planning={props.planning} bts={props.bts} equipements={props.equipements} unit={props.unit} user={props.user}
+  <div className="flex flex-wrap items-end justify-between gap-3">
+   <SubTabs value={vue} onChange={setVue} items={[["plans","Plans préventifs"],["compteurs","Compteurs (km, heures)"]]}/>
+   <label className="text-xs text-slate-400" data-testid="filtre-intervenant">Intervenant
+    <select value={persOk} onChange={e=>setPers(e.target.value)} className="block mt-1 min-w-[220px] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">
+     <option value="">Tous les intervenants</option>{personnes.map(n=><option key={n} value={n}>{n}</option>)}
+    </select></label>
+  </div>
+  {persOk && <div className="text-xs text-sky-400">Plans assignés à <b>{persOk}</b> : {planning.filter(p=>p.unit===props.unit).length}</div>}
+  {vue==="plans"?<PlanningPlans {...props} planning={planning} bts={bts}/>:<CompteursPage compteurs={props.compteurs} planning={planning} bts={bts} equipements={props.equipements} unit={props.unit} user={props.user}
     onSave={props.onSaveCompteur} onDeclencher={props.onDeclencher} onEditPlan={props.onEdit}/>}
  </div>);
 }

@@ -163,7 +163,7 @@ describe('application complète en mode site statique', () => {
 
   it('connexion par un profil, liste des DI avec les données de démonstration, ouverture du détail', async () => {
     await seConnecter('Responsable maintenance');
-    onglet(/Demandes/);
+    onglet(/Maintenance corrective/);
     const cartes = await screen.findByTestId('di-cartes');
     const code = Object.keys(apiSite._etat().records.dis).filter((id) => id.startsWith('DI-ALG-')).sort().reverse()[0];   // unité courante : Alger
     await waitFor(() => expect(document.body.textContent).toContain(code));
@@ -172,7 +172,7 @@ describe('application complète en mode site statique', () => {
 
   it('création d\'une DI par l\'interface : numéro attribué, DI enregistrée', async () => {
     await seConnecter('Responsable maintenance');
-    onglet(/Demandes/);
+    onglet(/Maintenance corrective/);
     fireEvent.click(await screen.findByText('Nouvelle DI'));
     const select = await waitFor(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value.startsWith('CFO.ALG'))); if (!s) throw new Error('equipements'); return s; });
     fireEvent.change(select, { target: { value: 'CFO.ALG.SST.01' } });
@@ -220,6 +220,66 @@ describe('application complète en mode site statique', () => {
     fireEvent.click((await screen.findAllByText(ot.id))[0]);
     const bloc = await screen.findByTestId('releve-cloture');
     expect(bloc.textContent).toContain('Obligatoire pour clôturer');
+  });
+
+  it('modules : maintenance corrective (DI + OT correctifs), OT préventifs seuls, matériaux séparés de l’arborescence', async () => {
+    await seConnecter('Responsable maintenance');
+    const recs = Object.values(apiSite._etat().records.bts);
+    const corr = recs.find((r) => r.unit === 'Alger' && !r.data.plan && r.data.type !== 'Préventive');
+    const prev = recs.find((r) => r.unit === 'Alger' && r.data.plan);
+    onglet(/Maintenance corrective/);
+    fireEvent.click(await screen.findByText('OT correctifs'));
+    await waitFor(() => expect(document.body.textContent).toContain(corr.id));
+    expect(document.body.textContent).not.toContain(prev.id);
+    onglet(/Ordres de travail/);
+    await waitFor(() => expect(document.body.textContent).toContain(prev.id));
+    expect(document.body.textContent).not.toContain(corr.id);
+    onglet(/Arborescence/);
+    await waitFor(() => expect(document.body.textContent).toContain('Ajouter un système'));
+    expect(document.body.textContent).not.toContain('Appareils de mesure');
+    onglet(/Matériaux/);
+    for (const t of ['Appareils de mesure', 'Contrôles réglementaires', 'Organismes']) expect(await screen.findByText(t)).toBeTruthy();
+  });
+
+  it('OT : une DS non traitée bloque la clôture et met l’OT en attente de pièce', async () => {
+    const ot = Object.values(apiSite._etat().records.bts).find((r) => r.unit === 'Alger' && !r.data.plan && r.data.etat === 'En cours');
+    const t = new Date().toISOString();
+    (apiSite._etat().records.dss ||= {})['DS-TEST-0001'] = { id: 'DS-TEST-0001', unit: '', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t,
+      data: { code: 'DS-TEST-0001', eq: ot.data.eq, nom: ot.data.nom, designation: 'Test', piece: 'P-001', pieceNom: 'Fusible 10A', qte: 1, prix: 120, bt: ot.id, etat: 'Transmis au Magasinier' } };
+    await seConnecter('Responsable maintenance');
+    onglet(/Maintenance corrective/);
+    fireEvent.click(await screen.findByText('OT correctifs'));
+    fireEvent.click((await screen.findAllByText(ot.id))[0]);
+    const bloc = await screen.findByTestId('ot-attente-piece');
+    expect(bloc.textContent).toContain('DS-TEST-0001');
+    fireEvent.click(screen.getByText(/Clôturer/, { selector: 'button' }));
+    expect(await screen.findByText(/sortie magasin n'est pas traitée|tâches contrôlées|intervenant/)).toBeTruthy();
+    expect(apiSite._etat().records.bts[ot.id].data.etat).not.toBe('Clôturé');
+  });
+
+  it('préventif : filtre des plans par intervenant', async () => {
+    await seConnecter('Responsable maintenance');
+    onglet(/Préventif/);
+    const filtre = within(await screen.findByTestId('filtre-intervenant')).getByRole('combobox');
+    const noms = [...filtre.options].map((o) => o.value).filter(Boolean);
+    expect(noms.length).toBeGreaterThan(1);
+    const plans = Object.values(apiSite._etat().records.planning).filter((r) => r.unit === 'Alger');
+    const nom = noms[0];
+    fireEvent.change(filtre, { target: { value: nom } });
+    const attendus = plans.filter((r) => (r.data.assignes || []).includes(nom));
+    expect(await screen.findByText(new RegExp('Plans assignés à'))).toBeTruthy();
+    expect(document.body.textContent).toContain('Plans assignés à ' + nom + ' : ' + attendus.length);
+    const autre = plans.find((r) => !(r.data.assignes || []).includes(nom) && !r.data.declenchement);
+    if (autre) expect([...document.querySelectorAll('tbody td')].some((td) => td.textContent === autre.id)).toBe(false);
+  });
+
+  it('indicateurs : tableau de bord graphique (chiffres clés, graphes, tableaux de données)', async () => {
+    await seConnecter('Direction');
+    onglet(/Indicateurs/);
+    const tb = await screen.findByTestId('kpi-graphiques');
+    for (const t of ['Disponibilité', 'MTBF', 'MTTR', 'Activité de maintenance — 12 derniers mois', 'Charge préventive / corrective', 'Top 10 des équipements en panne']) expect(tb.textContent).toContain(t);
+    expect(tb.querySelectorAll('svg').length).toBeGreaterThanOrEqual(4);
+    expect(tb.querySelectorAll('details.gm-viz-table').length).toBeGreaterThanOrEqual(4);
   });
 
   it('accueil : tableau de bord limité aux volets autorisés', async () => {

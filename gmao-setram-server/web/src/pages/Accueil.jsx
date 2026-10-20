@@ -14,11 +14,12 @@ export const ageJours=(s)=>{if(!s) return 0; const d=parseD(s); return Math.floo
 export function Accueil({tabOk,unit,dis,bts,planning,compteurs=[],pieces,alertes,sa,onGo,onNewDI,onNewOT,onOpenDI,onOpenOT}){
  const fav=[
   tabOk(1)&&{k:"ndi",lib:"Nouvelle demande d'intervention",coul:"green",ic:I.plus2,go:onNewDI},
-  tabOk(1)&&{k:"di",lib:"Demandes d'intervention",coul:"purple",ic:I.flag,go:()=>onGo(1)},
-  tabOk(2)&&{k:"not",lib:"Nouvel ordre de travail",coul:"teal",ic:I.plus2,go:onNewOT},
-  tabOk(2)&&{k:"ot",lib:"Ordres de travail",coul:"blue",ic:I.wrench,go:()=>onGo(2)},
+  (tabOk(1)||tabOk(2))&&{k:"di",lib:"Maintenance corrective (DI / OT)",coul:"purple",ic:I.flag,go:()=>onGo(1)},
+  tabOk(2)&&{k:"not",lib:"Nouvel OT préventif",coul:"teal",ic:I.plus2,go:onNewOT},
+  tabOk(2)&&{k:"ot",lib:"Ordres de travail préventifs",coul:"blue",ic:I.wrench,go:()=>onGo(2)},
   tabOk(3)&&{k:"pp",lib:"Planning préventif",coul:"orange",ic:I.cal,go:()=>onGo(3)},
   tabOk(0)&&{k:"arb",lib:"Arborescence technique",coul:"navy",ic:I.tree,go:()=>onGo(0)},
+  tabOk(0)&&{k:"mat",lib:"Gestion et suivi des matériaux",coul:"teal",ic:I.gauge,go:()=>onGo(9)},
   tabOk(4)&&{k:"stk",lib:"Gestion de stock",coul:"red",ic:I.store,go:()=>onGo(4)},
   tabOk(5)&&{k:"per",lib:"Gestion du personnel",coul:"cyan",ic:I.team,go:()=>onGo(5)},
   tabOk(6)&&{k:"kpi",lib:"Indicateurs de performance",coul:"slate",ic:I.chart,go:()=>onGo(6)},

@@ -8,11 +8,11 @@ import {UNIT_ABBR} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Field,Inp,SubTabs,fmtFourn} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
-export function Arbo({unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
+export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
  const [openSys,setOpenSys]=useState(null);
  const [openSub,setOpenSub]=useState(null);
  const [openEq,setOpenEq]=useState(null);
- const [tab,setTab]=useState("arbo");
+ const [tab,setTab]=useState(mode==="arbo"?"arbo":"mesure");
  const [ctx,setCtx]=useState(null);
  const etiquettes=()=>{
   const si=openSub?parseInt(String(openSub).split("-").pop(),10):-1;
@@ -44,7 +44,7 @@ export function Arbo({unit,equipements,systemsList,treeStruct,onAddEquip,onCreat
     lignes:eqs.flatMap(e=>(e.sousEquip||[]).map(se=>[e.code,e.nom,se.code,se.nom,fmtFourn(se.fournisseurs)]))}]});
  };
  return (<div className="space-y-4">
-  <SubTabs value={tab} onChange={setTab} items={[["arbo","Arborescence Technique"],["mesure","Appareils de Mesure"],["ctrl","Contrôles Réglementaires"],["org","Organismes"]]}/>
+  {mode!=="arbo" && <SubTabs value={tab} onChange={setTab} items={[["mesure","Appareils de mesure"],["ctrl","Contrôles réglementaires"],["org","Organismes"]]}/>}
   <div className="flex flex-wrap gap-2 justify-end">
    {tab==="arbo" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddSystem}><span className="flex items-center gap-1">{I.plus} Ajouter un système</span></Btn>}
    {tab==="mesure" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddMesure}><span className="flex items-center gap-1">{I.plus} Ajouter un appareil</span></Btn>}

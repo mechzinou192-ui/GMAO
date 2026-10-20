@@ -14,10 +14,10 @@ import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,HoraireConsignation,Info,Inp,
 import {I} from "../ui/icones.jsx";
 
 /* ===== Page 2 : Ordres de Travail (générés par la Maintenance, remplis puis clôturés par un autre intervenant) ===== */
-export function BTPage({bts,pieces,onNouveauBT,onOpenBT}){
+export function BTPage({bts,pieces,titre="Ordres de Travail (OT)",sousTitre,onNouveauBT,onOpenBT}){
  const [filtre,setFiltre]=useState("Tous");
  const liste=bts.filter(b=>filtre==="Tous"||b.etat===filtre);
- const exportBT=()=>exporterXlsx({fichier:"Ordres_de_Travail_OT",feuilles:[{nom:"OT",titre:"Ordres de Travail (OT)"+(filtre!=="Tous"?" — "+filtre:""),
+ const exportBT=()=>exporterXlsx({fichier:"Ordres_de_Travail_OT",feuilles:[{nom:"OT",titre:titre+(filtre!=="Tous"?" — "+filtre:""),
   colonnes:[{h:"Code OT"},{h:"DI liée"},{h:"Plan préventif"},{h:"Code équipement"},{h:"Équipement"},{h:"Type"},{h:"Assigné à"},{h:"Durée de travail"},{h:"Consignation"},{h:"Travail exceptionnel"},{h:"Consigne / Panne",max:50},{h:"Avancement",t:"pct"},{h:"Coût total (DA)",t:"num"},{h:"État"},{h:"Généré le",t:"datetime"},{h:"Clôturé le",t:"datetime"}],
   lignes:liste.map(b=>[b.code,b.di||"",b.plan||"",b.eq,b.nom,b.type,b.assigne||((b.intervenants||[])[0]?.nom)||"",b.horaire||"Jour",b.consignation||"Non",b.exc?(b.motifExc||"Oui"):"",(b.consigne&&b.consigne!=="-")?b.consigne:((b.panne&&b.panne!=="-")?b.panne:""),avancement(b)===null?"":avancement(b),coutBT(b,pieces).total,b.etat,b.dateGeneration||"",b.dateCloture||""])}]});
  return (<div className="space-y-5">
@@ -29,8 +29,8 @@ export function BTPage({bts,pieces,onNouveauBT,onOpenBT}){
   ]}/>
   <Card>
    <div className="flex justify-between items-center mb-1 flex-wrap gap-2">
-    <div><h2 className="font-semibold text-slate-100">Ordres de Travail (OT)</h2><div className="text-xs text-slate-500">Générés par la Maintenance (état « En cours ») — cliquez sur une ligne pour saisir le compte-rendu puis clôturer</div></div>
-    <div className="flex gap-2"><ExportBtn onClick={exportBT}/><Btn onClick={onNouveauBT}><span className="flex items-center gap-1">{I.plus} Nouvel OT</span></Btn></div>
+    <div><h2 className="font-semibold text-slate-100">{titre}</h2><div className="text-xs text-slate-500">{sousTitre||"Cliquez sur une ligne pour saisir le compte-rendu puis clôturer"}</div></div>
+    <div className="flex gap-2"><ExportBtn onClick={exportBT}/>{onNouveauBT&&<Btn onClick={onNouveauBT}><span className="flex items-center gap-1">{I.plus} Nouvel OT</span></Btn>}</div>
    </div>
    <div className="flex flex-wrap gap-1 mt-2">{["Tous","En cours","En attente pièce","Clôturé"].map(f=><Btn key={f} cls={"text-xs "+(filtre===f?"bg-sky-600 text-white":"bg-slate-700 hover:bg-slate-600 text-slate-200")} onClick={()=>setFiltre(f)}>{f}</Btn>)}</div>
    <div className="md:hidden mt-3 space-y-2" data-testid="bt-cartes">
@@ -91,7 +91,7 @@ export function BTReadOnly({bt,pieces}){
  </div>);
 }
 
-export function BTDetail({bt,compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
+export function BTDetail({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
  const clos=bt.etat==="Clôturé";
  return (<div>
   <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3">
@@ -109,7 +109,7 @@ export function BTDetail({bt,compteur,pieces,inter,equipements,onSave,onCloturer
    {bt.dateCloture && <Info l="Clôturé le">{bt.dateCloture}</Info>}
   </div>
   {bt.consigne && bt.consigne!=="-" && <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 mb-2"><span className="text-slate-500">Consigne de la Maintenance : </span>{bt.consigne}</div>}
-  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onCreateDS={onCreateDS}/>}
+  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} dsOuvertes={dsOuvertes} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onCreateDS={onCreateDS}/>}
   <PiecesJointes collection="bts" recordId={bt.code}/>
  </div>);
 }
@@ -146,7 +146,7 @@ export function BTCreateForm({di,inter,equipements,pieces,onSubmit}){
 }
 
 /* Étape 2 — Saisie par l'intervenant puis clôture */
-export function BTFillForm({bt,compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
+export function BTFillForm({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
  const [releveCpt,setReleveCpt]=useState("");
  const sysBT=systemeDe(bt.eq,bt.nom,equipements);
  const interEq=interPourSys(inter,sysBT);
@@ -167,7 +167,7 @@ export function BTFillForm({bt,compteur,pieces,inter,equipements,onSave,onClotur
  const nbNok=taches.filter(t=>tRes(t)==="NOK" && !t.di && t.creerDI===true).length;
  const nokSansChoix=()=>taches.some(t=>tRes(t)==="NOK" && !t.di && typeof t.creerDI!=="boolean");
  const setRes=(i,v)=>setTaches(l=>l.map((x,j)=>j===i?{...x,res:v,com:v==="OK"?"":x.com,creerDI:v==="OK"?undefined:x.creerDI}:x));
- const attente=bt.etat==="En attente pièce";
+ const attente=bt.etat==="En attente pièce"||dsOuvertes.length>0;
  const isPrev=bt.type==="Préventive"||!!bt.plan;
 
  function ajouterInt(){
@@ -185,6 +185,7 @@ export function BTFillForm({bt,compteur,pieces,inter,equipements,onSave,onClotur
   if(nokSansCom()){setErr("Commentaire obligatoire pour chaque tâche « Non OK ».");return;}
   if(nokSansChoix()){setErr("Pour chaque tâche « Non OK », indiquez si une DI doit être créée ou non.");return;}
   if(!isPrev && taches.length===0 && !f.panne.trim()){setErr("Renseignez la panne / le constat avant de clôturer.");return;}
+  if(dsOuvertes.length){setErr("Clôture impossible : la sortie magasin n'est pas traitée ("+dsOuvertes.map(d=>d.code+" — "+d.etat).join(", ")+").");return;}
   if(intervenants.length===0){setErr("Ajoutez au moins un intervenant avant de clôturer.");return;}
   if(compteur){ const e=controleReleve(compteur,{date:todayStr(),valeur:releveCpt}); if(e){setErr("Relevé du compteur : "+e);return;} onCloturer({...data(),releveCompteur:releveCpt}); return; }
   onCloturer(data());
@@ -197,7 +198,7 @@ export function BTFillForm({bt,compteur,pieces,inter,equipements,onSave,onClotur
    <div className="text-xs text-slate-400">Obligatoire pour clôturer : il remet à zéro le cycle du plan. Dernier relevé : {d?fmtNb(d.cumul)+" "+compteur.unite+" le "+frDate(d.date):"aucun"}.</div>
    <Inp inputMode="decimal" placeholder={"Valeur lue ("+compteur.unite+")"} value={releveCpt} onChange={e=>{setReleveCpt(e.target.value);setErr("");}}/>
   </div>;})()}
-  {attente && <div className="text-xs text-rose-300 bg-rose-900/30 border border-rose-700 rounded-lg px-3 py-2 mb-2">OT en attente de pièce : la clôture est bloquée jusqu'à la sortie magasin de la pièce demandée.</div>}
+  {attente && <div className="text-xs text-rose-300 bg-rose-900/30 border border-rose-700 rounded-lg px-3 py-2 mb-2" data-testid="ot-attente-piece">OT en attente de pièce : la clôture est bloquée jusqu'au traitement de la sortie magasin{dsOuvertes.length?" ("+dsOuvertes.map(d=>d.code+" — "+d.etat).join(", ")+")":""}.</div>}
   {taches.length>0 && <div className="mb-3 bg-slate-900/60 border border-slate-700 rounded-lg p-3">
    <div className="flex justify-between text-xs text-slate-300 mb-1"><span className="font-medium">Tâches à contrôler — {taches.filter(t=>tRes(t)).length}/{taches.length}</span><span>{pct} % contrôlé</span></div>
    <ProgressBar pct={pct}/>

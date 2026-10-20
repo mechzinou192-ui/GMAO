@@ -1,13 +1,13 @@
 // Application connectée : données synchronisées, actions métier, mise en page (menu, en-tête, onglets).
 import React,{useState,useEffect,useRef} from "react";
-import {ACCUEIL,ORG_DOM,ROLES} from "./constantes.js";
+import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES} from "./constantes.js";
 import {XL_LOGO} from "./excel.js";
 import {ajouterReleve,dernier,etatPlanCompteur,isCompteurPlan} from "./lib/compteurs.js";
 import {addMonths,fmtD,frDate,todayStr} from "./lib/dates.js";
 import {CDC_ETATS,CONTRAT_SEUIL_MOIS,HAB_SEUIL_MOIS,contratInfo,habListe} from "./lib/echeances.js";
 import {FERIES_DEFAUT,congeAt,libConge} from "./lib/jours.js";
 import {kpiEqInfo,kpiUnitOf} from "./lib/kpi.js";
-import {buildBTPrev,datesPlanDansPlage,isPeriodePlan,occurrencesPlan,prochaineEcheance,tRes} from "./lib/preventif.js";
+import {buildBTPrev,datesPlanDansPlage,estOTPreventif,isPeriodePlan,occurrencesPlan,prochaineEcheance,tRes} from "./lib/preventif.js";
 import {codeDepuisAdresse} from "./lib/qr.js";
 import {SYSTEMS_SEED,TREE_STRUCT_SEED} from "./lib/referentiels-defaut.js";
 import {UNITS,UNIT_ABBR} from "./lib/unites.js";
@@ -16,7 +16,8 @@ import {Accueil} from "./pages/Accueil.jsx";
 import {AdminPage} from "./pages/Administration.jsx";
 import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
 import {Splash} from "./pages/Connexion.jsx";
-import {DIDetail,DIForm,DIPage} from "./pages/DemandesIntervention.jsx";
+import {DIDetail,DIForm} from "./pages/DemandesIntervention.jsx";
+import {MaintenanceCorrective} from "./pages/MaintenanceCorrective.jsx";
 import {IndicateursPage} from "./pages/Indicateurs.jsx";
 import {BTCreateForm,BTDetail,BTPage} from "./pages/OrdresTravail.jsx";
 import {Equipe,InterForm,PrestaForm} from "./pages/Personnel.jsx";
@@ -26,6 +27,7 @@ import {REG,useSynced} from "./sync.js";
 import {Btn,Card,Modal,MotifForm} from "./ui/base.jsx";
 import {I} from "./ui/icones.jsx";
 
+const DS_CLOSES=["Traité","Annulé"];
 export function GmaoApp({session,onLogout}){
  const sa=session.superAdmin; const user=session.nom;
  const unitsOk=sa?UNITS:UNITS.filter(u=>session.droits[u]);
@@ -35,8 +37,12 @@ export function GmaoApp({session,onLogout}){
  const kpiOk=(k)=>sa||!grant.kpi||grant.kpi.includes(k); // kpi absent = tout autorisé (comptes existants)
  const tabOk=(i)=>i===ACCUEIL?true:i===7?sa:(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
- const tab=tabOk(tabRaw)?tabRaw:Math.max(0,[0,1,2,3,4,5,6,7].findIndex(tabOk));
- const setTab=(i)=>{if(tabOk(i))setTabRaw(i);};
+ // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
+ const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===MATERIAUX?tabOk(0):tabOk(i);
+ const tab=voir(tabRaw)?tabRaw:ACCUEIL;
+ const setTab=(i)=>{if(voir(i))setTabRaw(i);};
+ // ouvre un OT dans le module qui le contient (OT préventifs : Gestion des OT ; correctifs : maintenance corrective)
+ const ouvrirOT=(code)=>{const b=bts.find(x=>x.code===code); setTab(b&&estOTPreventif(b)?2:1); setBtDetail(code);};
  const mobile=()=>typeof window!=="undefined"&&window.innerWidth<768;
  const [sidebar,setSidebar]=useState(()=>!mobile());   // téléphone : menu fermé au démarrage
  const allerA=(i)=>{setTab(i); if(mobile()) setSidebar(false);};
@@ -145,8 +151,13 @@ export function GmaoApp({session,onLogout}){
   setPrestaModal(null);
  }
 
+ // Une DS est « ouverte » tant que sa sortie magasin n'est pas traitée (ni annulée) : l'OT lié reste « En attente pièce »
+ const dsOuvertesDe=(btCode,sauf)=>dss.filter(d=>d.bt===btCode&&d.code!==sauf&&!DS_CLOSES.includes(d.etat));
+ const debloquerOT=(btCode,sauf)=>{ if(btCode && dsOuvertesDe(btCode,sauf).length===0) setBts(b=>b.map(x=>x.code===btCode&&x.etat==="En attente pièce"?{...x,etat:"En cours"}:x)); };
  function annulerDS(dsCode,motif){
+  const dsx=dss.find(x=>x.code===dsCode);
   setDss(d=>d.map(x=>x.code===dsCode?{...x,etat:"Annulé",motif:motif||"Non précisé"}:x));
+  if(dsx) debloquerOT(dsx.bt,dsCode);
   setMotifModal(null);
  }
 
@@ -177,9 +188,8 @@ export function GmaoApp({session,onLogout}){
   const suffisant = piece.stock>=f.qte;
   const ds={code:dsCode,eq:f.eq,nom:f.nom,designation:f.designation,piece:piece.code,pieceNom:piece.nom,qte:f.qte,prix:piece.prix,bt:f.bt||null,etat:suffisant?"Transmis au Magasinier":"En attente pièce"};
   setDss(d=>[ds,...d]);
-  if(!suffisant){
-   if(f.bt) setBts(bs=>bs.map(b=>b.code===f.bt?{...b,etat:"En attente pièce"}:b));
-  }
+  // toute DS rattachée à un OT le met « En attente pièce » jusqu'au traitement du BS par le magasin
+  if(f.bt) setBts(bs=>bs.map(b=>b.code===f.bt&&b.etat!=="Clôturé"?{...b,etat:"En attente pièce"}:b));
   setDsModal(null);
  }
 
@@ -207,7 +217,7 @@ export function GmaoApp({session,onLogout}){
   const ds=dss.find(d=>d.code===bs.ds);
   if(ds){
    setDss(d=>d.map(x=>x.code===ds.code?{...x,etat:"Traité"}:x));
-   if(ds.bt) setBts(b=>b.map(x=>x.code===ds.bt && x.etat==="En attente pièce"?{...x,etat:"En cours"}:x));
+   debloquerOT(ds.bt,ds.code);   // l'OT ne repasse « En cours » que si toutes ses DS sont traitées
   }
  }
 
@@ -331,6 +341,8 @@ const [notice,setNotice]=useState(null);
   setBtDetail(null);
  }
  async function cloturerBT(code,data){
+  const bloquantes=dsOuvertesDe(code);
+  if(bloquantes.length){ setBts(b=>b.map(x=>x.code===code&&x.etat!=="Clôturé"?{...x,etat:"En attente pièce"}:x)); setSyncErr("Clôture impossible : DS non traitée(s) par le magasin ("+bloquantes.map(d=>d.code).join(", ")+"). L'OT reste en attente de pièce."); return; }
   const btx=bts.find(b=>b.code===code); if(data&&data.taches&&btx){ const t=await genererDIsDefauts(btx,data.taches); if(!t) return; data={...data,taches:t}; }
   setBts(bs=>bs.map(b=>b.code===code?{...b,...(data||{}),etat:"Clôturé",dateCloture:new Date().toISOString().slice(0,16).replace("T"," ")}:b));
   const bt=bts.find(b=>b.code===code);
@@ -414,14 +426,15 @@ const [notice,setNotice]=useState(null);
 
  const tabs=[
   {n:"Arborescence Technique",c:"Arborescence",ic:I.tree},
-  {n:"Demandes d'Intervention (DI)",c:"Demandes (DI)",ic:I.flag},
-  {n:"Ordres de Travail (OT)",c:"Ordres de travail",ic:I.wrench},
+  {n:"Gestion de la maintenance corrective",c:"Maintenance corrective",ic:I.flag},
+  {n:"Gestion des ordres de travail (OT)",c:"Ordres de travail",ic:I.wrench},
   {n:"Planning Préventif",c:"Préventif",ic:I.cal},
   {n:"Gestion de stock",c:"Gestion de stock",ic:I.store},
   {n:"Gestion du personnel",c:"Gestion du personnel",ic:I.team},
   {n:"Indicateurs de performance",c:"Indicateurs",ic:I.chart},
   {n:"Administration",c:"Administration",ic:I.gear},
   {n:"Accueil",c:"Accueil",ic:I.home},   // ACCUEIL = 8 : hors volets de droits (0 à 7)
+  {n:"Gestion et suivi des matériaux",c:"Matériaux",ic:I.gauge},   // MATERIAUX = 9 : volet Arborescence
  ];
 
  const inScope=(code)=>kpiUnitOf(code,equipements)===unit&&sysOk(kpiEqInfo(code,equipements).system);
@@ -443,7 +456,7 @@ const [notice,setNotice]=useState(null);
  if(syncStates.includes("error")) return <Splash msg="Impossible de joindre le serveur GMAO." action={()=>window.location.reload()} actionLabel="Réessayer"/>;
  if(!syncStates.every(s=>s==="ready")) return <Splash msg="Chargement des données…"/>;
 
- const ordreMenu=[ACCUEIL,0,1,2,3,4,5,6,7];
+ const ordreMenu=[ACCUEIL,0,MATERIAUX,1,2,3,4,5,6,7];
  const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0);
  const alerteRouge=(tabOk(5)&&(ctRouge+habRouge)>0)||(tabOk(4)&&critStock.length>0);
  const initiales=(user||"?").replace(/^Démo — /,"").split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("");
@@ -494,7 +507,7 @@ const [notice,setNotice]=useState(null);
     <select value={unit} onChange={e=>{setUnit(e.target.value); setSidebar(false);}} aria-label="Unité opérationnelle (menu)">{unitsOk.map(u=><option key={u}>{u}</option>)}</select>
    </div>
    <nav className="gm-rail-nav flex flex-col">
-    {ordreMenu.map(i=>!tabOk(i)?null:(
+    {ordreMenu.map(i=>!voir(i)?null:(
      <button key={i} onClick={()=>allerA(i)} title={tabs[i].n} className={"gm-rail-item"+(tab===i?" is-active":"")} aria-current={tab===i?"page":undefined}>
       <span className="gm-rail-ic">{tabs[i].ic}
        {i===5&&(habRouge+habOrange+ctAl.length>0)&&<span className={"gm-count "+((habRouge+ctRouge)>0?"is-red":"is-amber")} title="Habilitations et contrats prestataires à traiter">{habRouge+habOrange+ctAl.length}</span>}
@@ -502,7 +515,7 @@ const [notice,setNotice]=useState(null);
       </span>{tabs[i].c}
      </button>))}
    </nav>
-   <div className="gm-rail-foot mt-auto">v1.12</div>
+   <div className="gm-rail-foot mt-auto">v1.13</div>
   </aside>}
 
   <div className="flex-1 min-w-0 flex flex-col">
@@ -519,16 +532,16 @@ const [notice,setNotice]=useState(null);
     </div>
     <div className="mt-2 space-y-1.5">{alertesVisibles.slice(0,6).map(a=><div key={a.key} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-900 rounded-lg px-2 py-1.5">
      <span className="text-slate-300"><b className="text-rose-300">{a.nom}</b> est en congé {libConge(a.c)}, mais est assigné à <span className="text-sky-400">{a.label}</span> ({a.kind==="plan"?"prévu le "+a.dates.slice(0,3).map(frDate).join(", ")+(a.dates.length>3?"…":""):"OT en cours"}).</span>
-     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white text-xs" onClick={()=>{ if(a.kind==="plan"){const pl=planning.find(x=>x.code===a.code); setTab(3); setPlanModal({mode:"edit",item:pl});} else {setTab(2); setBtDetail(a.code);} }}>Changer l'intervenant</Btn>
+     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white text-xs" onClick={()=>{ if(a.kind==="plan"){const pl=planning.find(x=>x.code===a.code); setTab(3); setPlanModal({mode:"edit",item:pl});} else {ouvrirOT(a.code);} }}>Changer l'intervenant</Btn>
     </div>)}
     {alertesVisibles.length>6 && <div className="text-xs text-slate-400">… et {alertesVisibles.length-6} autre(s) alerte(s).</div>}</div>
    </div>}
 
    {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
-     onGo={allerA} onNewDI={()=>setDiModal({})} onNewOT={()=>setBtModal({di:null})} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={(c)=>setBtDetail(c)}/>}
-   {tab===1 && <DIPage dis={visDis} bts={visBts} onNewDI={()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={(di)=>setBtModal({di})}/>}
-   {tab===2 && <BTPage bts={visBts} pieces={pieces} onNouveauBT={()=>setBtModal({di:null})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
-   {tab===0 && <Arbo unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
+     onGo={allerA} onNewDI={()=>setDiModal({})} onNewOT={()=>setBtModal({di:null})} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
+   {tab===1 && <MaintenanceCorrective voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={(di)=>setBtModal({di})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={()=>setBtModal({di:null})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
      onAddEquip={(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
      onCreateDI={(equip)=>setDiModal({prefill:{eq:equip.code,nom:equip.nom}})}
@@ -542,7 +555,7 @@ const [notice,setNotice]=useState(null);
      mesureList={mesureList} ctrlList={ctrlList} onAddCtrl={()=>setCtrlModal({mode:"add"})} onEditCtrl={(c)=>setCtrlModal({mode:"edit",item:c})} organismes={organismes} onAddOrg={()=>setOrgModal({mode:"add"})} onEditOrg={(o)=>setOrgModal({mode:"edit",item:o})}
          onAddMesure={()=>setMesureModal({mode:"add"})}
      onEditMesure={(item)=>setMesureModal({mode:"edit",item})}/>}
-   {!tabOk(tab) && <Card><div className="text-sm text-slate-400">Aucun volet n'est accessible pour votre compte sur cette unité. Contactez le super administrateur.</div></Card>}
+   {!voir(tab) && <Card><div className="text-sm text-slate-400">Aucun volet n'est accessible pour votre compte sur cette unité. Contactez le super administrateur.</div></Card>}
    {tab===7 && sa && <AdminPage systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,organismes,mesures:mesureList,controles:ctrlList}}/>}
    {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
@@ -562,7 +575,7 @@ const [notice,setNotice]=useState(null);
 
   {diDetail && (()=>{const d=dis.find(x=>x.code===diDetail); if(!d) return null; const btLie=bts.find(b=>b.di===d.code);
    return <Modal wide title={"Demande d'Intervention — "+d.code} onClose={()=>setDiDetail(null)}>
-    <DIDetail di={d} bt={btLie} onGenererBT={()=>{setDiDetail(null);setBtModal({di:d});}} onOpenBT={()=>{setDiDetail(null);setTab(2);setBtDetail(btLie.code);}}/>
+    <DIDetail di={d} bt={btLie} onGenererBT={()=>{setDiDetail(null);setBtModal({di:d});}} onOpenBT={()=>{setDiDetail(null);ouvrirOT(btLie.code);}}/>
    </Modal>;})()}
 
   {notice && <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-emerald-700 text-emerald-50 text-sm rounded-xl px-4 py-3 shadow-lg">✓ {notice}</div>}
@@ -571,7 +584,7 @@ const [notice,setNotice]=useState(null);
   {btDetail && (()=>{const b=bts.find(x=>x.code===btDetail); if(!b) return null;
    const plb=b.plan?planning.find(p=>p.code===b.plan):null; const cptB=plb&&isCompteurPlan(plb)?cptDe(plb)||null:null;
    return <Modal wide title={"Ordre de Travail — "+b.code} onClose={()=>setBtDetail(null)}>
-    <BTDetail key={b.code} bt={b} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)}
+    <BTDetail key={b.code} bt={b} dsOuvertes={dsOuvertesDe(b.code)} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)}
      onCreateDS={(item)=>{setBtDetail(null);setDsModal({prefill:{eq:b.eq,nom:b.nom,piece:item.code,qte:item.qte,bt:b.code}});}}/>
    </Modal>;})()}
 

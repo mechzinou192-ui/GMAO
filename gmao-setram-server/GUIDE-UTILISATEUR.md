@@ -1,6 +1,6 @@
 # GMAO SETRAM — Guide utilisateur
 
-**Version de l'application : 1.12** · Public : agents d'exploitation, techniciens, chargés et responsables de maintenance, magasiniers, direction, administrateurs
+**Version de l'application : 1.13** · Public : agents d'exploitation, techniciens, chargés et responsables de maintenance, magasiniers, direction, administrateurs
 
 Ce guide explique comment utiliser la GMAO au quotidien. Chaque utilisateur ne voit que les modules et les unités ouverts par l'administrateur : si un écran décrit ici n'apparaît pas pour vous, c'est que vos droits ne le prévoient pas.
 
@@ -24,7 +24,7 @@ Pensez à **vous déconnecter** sur un poste partagé (menu profil, en haut à d
 
 | Zone | Rôle |
 |---|---|
-| **Menu à gauche** (icônes) | Accès aux modules : Accueil, Arborescence, Demandes (DI), Ordres de travail, Préventif, Gestion de stock, Gestion du personnel, Indicateurs, Administration. Une pastille rouge signale des éléments à traiter |
+| **Menu à gauche** (icônes) | Accès aux modules : Accueil, Arborescence, Matériaux, Maintenance corrective (DI et OT correctifs), Ordres de travail (OT préventifs), Préventif, Gestion de stock, Gestion du personnel, Indicateurs, Administration. Une pastille rouge signale des éléments à traiter |
 | **En-tête** | Logo (retour à l'accueil), **choix de l'unité** (Alger, Oran…), **cloche des alertes**, menu **profil / déconnexion** |
 | **Bandeau d'onglets** | Rappelle le module ouvert ; « Accueil » permet d'y revenir à tout moment |
 | **Accueil** | Tableau de bord : menus favoris, compteurs DI et OT, alertes, DI en retard, OT anciens, plans au compteur à déclencher, planning des 14 prochains jours, stock critique |
@@ -52,7 +52,7 @@ Les droits sont donnés **par unité, par système** (CFO, CFA, VOIE, BILLETTIQU
 
 ## 4. Exploitation — déclarer une anomalie (DI)
 
-**Depuis l'ordinateur ou le téléphone :** *Demandes (DI)* › **Nouvelle DI** (ou la tuile verte de l'accueil).
+**Depuis l'ordinateur ou le téléphone :** *Maintenance corrective* › onglet *Demandes d'intervention (DI)* › **Nouvelle DI** (ou la tuile verte de l'accueil).
 
 1. Choisissez l'**équipement** (liste limitée à votre unité et vos systèmes).
 2. Décrivez le **constat** (désignation), l'**emplacement**, la **date et l'heure de l'événement**.
@@ -71,7 +71,9 @@ Les droits sont donnés **par unité, par système** (CFO, CFA, VOIE, BILLETTIQU
 ### Générer un OT
 - **Correctif** : dans la liste des DI, bouton **Générer OT** sur une DI « À transmettre ». Renseignez la consigne, les intervenants, l'horaire (jour / nuit) et la consignation si nécessaire.
 - **Préventif** : généré depuis un plan (§ 6) ; il contient la liste des tâches du plan.
-- **Hors DI** : *Ordres de travail* › **Nouvel OT**.
+- **Hors DI** : *Ordres de travail* › **Nouvel OT** (OT préventif).
+
+Les **OT correctifs** se consultent dans *Maintenance corrective* › onglet *OT correctifs* ; le module *Ordres de travail* ne contient que les **OT préventifs**.
 
 ### Réaliser et clôturer un OT
 Ouvrez l'OT (clic sur la ligne, ou toucher la carte sur téléphone) :
@@ -79,7 +81,7 @@ Ouvrez l'OT (clic sur la ligne, ou toucher la carte sur téléphone) :
 1. **Tâches** (préventif) : cochez chaque tâche **OK** ou **Non OK**. Un « Non OK » exige un commentaire et le choix de créer ou non une **DI corrective** automatiquement.
 2. **Compte-rendu** (correctif) : panne, cause, solution, **détection** et **gravité** (1 à 4), durée d'intervention, temps logistique.
 3. **Intervenants** : ajoutez chaque intervenant et son temps passé (le coût de main-d'œuvre est calculé).
-4. **Pièces, outillage, consommables** : une pièce manquante se demande par une **DS** (demande de sortie) ; l'OT passe alors **En attente pièce** jusqu'à la sortie magasin.
+4. **Pièces, outillage, consommables** : une pièce se demande par une **DS** (demande de sortie). Dès qu'une DS est faite, l'OT passe **En attente pièce** et **ne peut pas être clôturé** tant que le magasin n'a pas traité la sortie (BS traité) ou que la DS n'est pas annulée. Il repasse « En cours » quand toutes ses DS sont soldées.
 5. **Relevé du compteur** : si l'OT vient d'un plan au compteur, la valeur lue (km, heures) est **obligatoire** pour clôturer (§ 6.3).
 6. **Clôturer** : possible seulement si toutes les tâches sont renseignées et au moins un intervenant saisi.
 
@@ -94,6 +96,7 @@ Ouvrez l'OT (clic sur la ligne, ou toucher la carte sur téléphone) :
 
 - Une échéance un **jour férié ou un week-end** est signalée : changez la date ou confirmez un travail exceptionnel avec son motif.
 - Un intervenant **en congé** à la date prévue est refusé, et une alerte apparaît si un congé est saisi après coup.
+- Le filtre **Intervenant** (en haut à droite) n'affiche que les plans assignés à une personne, y compris dans l'agenda, la plage de déclenchement et les plans au compteur.
 - **Déclencher** génère l'OT préventif ; **Plage de déclenchement** permet de générer en une fois toutes les visites d'une période ; **Calendrier / Agenda** affiche le mois.
 
 ### 6.2 Compteurs d'équipement
@@ -142,10 +145,13 @@ Un article **sous le seuil minimum** apparaît en rouge, sur l'accueil et dans l
 
 ## 9. Indicateurs de performance
 
+![Indicateurs — tableau de bord](docs-img/indicateurs.png)
+
 Choisissez la **période** et, si besoin, un **système**, sous-système ou équipement.
 
 | Onglet | Contenu |
 |---|---|
+| **Tableau de bord** | Chiffres clés (avec variation par rapport à la période précédente) et graphiques : activité sur 12 mois, disponibilité et MTTR mensuels, charge préventive / corrective, pannes par système, top 10 des équipements, comparatif des unités. Survolez un graphe pour lire les valeurs ; « Voir les données » affiche le tableau |
 | Synthèse | MTTR, MTBF, disponibilité, λ, μ, charges préventive et corrective, taux de réalisation |
 | Équipements | Indicateurs par équipement, seuil d'OT réglable pour repérer les équipements à problème |
 | Ressources humaines | Temps saisi par intervenant |
@@ -159,12 +165,12 @@ Chaque écran a un bouton **Exporter Excel**.
 
 ---
 
-## 10. Arborescence technique
+## 10. Arborescence technique et matériaux
 
 - **Codification** : `SYSTÈME.UNITÉ.SOUS-SYSTÈME.N°`, par exemple `CFA.ALG.SLT.01`.
+- Les appareils de mesure, contrôles réglementaires et organismes sont dans le module **Gestion et suivi des matériaux**.
 - **Clic** sur un équipement : fiche (caractéristiques, constructeur, fournisseurs, sous-équipements). **Clic droit** : créer une DI.
 - **Étiquettes QR** : planche imprimable des QR codes de l'unité, à coller sur les équipements.
-- Onglets **Appareils de mesure** (étalonnage, péremption), **Contrôles réglementaires** et **Organismes**.
 
 ---
 
@@ -182,7 +188,7 @@ Chaque écran a un bouton **Exporter Excel**.
 | « … a été modifié par un autre utilisateur » | Un collègue a modifié la même fiche en même temps. Vos changements n'ont pas été enregistrés et la fiche a été actualisée : refaites votre modification |
 | Je ne vois pas une unité ou un module | Vos droits ne le prévoient pas : demandez à l'administrateur |
 | « Impossible de joindre le serveur » | Vérifiez le réseau, puis **Réessayer**. Ne fermez pas l'onglet si des modifications sont en attente (le navigateur vous prévient) |
-| L'OT ne se clôture pas | Lisez le message : tâche non renseignée, intervenant manquant, pièce en attente ou relevé de compteur manquant |
+| L'OT ne se clôture pas | Lisez le message : tâche non renseignée, intervenant manquant, DS non traitée par le magasin ou relevé de compteur manquant |
 | Les indicateurs semblent incomplets sur une longue période | Cliquez sur **Charger l'historique complet** |
 
 ---

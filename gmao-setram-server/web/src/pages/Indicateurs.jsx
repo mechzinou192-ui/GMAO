@@ -1,5 +1,6 @@
 // Indicateurs de performance (MTBF, MTTR, disponibilité, AMDEC…).
 import React,{useState,useMemo,useEffect} from "react";
+import {Anneau,BarresGroupees,BarresH,CarteGraphe,Courbe,SERIES,TuileChiffre} from "../ui/graphes.jsx";
 import {FENETRE_MOIS,chargerHistorique,historiqueCharge} from "../sync.js";
 import {exporterXlsx} from "../excel.js";
 import {frDate} from "../lib/dates.js";
@@ -55,7 +56,7 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
  const pad=(n)=>String(n).padStart(2,"0");
  const ymd=(d)=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
  const now=new Date(); const d30=new Date(now); d30.setDate(d30.getDate()-29);
- const [subRaw,setSub]=useState("Synthèse");
+ const [subRaw,setSub]=useState("Tableau de bord");
  const [start,setStart]=useState(ymd(d30));
  const [end,setEnd]=useState(ymd(now));
  const [histo,setHisto]=useState(historiqueCharge()); const [histoBusy,setHistoBusy]=useState(false);
@@ -138,7 +139,8 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
   colonnes:[{h:"Famille"},{h:"Indicateur"},{h:"Formule",max:60},{h:"Cible",max:40},{h:"Source dans la GMAO",max:40},{h:"Adaptation",max:60}],lignes:KPI_REFERENTIEL}]});
 
  const Th=({children,cls})=><th className={"py-1 "+(cls||"")}>{children}</th>;
- const SUBS=["Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Référentiel"].filter(x=>kpiOk(x));
+ // « Tableau de bord » (graphiques) : visible dès que la Synthèse l'est
+ const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x));
  const sub=SUBS.includes(subRaw)?subRaw:(SUBS[0]||"");
  const eqSeuil=Number(seuilBT)||0;
  const cats=[1,2,3].map(c=>eqRows.filter(e=>e.cat===c));
@@ -171,6 +173,7 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
   </Card>
   <SubTabs value={sub} onChange={setSub} items={SUBS.map(s=>[s,s])}/>
 
+  {sub==="Tableau de bord" && <GraphiquesKPI unit={unit} dis={dis} bts={bts} planning={planning} equipements={equipements} per={per} start={start} end={end} parcMode={parcMode} flt={flt} fSys={fSys} subOpts={subOpts} sysOpts={sysOpts} K={K} O={O} eqRows={eqRows} unites={unites}/>}
   {sub==="Synthèse" && <div className="space-y-4">
    <div className="flex justify-between items-center"><div className="text-xs text-slate-500">{K.nbDI} DI correctives · {K.nbBTPrev} OT préventifs sur la période{K.nbPerturb>0?" · "+K.nbPerturb+" avec perturbation d'exploitation":""}</div><ExportBtn onClick={exportSynthese}/></div>
    {kpiOk("syn:ing")&&<div><KpiTitle sub="Fiabilité du parc (méthode d'origine : MTTR / MTBF / disponibilité / λ / μ)">Indicateurs d'ingénierie</KpiTitle>
@@ -305,5 +308,63 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
    <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Famille</Th><Th>Indicateur</Th><Th>Formule</Th><Th>Cible</Th><Th>Source dans la GMAO</Th><Th>Adaptation</Th></tr></thead>
    <tbody>{KPI_REFERENTIEL.map((r,i)=><tr key={i} className="border-t border-slate-700 align-top"><td className="py-1.5 text-xs text-slate-400">{r[0]}</td><td className="font-medium text-slate-200">{r[1]}</td><td className="text-xs text-slate-400 max-w-sm">{r[2]}</td><td className="text-xs text-slate-400 max-w-[200px]">{r[3]}</td><td className="text-xs text-slate-400 max-w-[220px]">{r[4]}</td><td className="text-xs text-slate-500 max-w-xs">{r[5]}</td></tr>)}</tbody></table></div></Card>
   </div>}
+ </div>);
+}
+
+/* ===== Tableau de bord graphique des indicateurs ===== */
+const MOIS_COURTS=["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
+const ymdD=(d)=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const varRel=(a,b)=>(b>0&&Number.isFinite(a)&&Number.isFinite(b))?(a-b)/b:null;
+export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,parcMode,flt,fSys,subOpts,sysOpts,K,O,eqRows,unites}){
+ const data={dis,bts,planning,equipements};
+ // période précédente de même durée
+ const Kprev=useMemo(()=>{const s=new Date(per.start);s.setDate(s.getDate()-per.days);const e=new Date(per.start);e.setDate(e.getDate()-1);
+  const p=kpiPeriode(ymdD(s),ymdD(e)); const c=kpiCollect(unit,data,p,parcMode,flt); return kpiCalc(c.corr,c.prev,p,c.nbEquip);},[unit,dis,bts,planning,equipements,per,parcMode,flt]);
+ // 12 mois glissants se terminant au mois de fin de période
+ const mois=useMemo(()=>{const fin=new Date(per.end);const out=[];
+  for(let k=11;k>=0;k--){const a=new Date(fin.getFullYear(),fin.getMonth()-k,1);const b=new Date(fin.getFullYear(),fin.getMonth()-k+1,0);
+   const p=kpiPeriode(ymdD(a),ymdD(b)); const c=kpiCollect(unit,data,p,parcMode,flt); const k2=kpiCalc(c.corr,c.prev,p,c.nbEquip);
+   out.push({lib:MOIS_COURTS[a.getMonth()]+(a.getMonth()===0||k===11?" "+String(a.getFullYear()).slice(2):""),k:k2,actif:c.corr.length+c.prev.length>0});}
+  return out;},[unit,dis,bts,planning,equipements,per,parcMode,flt]);
+ const parGroupe=useMemo(()=>{
+  const groupes=fSys?subOpts.map(s=>({code:s.code,lib:s.code+" — "+s.sub,f:{...flt,sub:s.code,eq:"",se:""}})):sysOpts.map(([c,n])=>({code:c,lib:c+" — "+n,f:{sys:c,sub:"",eq:"",se:""}}));
+  return groupes.map(g=>{const c=kpiCollect(unit,data,per,parcMode,g.f);const k=kpiCalc(c.corr,c.prev,per,c.nbEquip);return {lib:g.lib,val:k.nbPannesTot,note:"MTTR "+fH(k.mttr,2)+" · disponibilité "+fPct(k.dispo,2)};})
+   .filter(x=>x.val>0).sort((a,b)=>b.val-a.val);
+ },[unit,dis,bts,planning,equipements,per,parcMode,flt,fSys,subOpts,sysOpts]);
+ const top=eqRows.filter(e=>e.k.nbPannesTot>0).slice(0,10).map(e=>({lib:e.code,sub:e.nom,val:e.k.nbPannesTot,note:"MTTR "+fH(e.k.mttr,2)+" · disponibilité "+fPct(e.k.dispo,2)}));
+ const st=(o,v,has)=>{const s=kpiStatus(o,v,has);return s==="ok"?"ok":s==="warn"?"warn":s==="bad"?"bad":"";};
+ const has=K.nbPannesTot>0;
+ const cats=mois.map(m=>m.lib);
+ return (<div className="space-y-4" data-testid="kpi-graphiques">
+  <div className="gm-stats">
+   <TuileChiffre lib="Disponibilité" valeur={fPct(K.dispo,2)} variation={varRel(K.dispo,Kprev.dispo)} statut={st(O.dispo,K.dispo,true)} note={"Cible "+O.dispo.label}/>
+   <TuileChiffre lib="MTBF" valeur={has?fH(K.mtbf,1):"—"} variation={has?varRel(K.mtbf,Kprev.mtbf):null} note="Temps moyen entre pannes"/>
+   <TuileChiffre lib="MTTR" valeur={has?fH(K.mttr,2):"—"} variation={has?varRel(K.mttr,Kprev.mttr):null} sens="baisse-bonne" note="Temps moyen de réparation"/>
+   <TuileChiffre lib="Pannes" valeur={String(K.nbPannesTot)} variation={varRel(K.nbPannesTot,Kprev.nbPannesTot)} sens="baisse-bonne" note={K.nbPerturb+" avec perturbation"}/>
+   <TuileChiffre lib="Réalisation préventif (TMP)" valeur={K.nbBTPrev?fPct(K.tmp,0):"—"} variation={K.nbBTPrev?varRel(K.tmp,Kprev.tmp):null} statut={st(O.tmp,K.tmp,K.nbBTPrev>0)} note={K.btClosed+" / "+K.btDenom+" OT clôturés"}/>
+  </div>
+  <div className="gm-charts">
+   <CarteGraphe cls="is-wide" titre="Activité de maintenance — 12 derniers mois" sousTitre="Pannes (DI correctives) et OT préventifs, par mois">
+    <BarresGroupees cats={cats} series={[{nom:"Pannes",coul:SERIES[0],vals:mois.map(m=>m.k.nbPannesTot)},{nom:"OT préventifs",coul:SERIES[1],vals:mois.map(m=>m.k.nbBTPrev)}]} fmt={(v)=>String(Math.round(v))}/>
+   </CarteGraphe>
+   <CarteGraphe titre="Disponibilité mensuelle" sousTitre="Part du temps où le parc est disponible">
+    <Courbe cats={cats} nom="Disponibilité" vals={mois.map(m=>m.actif?m.k.dispo*100:null)} fmt={(v)=>v.toFixed(1).replace(".",",")+" %"} min={Math.max(0,Math.floor(Math.min(O.dispo.val*100,...mois.filter(m=>m.actif).map(m=>m.k.dispo*100))/5)*5-5)} max={100} cible={O.dispo.val*100} cibleLib={"Cible "+O.dispo.label}/>
+   </CarteGraphe>
+   <CarteGraphe titre="MTTR mensuel" sousTitre="Temps moyen de réparation (heures), mois avec pannes réparées">
+    <Courbe cats={cats} nom="MTTR" coul={SERIES[2]} vals={mois.map(m=>m.k.nbPannesRep>0?m.k.mttr:null)} fmt={(v)=>v.toFixed(1).replace(".",",")+" h"}/>
+   </CarteGraphe>
+   <CarteGraphe titre="Charge préventive / corrective" sousTitre="Heures d'intervention sur la période">
+    <Anneau parts={[{nom:"Préventif",val:K.hPrev,coul:SERIES[0]},{nom:"Correctif",val:K.hCorr,coul:SERIES[1]}]} centre={K.hTotal>0?fPct(K.tcp,0):"—"} centreLib="préventif" fmt={(v)=>fNum(v,1)+" h"}/>
+   </CarteGraphe>
+   <CarteGraphe titre={fSys?"Pannes par sous-système":"Pannes par système"} sousTitre="Nombre de pannes sur la période">
+    <BarresH items={parGroupe} nom="Pannes" fmt={(v)=>String(v)}/>
+   </CarteGraphe>
+   <CarteGraphe titre="Top 10 des équipements en panne" sousTitre="Équipements les plus souvent en panne sur la période">
+    <BarresH items={top} nom="Pannes" coul={SERIES[2]} fmt={(v)=>String(v)}/>
+   </CarteGraphe>
+   {unites.length>1 && <CarteGraphe titre="Disponibilité par unité" sousTitre="Comparatif des unités sur la période">
+    <BarresH items={unites.map(x=>({lib:x.u,val:x.k.dispo*100,note:x.k.nbPannesTot+" panne(s) · cible "+x.o.dispo.label})).sort((a,b)=>a.val-b.val)} nom="Disponibilité" max={100} fmt={(v)=>v.toFixed(2).replace(".",",")+" %"}/>
+   </CarteGraphe>}
+  </div>
  </div>);
 }

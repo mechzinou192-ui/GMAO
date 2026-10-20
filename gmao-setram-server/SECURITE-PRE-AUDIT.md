@@ -1,6 +1,6 @@
 # GMAO SETRAM — Dossier de pré-audit sécurité
 
-**Version de l'application : 1.12** · Public : RSSI, DSI, prestataire d'audit
+**Version de l'application : 1.13** · Public : RSSI, DSI, prestataire d'audit
 
 Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue de code) demandé avant toute mise en production. Il récapitule ce qui est en place, ce qui a été contrôlé lors du développement, et ce que l'auditeur doit vérifier. **Il ne remplace pas l'audit externe**, qui n'a pas été réalisé.
 
@@ -11,7 +11,7 @@ Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue
 | Contrôle | Résultat (19/10/2026) |
 |---|---|
 | Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs) | 39 / 39 réussis |
-| Tests automatiques interface | 178 / 178 réussis |
+| Tests automatiques interface | 182 / 182 réussis |
 | Analyse statique (ESLint : variables non définies, code mort) | 0 erreur |
 | `npm audit` dépendances de **production** — serveur | 0 vulnérabilité |
 | `npm audit` dépendances de **production** — interface | 0 vulnérabilité (bibliothèque `uuid` utilisée par l'export Excel forcée en version corrigée 11.1.1) |

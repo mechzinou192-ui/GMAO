@@ -30,7 +30,7 @@ beforeEach(() => {
 
 async function ouvrirFormulaireDI() {
   render(<App />);
-  fireEvent.click(await screen.findByText('Demandes (DI)', { selector: 'nav button' }));
+  fireEvent.click(await screen.findByText('Maintenance corrective', { selector: 'nav button' }));
   fireEvent.click(await screen.findByText('Nouvelle DI'));
   const select = await waitFor(() => {
     const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === EQ.code));

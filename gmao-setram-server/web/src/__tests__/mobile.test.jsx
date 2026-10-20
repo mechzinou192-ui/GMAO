@@ -39,7 +39,7 @@ describe('Affichage sur téléphone', () => {
     fireEvent.click(screen.getByTestId('menu-fond'));
     expect(screen.queryByTestId('menu-lateral')).toBeNull();
     fireEvent.click(bouton);
-    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Demandes (DI)'));
+    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Maintenance corrective'));
     expect(screen.queryByTestId('menu-lateral')).toBeNull();                       // se referme après le choix
     await screen.findByTestId('di-cartes');
   });
@@ -47,7 +47,7 @@ describe('Affichage sur téléphone', () => {
   it('DI : une carte par demande (code, équipement, désignation, état, action)', async () => {
     largeur(375); render(<App />);
     fireEvent.click(await screen.findByTestId('menu-bouton'));
-    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Demandes (DI)'));
+    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Maintenance corrective'));
     const cartes = await screen.findByTestId('di-cartes');
     await waitFor(() => expect(cartes.textContent).toContain(DI.code));
     expect(cartes.textContent).toContain('Transformateur T1'); expect(cartes.textContent).toContain("Fuite d'huile"); expect(cartes.textContent).toContain('Générer OT');
@@ -56,7 +56,7 @@ describe('Affichage sur téléphone', () => {
   it('OT : une carte par bon, ouverture du détail au toucher, impression disponible', async () => {
     largeur(375); render(<App />);
     fireEvent.click(await screen.findByTestId('menu-bouton'));
-    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Ordres de travail'));
+    fireEvent.click(within(await screen.findByTestId('menu-lateral')).getByText('Maintenance corrective')); fireEvent.click(await screen.findByText('OT correctifs'));
     const cartes = await screen.findByTestId('bt-cartes');
     await waitFor(() => expect(cartes.textContent).toContain(OT.code));
     expect(cartes.textContent).toContain('Contrôler la fuite');
