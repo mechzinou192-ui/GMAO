@@ -1,0 +1,17 @@
+# Détection de secrets : règles par défaut de gitleaks + exceptions documentées.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valeurs fictives : tests automatiques, comptes de démonstration, fichiers d'exemple (refusés au démarrage)"
+# Valeur de construction de l'image Docker (préparation de la base intégrée), jamais utilisée en exploitation
+regexes = ['''construction-uniquement-0123456789abcdef''']
+paths = [
+  '''gmao-setram-server/server/test/''',
+  '''gmao-setram-server/web/src/__tests__/''',
+  '''gmao-setram-server/server/src/demo/''',
+  '''gmao-setram-server/\.env\.example''',
+  '''gmao-setram-server/deploy/gmao\.env\.example''',
+  '''gmao-setram-server/server/public/assets/''',
+  '''gmao-setram-server/web/src/excel\.js''',
+]
