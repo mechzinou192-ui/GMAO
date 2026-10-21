@@ -1,5 +1,55 @@
 # Journal des modifications
 
+## 1.16.2 — imports de gros volume, FMP rangées par système
+- Limites d'import relevées : **100 000 lignes par feuille** (au lieu de 20 000), fichier de **50 Mo** (au lieu de 15),
+  envoi de **100 Mo** (au lieu de 25). Réglables par la DSI : `IMPORT_MAX_LIGNES`, `IMPORT_MAX_MO` (`.env`).
+- Serveur : écritures de l'import **groupées par lots de 1 000** (100 000 lignes importées en ~5 s en test, au lieu
+  d'une requête par ligne) ; numéros réservés par plages (lot de 1 000 par requête). Toujours tout ou rien.
+- Interface : taille de l'envoi contrôlée **avant** de réserver des numéros, avec un message clair (découper le fichier).
+- **FMP rangées dans un dossier par système** : choisir le dossier parent (sous-dossiers compris) ou ajouter les
+  dossiers l'un après l'autre ; deux fiches de même nom dans deux dossiers (ex. `CFO/FMP_Mensuelle.xlsx` et
+  `CFA/FMP_Mensuelle.xlsx`) sont départagées par le chemin du lien du planning. Compteur de lecture et répartition par dossier.
+- Exemple nginx : bloc `/api/import` avec `client_max_body_size 100m` (l'ancien 11 Mo bloquait les gros imports).
+
+## 1.16.1 — suppression directe des fiches créées par erreur
+- **Arborescence** : icône ✕ au bout de chaque équipement et de chaque sous-équipement, bouton **Supprimer** dans la
+  fiche équipement, entrée « Supprimer… » du clic droit. La confirmation s'ouvre directement.
+- **Gestion et suivi des matériaux** : bouton **✕ Supprimer** sur chaque ligne (appareils de mesure, contrôles
+  réglementaires, organismes).
+- Mêmes garde-fous qu'avant : confirmation, refus motivé si l'élément est utilisé (équipement avec DI / OT / plans /
+  compteurs, organisme rattaché à un appareil ou un contrôle), suppression logique tracée dans le journal d'audit.
+- Sous-équipement : la suppression demande maintenant une confirmation et est refusée s'il a des DI ou OT
+  (auparavant immédiate et sans contrôle). Supprimer un équipement supprime aussi ses sous-équipements (indiqué dans la confirmation).
+
+## 1.16.0 — DS globale, retrait d'une pièce, repartir de zéro
+- **DS globale** : une seule demande de sortie pour plusieurs pièces (une ligne par pièce), au lieu d'une DS par pièce.
+  Depuis un OT, le bouton **« Créer une DS globale »** reprend toutes les pièces de l'OT — ou, pour un OT préventif,
+  les **pièces prévues par le plan** — en ne proposant que les quantités pas encore demandées.
+- Formulaire DS : ajout / **retrait de lignes**, quantité par ligne, montant estimé, pièces en rupture signalées.
+  La DS part « En attente pièce » dès qu'une seule pièce manque.
+- Magasin : **retrait d'une pièce d'une DS** tant que le bon de sortie n'est pas généré (l'état est recalculé ;
+  retirer la dernière pièce annule la DS). Le BS reprend toutes les pièces ; son traitement décrémente le stock de chacune.
+  Une DS « En attente pièce » peut être transformée en BS dès que le stock est réapprovisionné.
+- Exports Excel DS / BS : une ligne par pièce (avec le code article). Les anciennes DS à une pièce restent lisibles
+  sans reprise de données.
+- **Administration › Repartir de zéro** (super administrateur) : vide les données (équipements, DI, OT, plans,
+  compteurs, magasin, personnel, matériaux ; référentiels sur option) avant l'import des vraies données.
+  Garde-fous : sauvegarde déclarée + phrase « REPARTIR DE ZERO » à recopier ; contrôle serveur ; une transaction ;
+  **archivage** dans `records_archive` puis suppression logique (restaurable) ; comptes et journal d'audit conservés ;
+  numérotation remise à 0001 (option). Nouvelle route `POST /api/admin/reinitialiser`, migration `006`.
+- Numérotation : un code **supprimé** peut être réattribué (nécessaire pour repartir de 0001).
+
+## 1.15.3 — suppression des fiches
+- Bouton **« Supprimer »** en bas de chaque fiche modifiable : équipement, système, sous-système, DI, OT, plan préventif,
+  article du magasin, intervenant, prestataire, appareil de mesure, contrôle réglementaire, organisme, compteur.
+- **Confirmation** explicite ; suppression **logique** côté serveur (rien n'est effacé de la base) et tracée dans le
+  journal d'audit (qui, quand, contenu supprimé). Droits identiques à la modification.
+- **Refus avec la raison** tant que l'élément est utilisé : équipement avec DI / OT / plans / compteurs, système ou
+  sous-système non vide, DI qui a un OT, OT clôturé (historique des indicateurs) ou avec DS, plan avec OT ouvert,
+  article présent dans une DS en cours / un plan / un OT ouvert, intervenant assigné à un plan ou un OT ouvert,
+  organisme utilisé, compteur utilisé par un plan.
+- Supprimer un OT correctif remet sa DI « À transmettre ».
+
 ## 1.15.2 — calendrier préventif : vue « Jour »
 - Option **Jour** dans la liste *Vue* (Jour / Mois / Année complète) et lien « Voir la journée » depuis l'agenda du mois.
 - Feuille de route du jour : une carte par visite (équipement, plan, état, intervenants, horaire, consignation, outillage,

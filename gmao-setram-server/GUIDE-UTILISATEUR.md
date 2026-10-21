@@ -125,13 +125,17 @@ La **date estimée** est calculée d'après l'usage moyen. À la clôture de l'O
 | Document | Usage |
 |---|---|
 | **Article** | Pièce, outillage ou consommable : prix, stock, seuils min / max, fournisseurs |
-| **DS** — demande de sortie | Faite depuis un OT ; « Transmis au Magasinier » si le stock suffit, sinon « En attente pièce » |
+| **DS** — demande de sortie | Faite depuis un OT : **une seule DS pour toutes les pièces** (bouton « Créer une DS globale ») ; « Transmis au Magasinier » si le stock suffit, sinon « En attente pièce » |
 | **BS** — bon de sortie | Généré par le magasinier depuis la DS ; son traitement **décrémente le stock** et débloque l'OT |
 | **BR** — bon de retour | Retour d'une pièce non utilisée : **réincrémente le stock** |
 | **Achat** | Entrée en stock d'un article existant |
 | **Décharge** | Remise d'outillage ou de consommable à un agent |
 
 Un article **sous le seuil minimum** apparaît en rouge, sur l'accueil et dans les alertes.
+
+**DS globale.** Dans l'OT, le bouton **« Créer une DS globale — 3 pièces »** ouvre une seule demande avec toutes les pièces de l'OT (pour un OT préventif : les pièces prévues par le plan). Dans le formulaire, ✕ retire une ligne, « + Ajouter une pièce » en ajoute une. Si une seule pièce manque en stock, la DS part « En attente pièce ».
+
+**Retirer une pièce d'une DS.** *Gestion de stock › Demandes de Sortie* : tant que le bon de sortie n'est pas généré, ✕ à côté d'une pièce la retire de la DS (l'état est recalculé ; retirer la dernière pièce annule la DS). Le bon de sortie reprend ensuite toutes les pièces restantes.
 
 ---
 
@@ -177,11 +181,18 @@ Chaque écran a un bouton **Exporter Excel**.
 ## 11. Administration (super administrateur)
 
 - **Comptes et droits d'accès** : pour chaque unité, cochez les **systèmes** et les **modules** autorisés, et éventuellement les indicateurs visibles. Désactiver un compte coupe sa session immédiatement.
-- **Import de données (Excel)** : téléchargez le modèle Excel, remplissez-le, chargez-le : chaque ligne est contrôlée et les erreurs sont listées avant tout envoi. L'import n'est possible que sans erreur, et il est **tout ou rien** : rien n'est enregistré si le serveur refuse une ligne. Le réimporter ne crée pas de doublon.
+- **Import de données (Excel)** : téléchargez le modèle Excel, remplissez-le, chargez-le : chaque ligne est contrôlée et les erreurs sont listées avant tout envoi. Limites : 100 000 lignes par feuille, fichier de 50 Mo ; au-delà, découpez par unité ou par système et importez les fichiers l'un après l'autre. L'import n'est possible que sans erreur, et il est **tout ou rien** : rien n'est enregistré si le serveur refuse une ligne. Le réimporter ne crée pas de doublon.
   - **Équipements et sous-équipements en une seule fois** : dans la feuille *Équipements*, donnez un **Repère** court (T1, R02…) aux équipements qui ont des composants ; dans la feuille *Sous-équipements*, indiquez ce repère comme *Équipement parent*. Les codes GMAO sont créés automatiquement pour les deux. Pour un équipement déjà dans la GMAO, indiquez directement son code.
-  - **Planning préventif avec les FMP** : remplissez la feuille *Planning préventif* (Code GMAO, Type de visite, lien vers la FMP, outillage…), puis, à l'étape **« Fiches FMP »** de l'écran d'import, ajoutez les fichiers FMP (ou tout le dossier). Les tâches de chaque visite sont lues dans la FMP ; les intervenants sont répartis automatiquement entre les techniciens du système (hors congés) et restent modifiables dans chaque plan. Le lien de la FMP est conservé et affiché dans le plan, l'OT et le bon imprimé.
+  - **Planning préventif avec les FMP** : remplissez la feuille *Planning préventif* (Code GMAO, Type de visite, lien vers la FMP, outillage…), puis, à l'étape **« Fiches FMP »** de l'écran d'import, ajoutez les fichiers FMP ou un dossier. **FMP rangées par système** : choisissez le dossier qui contient tous les dossiers de système (les sous-dossiers sont lus), ou ajoutez chaque dossier l'un après l'autre. Une fiche portant le même nom dans deux systèmes est retrouvée grâce au chemin du lien. Les tâches de chaque visite sont lues dans la FMP ; les intervenants sont répartis automatiquement entre les techniciens du système (hors congés) et restent modifiables dans chaque plan. Le lien de la FMP est conservé et affiché dans le plan, l'OT et le bon imprimé.
+- **Repartir de zéro** (mise en service) : vide toutes les données (équipements, DI, OT, plans, compteurs, magasin, personnel, matériaux ; systèmes et arborescence seulement si vous cochez l'option) pour importer ensuite les vôtres. Les comptes et le journal d'audit sont conservés. **Faites d'abord une sauvegarde** (DSI) ; cochez la case, recopiez « REPARTIR DE ZERO », puis « Vider les données ». Rien n'est effacé physiquement : la DSI peut annuler l'opération. Ordre conseillé ensuite : systèmes / arborescence → équipements et sous-équipements → articles → intervenants → planning préventif.
 
 ---
+
+## Supprimer une fiche
+
+**Créée par erreur ?** Le plus rapide : dans l'*Arborescence*, l'icône ✕ au bout de la ligne de l'équipement (ou du sous-équipement) ; dans *Gestion et suivi des matériaux*, le bouton **✕ Supprimer** au bout de la ligne (appareil de mesure, contrôle réglementaire, organisme). Il reste à confirmer par « Oui, supprimer ».
+
+Ouvrez la fiche (équipement, DI, OT, plan, article, intervenant…) : le bouton **Supprimer** est en bas. Une confirmation est demandée. Si l'élément est encore utilisé ailleurs (par exemple un équipement qui a des DI, un intervenant assigné à des plans), le bouton est grisé et la raison est indiquée : traitez d'abord ces liens. Un OT clôturé ne se supprime pas (il fait partie de l'historique des indicateurs). La suppression est enregistrée dans le journal d'audit.
 
 ## 12. Questions fréquentes
 

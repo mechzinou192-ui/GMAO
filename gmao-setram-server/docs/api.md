@@ -81,7 +81,17 @@ PUT /api/data/dis/DI-ALG-2026-0042
 
 | Méthode | Route | Rôle | Corps | Réponses |
 |---|---|---|---|---|
-| POST | `/import` | super administrateur (limite « coûteuses ») | `{ "collections": { "equipements": [{ id, unit, system, data }] }, "dryRun": true, "onConflict": "skip" \| "update" }` | 200 `{ dryRun, totals: { created, updated, skipped }, collections }` · 400 · 500 (rien n'est écrit) |
+| POST | `/import` | super administrateur (limite « coûteuses » ; 100 000 lignes par collection et 100 Mo par défaut : `IMPORT_MAX_LIGNES`, `IMPORT_MAX_MO`, exposés par `GET /config`) | `{ "collections": { "equipements": [{ id, unit, system, data }] }, "dryRun": true, "onConflict": "skip" \| "update" }` | 200 `{ dryRun, totals: { created, updated, skipped }, collections }` · 400 · 500 (rien n'est écrit) |
+
+## Repartir de zéro (mise en service)
+
+| Méthode | Route | Rôle | Corps | Réponses |
+|---|---|---|---|---|
+| POST | `/admin/reinitialiser` | super administrateur (limite « coûteuses ») | `{ "confirmation": "REPARTIR DE ZERO", "sauvegardeFaite": true, "referentiels": false, "numerotation": true }` | 200 `{ reinitialisation, collections: { nom: n }, total, numerotation }` · 400 (confirmation / sauvegarde) · 403 · 500 (rien n'est modifié) |
+
+Une transaction : copie dans `records_archive`, suppression logique (`deleted=true`, `version+1`, visible des autres
+navigateurs à la synchronisation suivante), photos des DI / OT masquées, compteurs de numérotation remis à zéro si
+`numerotation`. Comptes utilisateurs et `audit_log` jamais modifiés. Action `reinitialisation` dans le journal d'audit.
 
 ## Pièces jointes (photos)
 

@@ -20,13 +20,13 @@ describe('réservation de numéros auprès du serveur', () => {
     expect(api.nextCodes).toHaveBeenCalledWith('bts', { unit: 'Oran', variant: 'prev', count: 2 });
   });
 
-  it('découpe les très gros lots (le serveur accepte 200 numéros par demande)', async () => {
+  it('découpe les très gros lots (le serveur accepte 1 000 numéros par demande)', async () => {
     let n = 0;
     api.nextCodes.mockImplementation(async (_c, { count }) => Array.from({ length: count }, () => 'OT-' + ++n));
-    const r = await reserverNumeros('bts', { unit: 'Alger', count: 450 });
-    expect(r).toHaveLength(450);
-    expect(new Set(r).size).toBe(450);
-    expect(api.nextCodes.mock.calls.map((c) => c[1].count)).toEqual([200, 200, 50]);
+    const r = await reserverNumeros('bts', { unit: 'Alger', count: 2450 });
+    expect(r).toHaveLength(2450);
+    expect(new Set(r).size).toBe(2450);
+    expect(api.nextCodes.mock.calls.map((c) => c[1].count)).toEqual([1000, 1000, 450]);
   });
 
   it('serveur injoignable : retourne null et prévient l’utilisateur (rien ne doit être créé)', async () => {
@@ -47,7 +47,7 @@ describe('réservation de numéros auprès du serveur', () => {
   });
 
   it('un échec au milieu d’un lot ne renvoie aucun numéro partiel', async () => {
-    api.nextCodes.mockResolvedValueOnce(Array(200).fill('A')).mockRejectedValueOnce(new Error('boom'));
-    expect(await reserverNumeros('bts', { unit: 'Alger', count: 300 })).toBeNull();
+    api.nextCodes.mockResolvedValueOnce(Array(1000).fill('A')).mockRejectedValueOnce(new Error('boom'));
+    expect(await reserverNumeros('bts', { unit: 'Alger', count: 1300 })).toBeNull();
   });
 });

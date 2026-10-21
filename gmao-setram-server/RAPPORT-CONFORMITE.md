@@ -1,6 +1,6 @@
 # GMAO SETRAM — Rapport de conformité aux règles d'ingénierie
 
-**Version 1.14 · contrôles exécutés le 20/10/2026** · Public : DSI, RSSI, futur mainteneur
+**Version 1.16.2 · contrôles exécutés le 21/10/2026** · Public : DSI, RSSI, futur mainteneur
 
 Ce rapport compare l'application aux règles du cahier d'ingénierie remis à la DSI (rôle « ingénieur senior »). Il dit ce qui est conforme, ce qui est volontairement différent (et pourquoi), et ce qui n'a pas pu être vérifié. Les chiffres ci-dessous sont **les résultats réels** des commandes exécutées, pas des estimations.
 
@@ -10,9 +10,9 @@ Ce rapport compare l'application aux règles du cahier d'ingénierie remis à la
 
 | Contrôle | Commande | Résultat |
 |---|---|---|
-| Tests serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs, limitation de débit, format d'erreur, supervision, configuration) | `cd server && npm test` | **43 / 43 réussis** |
+| Tests serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs, limitation de débit, format d'erreur, supervision, configuration) | `cd server && npm test` | **46 / 46 réussis** |
 | Couverture du serveur | `npm run test:coverage` | **96,4 %** des lignes · 84,9 % des branches · 93,9 % des fonctions |
-| Tests interface (règles métier, synchronisation, écrans, site de démonstration complet, bundle minifié) | `cd web && npm test` | **186 / 186 réussis** (19 fichiers) |
+| Tests interface (règles métier, synchronisation, écrans, site de démonstration complet, bundle minifié) | `cd web && npm test` | **208 / 208 réussis** (21 fichiers) |
 | Couverture des règles métier de l'interface (`lib/`, `sync.js`, `api.js`, import Excel, numérotation) | `vitest --coverage` | **95,1 %** des lignes · 85,9 % des branches |
 | Couverture de toute l'interface (écrans compris) | `npm run test:coverage` | 69,6 % des lignes (les écrans sont vérifiés par les parcours de bout en bout du site de démonstration) |
 | Analyse du code (références non définies, code mort) | `npm run lint -- --max-warnings=0` | **0 erreur, 0 avertissement** |
@@ -42,7 +42,7 @@ Pour tout relancer en une commande (hors Docker) : `./scripts/verifier.sh`.
 | Erreur localisable en une minute | ✅ | Identifiant de requête (`X-Request-Id`) envoyé par l'interface, renvoyé et journalisé ; journal JSON une ligne par requête ; procédure dans `docs/runbook.md` |
 | `/health`, `/ready`, arrêt propre | ✅ | `/api/live`, `/api/ready`, `/api/health` ; arrêt : fin des requêtes en cours puis fermeture de la base (SIGTERM / SIGINT) |
 | Verrou anti-conflit, suppression logique, audit | ✅ | Colonne `version` (409), suppression logique, journal avant / après |
-| Migrations versionnées, index | ✅ | `server/src/migrations/001` à `005`, jamais modifiées ; index sur unité, date de modification, état |
+| Migrations versionnées, index | ✅ | `server/src/migrations/001` à `006`, jamais modifiées ; index sur unité, date de modification, état |
 | Docker : utilisateur non privilégié, contrôle de santé, sans secret | ✅ | Voir `server/Dockerfile`, `docker-compose.yml` |
 | CI : tests, analyse, compilation, audit, secrets, Docker | ✅ | `.github/workflows/ci.yml` (dont tests sur un vrai PostgreSQL 16) |
 | Documentation `docs/` | ✅ | `architecture.md`, `api.md`, `decisions.md`, `runbook.md` |

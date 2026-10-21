@@ -29,7 +29,9 @@ export function nomFichierLien(lien) {
 const REF = /(?:^|[^A-Z0-9])([A-Z]{2,5}(?:-[A-Z0-9]{1,8}){1,4}-FOR-\d{3,5}(?:-[A-Z0-9]{1,3})?)(?=$|[^A-Z0-9])/;
 export const refDepuis = (s) => { const m = String(s || '').toUpperCase().match(REF); return m ? m[1] : ''; };
 
-export async function lireFMP(ExcelJS, buffer, nomFichier = '') {
+// chemin = chemin relatif dans le dossier choisi (« FMP/CFO/ORG-CFO-….xlsx ») : distingue deux fiches de même nom
+// rangées dans deux dossiers de système différents
+export async function lireFMP(ExcelJS, buffer, nomFichier = '', chemin = '') {
   const wb = new ExcelJS.Workbook();
   try { await wb.xlsx.load(buffer); } catch { throw new Error('fichier Excel (.xlsx) illisible'); }
   for (const ws of wb.worksheets) {
@@ -68,25 +70,56 @@ export async function lireFMP(ExcelJS, buffer, nomFichier = '') {
       });
     }
     if (!taches.length) continue;
-    return { ref: ref || refDepuis(nomFichier), titre: titre || nomFichier.replace(/\.xlsx$/i, ''), fichier: nomFichier, taches };
+    return { ref: ref || refDepuis(nomFichier), titre: titre || nomFichier.replace(/\.xlsx$/i, ''), fichier: nomFichier, chemin: chemin || nomFichier, taches };
   }
   throw new Error('tableau des opérations introuvable (en-tête « N° » / « Opération » attendu)');
 }
 
-// Index des FMP lues : par nom de fichier et par référence documentaire
+// Index des FMP lues : par nom de fichier et par référence documentaire (plusieurs fiches possibles par clé :
+// une fiche de même nom peut exister dans le dossier de chaque système)
+const segments = (s) => String(s || '').split(/[\\/]/).filter(Boolean).map(normFmp);
 export function indexerFMP(fmps) {
   const m = new Map();
+  const ajouter = (k, f) => { if (!m.has(k)) m.set(k, []); if (!m.get(k).includes(f)) m.get(k).push(f); };
   for (const f of fmps) {
-    if (f.fichier) m.set('f:' + normFmp(f.fichier), f);
-    if (f.ref) m.set('r:' + f.ref.toUpperCase(), f);
+    if (f.fichier) ajouter('f:' + normFmp(f.fichier), f);
+    if (f.ref) ajouter('r:' + f.ref.toUpperCase(), f);
   }
   return m;
 }
-// FMP correspondant à un lien du planning (nom de fichier, sinon référence contenue dans le lien)
+// Nombre de dossiers en commun, en partant de la fin, entre le lien du planning et le chemin de la fiche
+function proximite(lien, chemin) {
+  let l = String(lien || '');
+  try { l = decodeURIComponent(l); } catch { /* lien déjà décodé */ }
+  const a = segments(l.replace(/[?#].*$/, '')), b = segments(chemin);
+  let n = 0;
+  while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n++;
+  return n;
+}
+const meilleure = (liste, lien) => {
+  if (!liste || !liste.length) return null;
+  if (liste.length === 1) return liste[0];
+  return liste.map((f) => ({ f, p: proximite(lien, f.chemin || f.fichier) })).sort((x, y) => y.p - x.p)[0].f;
+};
+// FMP correspondant à un lien du planning : nom de fichier (le dossier départage les homonymes), sinon référence contenue dans le lien
 export function fmpDuLien(index, lien) {
   if (!index || !lien) return null;
   const nom = nomFichierLien(lien);
-  return index.get('f:' + normFmp(nom)) || (refDepuis(nom || lien) ? index.get('r:' + refDepuis(nom || lien)) : null) || null;
+  const parNom = index.get('f:' + normFmp(nom));
+  if (parNom && parNom.length) return meilleure(parNom, lien);
+  const ref = refDepuis(nom || lien);
+  return ref ? meilleure(index.get('r:' + ref), lien) : null;
+}
+
+// Répartition des fiches lues par dossier de premier niveau (en général : un dossier par système)
+export function resumeParDossier(fmps) {
+  const r = new Map();
+  for (const f of fmps) {
+    const seg = String(f.chemin || '').split(/[\\/]/).filter(Boolean);
+    const dossier = seg.length > 2 ? seg[seg.length - 2] : seg.length === 2 ? seg[0] : '(fichiers isolés)';
+    r.set(dossier, (r.get(dossier) || 0) + 1);
+  }
+  return [...r].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 // Périodicité d'une tâche FMP (« Annuelle ») ramenée aux périodicités de la GMAO (« Annuel »)

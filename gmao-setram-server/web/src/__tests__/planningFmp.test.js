@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { lireClasseur, preparerImport, completerCodes } from '../importExcel.js';
-import { fmpDuLien, indexerFMP, lireFMP, nomFichierLien, tachesPourVisite } from '../lib/fmp.js';
+import { fmpDuLien, indexerFMP, lireFMP, nomFichierLien, resumeParDossier, tachesPourVisite } from '../lib/fmp.js';
 import { buildBTPrev } from '../lib/preventif.js';
 
 const NOM_FMP = 'ORG-CFO-IIT-FOR-0001-A__FMP_Annuelle_Armoire_Interrupteur_Disolement_IIT.xlsx';
@@ -55,6 +55,18 @@ describe('FMP : lecture du tableau des opérations', () => {
     expect(fmpDuLien(idx, 'file:///S:/FMP/' + encodeURIComponent(NOM_FMP))).toBeTruthy();
     expect(fmpDuLien(idx, '../FMP/ORG-CFO-IIT-FOR-0001-A_v2.xlsx')).toBeTruthy();          // même référence documentaire
     expect(fmpDuLien(idx, 'autre-fiche.xlsx')).toBeNull();
+  });
+  it('un dossier par système : deux fiches de même nom dans deux dossiers sont départagées par le chemin du lien', async () => {
+    const cfo = { ...(await lireFMP(ExcelJS, fixture(), 'FMP_Mensuelle.xlsx', 'FMP/CFO/FMP_Mensuelle.xlsx')), titre: 'CFO' };
+    const cfa = { ...(await lireFMP(ExcelJS, fixture(), 'FMP_Mensuelle.xlsx', 'FMP/CFA/FMP_Mensuelle.xlsx')), titre: 'CFA' };
+    const isolee = await lireFMP(ExcelJS, fixture(), NOM_FMP);
+    expect(cfo.chemin).toBe('FMP/CFO/FMP_Mensuelle.xlsx'); expect(isolee.chemin).toBe(NOM_FMP);
+    const idx = indexerFMP([cfo, cfa]);
+    expect(fmpDuLien(idx, '\\\\srv-dm\\Maintenance\\FMP\\CFA\\FMP_Mensuelle.xlsx').titre).toBe('CFA');
+    expect(fmpDuLien(idx, 'S:/FMP/CFO/FMP_Mensuelle.xlsx').titre).toBe('CFO');
+    expect(fmpDuLien(idx, 'file:///S:/fmp/cfa/' + encodeURIComponent('FMP_Mensuelle.xlsx')).titre).toBe('CFA');   // casse ignorée
+    expect(fmpDuLien(idx, 'FMP_Mensuelle.xlsx')).toBeTruthy();                                // sans dossier : une des deux
+    expect(resumeParDossier([cfo, cfa, isolee])).toEqual([['(fichiers isolés)', 1], ['CFA', 1], ['CFO', 1]]);
   });
   it('fichier sans tableau des opérations : erreur claire', async () => {
     const wb = new ExcelJS.Workbook(); wb.addWorksheet('X').addRow(['rien']);

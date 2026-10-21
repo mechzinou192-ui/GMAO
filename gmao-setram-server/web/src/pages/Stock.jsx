@@ -3,8 +3,9 @@ import React,{useState} from "react";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ExportBtn,Field,Inp,fmtFourn,ouiNon} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
+import {DS_MODIFIABLES,lignesDS,totalDS,quantiteDS,construireLignes,lignesEnRupture} from "../lib/ds.js";
 
-export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onOpenPiece,onAddPiece,onEditPiece}){
+export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onRetirerLigneDS,onOpenPiece,onAddPiece,onEditPiece}){
  const SECTIONS=[
   ["pieces","Pièces"],["consommables","Consommables"],["outillage","Outillage"],
   ["decharges","Décharges (Outillage / Consommables)"],["ds","Demandes de Sortie (DS) — Pièces"],["bs","Bons de Sortie (BS)"],["br","Bons de Retour (BR)"],
@@ -21,11 +22,12 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
    colonnes:[{h:"Code"},{h:"Date",t:"date"},{h:"Code article"},{h:"Article"},{h:"Catégorie"},{h:"Quantité",t:"num"},{h:"Valeur (DA)",t:"num"},{h:"Reçu par"},{h:"OT lié"}],
    lignes:decharges.map(d=>[d.code,d.date,d.piece,d.pieceNom,d.categorie,d.qte,d.prix*d.qte,d.recu,d.bt||""])}]});
   if(section==="ds") return exporterXlsx({...F,feuilles:[{nom:"DS",titre:"Demandes de Sortie (DS) — Pièces",
-   colonnes:[{h:"Code DS"},{h:"Code équipement"},{h:"Équipement"},{h:"Désignation",max:50},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"OT lié"},{h:"État"},{h:"Motif d'annulation"}],
-   lignes:dss.map(d=>[d.code,d.eq,d.nom,d.designation,d.pieceNom,d.qte,d.prix*d.qte,d.bt||"",d.etat,d.motif||""])}]});
+   colonnes:[{h:"Code DS"},{h:"Code équipement"},{h:"Équipement"},{h:"Désignation",max:50},{h:"Code article"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"OT lié"},{h:"État"},{h:"Motif d'annulation"}],
+   // une ligne Excel par pièce (une DS globale occupe plusieurs lignes, même code DS)
+   lignes:dss.flatMap(d=>lignesDS(d).map(l=>[d.code,d.eq,d.nom,d.designation,l.piece,l.pieceNom,l.qte,l.prix*l.qte,d.bt||"",d.etat,d.motif||""]))}]});
   if(section==="bs") return exporterXlsx({...F,feuilles:[{nom:"BS",titre:"Bons de Sortie (BS)",
-   colonnes:[{h:"Code BS"},{h:"DS liée"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"État"}],
-   lignes:bsList.map(b=>[b.code,b.ds,b.pieceNom,b.qte,b.prix*b.qte,b.etat])}]});
+   colonnes:[{h:"Code BS"},{h:"DS liée"},{h:"Code article"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"État"}],
+   lignes:bsList.flatMap(b=>lignesDS(b).map(l=>[b.code,b.ds,l.piece,l.pieceNom,l.qte,l.prix*l.qte,b.etat]))}]});
   return exporterXlsx({...F,feuilles:[{nom:"BR",titre:"Bons de Retour (BR)",
    colonnes:[{h:"Code BR"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"}],
    lignes:brs.map(b=>[b.code,b.pieceNom,b.qte,b.prix*b.qte])}]});
@@ -84,14 +86,19 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
    </table></div>}
 
    {section==="ds" && <div className="overflow-x-auto"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code DS</th><th>Équipement</th><th>Désignation</th><th>Article</th><th>Qté</th><th>Prix</th><th>OT lié</th><th>État</th><th></th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code DS</th><th>Équipement</th><th>Désignation</th><th>Pièces</th><th>Qté totale</th><th>Prix</th><th>OT lié</th><th>État</th><th></th></tr></thead>
     <tbody>{dss.length===0 && <tr><td colSpan="9" className="text-xs text-slate-500 py-2">Aucune DS pour le moment.</td></tr>}
     {dss.map(d=><tr key={d.code} className="border-t border-slate-700 align-top">
      <td className="py-1.5">{d.code}</td><td>{d.eq}<br/><span className="text-xs text-slate-400">{d.nom}</span></td>
-     <td className="text-xs text-slate-400 max-w-xs">{d.designation}</td><td>{d.pieceNom}</td>
-     <td>{d.qte}</td><td>{(d.prix*d.qte).toLocaleString()} DA</td><td className="text-xs text-slate-400">{d.bt||"—"}</td>
+     <td className="text-xs text-slate-400 max-w-xs">{d.designation}</td>
+     <td data-testid={"ds-lignes-"+d.code}>{(()=>{const ls=lignesDS(d);const modif=DS_MODIFIABLES.includes(d.etat);const rupt=lignesEnRupture(ls,pieces).map(l=>l.piece);
+      return ls.map((l,i)=><div key={l.piece+i} className="flex items-center gap-1 whitespace-nowrap">
+       <span className={modif&&rupt.includes(l.piece)?"text-rose-400":""} title={modif&&rupt.includes(l.piece)?"Stock insuffisant":undefined}>{l.pieceNom} × {l.qte}</span>
+       {modif && onRetirerLigneDS && <button type="button" aria-label={"Retirer "+l.pieceNom+" de la DS "+d.code} title="Retirer cette pièce de la DS" className="text-rose-400 hover:text-rose-300 text-xs px-1" onClick={()=>onRetirerLigneDS(d.code,i)}>✕</button>}
+      </div>);})()}</td>
+     <td>{quantiteDS(d)}</td><td>{totalDS(d).toLocaleString()} DA</td><td className="text-xs text-slate-400">{d.bt||"—"}</td>
      <td><Badge t={d.etat}/>{d.motif && <div className="text-xs text-slate-500 mt-0.5">Motif: {d.motif}</div>}</td>
-     <td>{d.etat==="Transmis au Magasinier" && <div className="flex gap-1">
+     <td>{DS_MODIFIABLES.includes(d.etat) && <div className="flex gap-1">
       <Btn cls="bg-emerald-600 hover:bg-emerald-500 text-xs" onClick={()=>onGenererBS(d.code)}>Générer BS</Btn>
       <Btn cls="bg-rose-700 hover:bg-rose-600 text-xs" onClick={()=>onAnnulerDS(d.code)}>Annuler</Btn>
      </div>}{d.bs && <div className="text-xs text-slate-500 mt-0.5">{d.bs}</div>}</td>
@@ -99,11 +106,11 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
    </table></div>}
 
    {section==="bs" && <div className="overflow-x-auto"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code BS</th><th>DS liée</th><th>Article</th><th>Qté</th><th>Prix</th><th>État</th><th></th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code BS</th><th>DS liée</th><th>Pièces</th><th>Qté totale</th><th>Prix</th><th>État</th><th></th></tr></thead>
     <tbody>{bsList.length===0 && <tr><td colSpan="7" className="text-xs text-slate-500 py-2">Aucun BS pour le moment.</td></tr>}
     {bsList.map(b=><tr key={b.code} className="border-t border-slate-700">
-     <td className="py-1.5">{b.code}</td><td className="text-xs text-slate-400">{b.ds}</td><td>{b.pieceNom}</td>
-     <td>{b.qte}</td><td>{(b.prix*b.qte).toLocaleString()} DA</td><td><Badge t={b.etat}/></td>
+     <td className="py-1.5">{b.code}</td><td className="text-xs text-slate-400">{b.ds}</td><td>{lignesDS(b).map((l,i)=><div key={i} className="whitespace-nowrap">{l.pieceNom} × {l.qte}</div>)}</td>
+     <td>{quantiteDS(b)}</td><td>{totalDS(b).toLocaleString()} DA</td><td><Badge t={b.etat}/></td>
      <td>{b.etat==="À traiter" && <Btn cls="bg-emerald-600 hover:bg-emerald-500 text-xs" onClick={()=>onTraiterBS(b.code)}>Traiter / Délivrer</Btn>}</td>
     </tr>)}</tbody>
    </table></div>}
@@ -234,26 +241,49 @@ export function DechargeForm({pieces,inter,bts,prefill,onSubmit}){
  </div>);
 }
 
+// DS « globale » : une seule demande pour toutes les pièces d'une intervention (une ligne par pièce, retirables avant envoi)
 export function DSForm({pieces,bts,prefill,onSubmit}){
- const [f,setF]=useState({eq:prefill?.eq||"",nom:prefill?.nom||"",designation:"",piece:prefill?.piece||(pieces[0]||{}).code||"",qte:prefill?.qte||1,bt:prefill?.bt||""});
+ const premier=(pieces[0]||{}).code||"";
+ const initLignes=prefill?.lignes?.length?prefill.lignes.map(l=>({piece:l.piece||l.code,qte:l.qte||1})):[{piece:prefill?.piece||premier,qte:prefill?.qte||1}];
+ const [f,setF]=useState({eq:prefill?.eq||"",nom:prefill?.nom||"",designation:"",bt:prefill?.bt||""});
+ const [lignes,setLignes]=useState(initLignes);
+ const [err,setErr]=useState("");
+ const majLigne=(i,ch)=>setLignes(ls=>ls.map((l,j)=>j===i?{...l,...ch}:l));
+ const retirer=(i)=>setLignes(ls=>ls.filter((_,j)=>j!==i));
+ const ajouter=()=>setLignes(ls=>[...ls,{piece:premier,qte:1}]);
+ let propres=[],erreur="";
+ try{ propres=construireLignes(lignes,pieces); }catch(e){ erreur=e.message; }
+ const rupture=lignesEnRupture(propres,pieces);
+ const total=propres.reduce((s,l)=>s+l.prix*l.qte,0);
+ const envoyer=()=>{ if(erreur){setErr(erreur);return;} setErr(""); onSubmit({...f,lignes:propres}); };
  return (<div>
-  {prefill && <div className="text-xs text-sky-400 mb-2">Préremplie depuis l'OT {prefill.bt}</div>}
+  {prefill?.bt && <div className="text-xs text-sky-400 mb-2">Préremplie depuis l'OT {prefill.bt}</div>}
   <Field label="Code équipement"><Inp value={f.eq} onChange={e=>setF({...f,eq:e.target.value})} placeholder="ex: TRAM-004"/></Field>
   <Field label="Nom de l'équipement"><Inp value={f.nom} onChange={e=>setF({...f,nom:e.target.value})}/></Field>
   <Field label="Désignation équipement"><Inp value={f.designation} onChange={e=>setF({...f,designation:e.target.value})}/></Field>
-  <Field label="Pièce / Outillage / Consommable">
-   <select value={f.piece} onChange={e=>setF({...f,piece:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1">
-    {pieces.map(p=><option key={p.code} value={p.code}>{p.code} — {p.nom} (stock: {p.stock})</option>)}
-   </select>
-  </Field>
-  <Field label="Quantité"><Inp type="number" min="1" value={f.qte} onChange={e=>setF({...f,qte:Number(e.target.value)})}/></Field>
+  <div className="mt-3">
+   <div className="flex items-center justify-between"><div className="text-xs text-slate-400 font-medium">Pièces demandées ({propres.length})</div>
+    <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={ajouter}>+ Ajouter une pièce</Btn></div>
+   {lignes.length===0 && <div className="text-xs text-slate-500 mt-1">Aucune pièce : ajoutez-en au moins une.</div>}
+   {lignes.map((l,i)=>{const p=pieces.find(x=>x.code===l.piece);const manque=p&&p.stock<l.qte;return (
+    <div key={i} className="flex gap-1 mt-1 items-center" data-testid="ds-ligne">
+     <select aria-label={"Pièce "+(i+1)} value={l.piece} onChange={e=>majLigne(i,{piece:e.target.value})} className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">
+      {pieces.map(p=><option key={p.code} value={p.code}>{p.code} — {p.nom} (stock: {p.stock})</option>)}
+     </select>
+     <input aria-label={"Quantité "+(i+1)} type="number" min="1" value={l.qte} onChange={e=>majLigne(i,{qte:Number(e.target.value)})} className={"w-20 bg-slate-900 border rounded-lg px-2 py-1.5 text-sm "+(manque?"border-rose-500":"border-slate-700")}/>
+     <button type="button" aria-label={"Retirer la pièce "+(i+1)} title="Retirer cette pièce" className="text-rose-400 hover:text-rose-300 px-2" onClick={()=>retirer(i)}>✕</button>
+    </div>);})}
+   {propres.length>0 && <div className="text-right text-xs text-slate-400 mt-1">Montant estimé : <b>{total.toLocaleString()} DA</b></div>}
+   {rupture.length>0 && <div className="text-xs text-rose-400 mt-1">Stock insuffisant pour : {rupture.map(l=>l.pieceNom).join(", ")} — la DS partira « En attente pièce ».</div>}
+  </div>
   <Field label="OT associé (optionnel)">
    <select value={f.bt} onChange={e=>setF({...f,bt:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1">
     <option value="">—</option>{bts.map(b=><option key={b.code} value={b.code}>{b.code}</option>)}
    </select>
   </Field>
-  <div className="text-xs text-slate-500 mt-2">État initial : "Transmis au Magasinier" (ou "En attente pièce" si le stock est insuffisant — l'OT lié bascule alors aussi en "En attente pièce"). Le magasinier génère ensuite le BS ou annule la DS avec un motif.</div>
-  <div className="flex justify-end mt-3"><Btn onClick={()=>onSubmit(f)}>Créer la Demande de Sortie (DS)</Btn></div>
+  <div className="text-xs text-slate-500 mt-2">Une seule DS pour toutes les pièces. État initial : « Transmis au Magasinier », ou « En attente pièce » si une des pièces manque (l'OT lié reste « En attente pièce » jusqu'au traitement du bon de sortie). Tant que le bon de sortie n'est pas généré, le magasin peut retirer une pièce de la DS.</div>
+  {err && <div className="text-xs text-rose-400 text-right mt-1">{err}</div>}
+  <div className="flex justify-end mt-3"><Btn onClick={envoyer}>Créer la Demande de Sortie (DS)</Btn></div>
  </div>);
 }
 

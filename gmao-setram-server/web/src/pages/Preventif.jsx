@@ -30,7 +30,7 @@ export function Planning(props){
   </div>
   {persOk && <div className="text-xs text-sky-400">Plans assignés à <b>{persOk}</b> : {planning.filter(p=>p.unit===props.unit).length}</div>}
   {vue==="plans"?<PlanningPlans {...props} planning={planning} bts={bts}/>:<CompteursPage compteurs={props.compteurs} planning={planning} bts={bts} equipements={props.equipements} unit={props.unit} user={props.user}
-    onSave={props.onSaveCompteur} onDeclencher={props.onDeclencher} onEditPlan={props.onEdit}/>}
+    onSave={props.onSaveCompteur} blocage={props.blocageCompteur} onSupprimer={props.onSupprimerCompteur} onDeclencher={props.onDeclencher} onEditPlan={props.onEdit}/>}
  </div>);
 }
 

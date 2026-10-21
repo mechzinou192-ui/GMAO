@@ -15,7 +15,8 @@ import { fmpDuLien, nomFichierLien, tachesPourVisite } from './lib/fmp.js';
 import { congeAt } from './lib/jours.js';
 import { interDuSysteme } from './lib/equipes.js';
 
-export const MAX_LIGNES = 20000;
+export const MAX_LIGNES = 100000;      // par feuille (même valeur par défaut que le serveur : IMPORT_MAX_LIGNES)
+export const MAX_ENVOI_MO = 100;       // taille maximale de l'envoi au serveur (IMPORT_MAX_MO)
 const MAX_TEXTE = 300;
 
 /* ───────────────────────── Utilitaires ───────────────────────── */

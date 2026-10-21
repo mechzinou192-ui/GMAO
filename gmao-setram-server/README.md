@@ -194,6 +194,7 @@ Le lien contient l'adresse du serveur : imprimer les étiquettes **depuis l'adre
 | `lib/equipes.js` | rattachement équipement / intervenant à un système |
 | `lib/couts.js` | coût d'un ordre de travail |
 | `lib/kpi.js` | MTTR, MTBF, disponibilité, TMP/TMC, récurrence, RH, stock, AMDEC |
+| `lib/ds.js` | demandes de sortie multi-pièces (DS globale), retrait d'une pièce, rupture, pièces restant à demander |
 | `lib/unites.js` | unités d'exploitation et abréviations |
 
 Une modification d'une règle de calcul se fait dans ces fichiers et se vérifie par `npm test` sans ouvrir l'application.
@@ -232,7 +233,7 @@ Règles :
 - Le **stock** d'un article n'est pris en compte qu'à sa création (mouvement initial « Achat ») ; ensuite il évolue par
   les achats, sorties et retours.
 - Habilitations : ajoutées à celles qui existent ; la mise à jour d'une habilitation existante exige le mode « mettre à jour ».
-- Limites : 20 000 lignes par feuille, 15 Mo, format `.xlsx`.
+- Limites : 100 000 lignes par feuille, fichier de 50 Mo, envoi de 100 Mo (réglables : `IMPORT_MAX_LIGNES`, `IMPORT_MAX_MO`), format `.xlsx`.
 - Un organisme inconnu (appareils de mesure, contrôles) n'est pas bloquant : avertissement, valeur enregistrée telle quelle.
 
 ## 5. API

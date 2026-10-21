@@ -3,10 +3,13 @@ import { pool, audit } from './db.js';
 import { COLLECTIONS } from './rights.js';
 import { validId, isObj, resolveUnit } from './records.js';
 import { log } from './logger.js';
+import { config } from './config.js';
 
 export const importRouter = Router(); // monté derrière authRequired + superAdminRequired + mustNotChangePw
 
-export const MAX_PER_COLLECTION = 20000;
+// lignes par collection et par import (IMPORT_MAX_LIGNES, 100 000 par défaut)
+export const maxParCollection = () => config.importMaxLignes;
+const LOT = 1000;   // écritures groupées par 1 000 lignes (une requête SQL par lot)
 
 /*
  * POST /api/import
@@ -32,8 +35,8 @@ importRouter.post('/', async (req, res) => {
   for (const [name, items] of Object.entries(b.collections)) {
     const def = COLLECTIONS[name];
     if (!def) return res.status(400).json({ error: `Collection inconnue : ${name}.` });
-    if (!Array.isArray(items) || items.length > MAX_PER_COLLECTION)
-      return res.status(400).json({ error: `${name} : liste invalide (max ${MAX_PER_COLLECTION} éléments).` });
+    if (!Array.isArray(items) || items.length > maxParCollection())
+      return res.status(400).json({ error: `${name} : liste invalide (max ${maxParCollection()} éléments).` });
     const seen = new Set();
     const rows = [];
     for (const it of items) {
@@ -64,27 +67,34 @@ importRouter.post('/', async (req, res) => {
           'SELECT id, deleted FROM records WHERE collection=$1 AND id = ANY($2::text[])', [name, ids.slice(i, i + 1000)]);
         ex.forEach(e => found.set(e.id, e.deleted));
       }
+      // tri des lignes, puis écriture groupée par lots (une requête SQL pour 1 000 lignes au lieu d'une par ligne)
+      const nouveaux = [], recrees = [], majs = [];
       for (const it of rows) {
-        const json = JSON.stringify(it.data);
-        if (!found.has(it.id)) {
+        if (!found.has(it.id)) nouveaux.push(it);
+        else if (found.get(it.id) === true) recrees.push(it);         // supprimé auparavant : recréation
+        else if (it.overwrite || onConflict === 'update') majs.push(it);
+        else r.skipped++;
+      }
+      const cols = (l) => [l.map(x => x.id), l.map(x => x.unit), l.map(x => x.system), l.map(x => JSON.stringify(x.data))];
+      for (let i = 0; i < nouveaux.length; i += LOT) {
+        const [ids, units, systems, datas] = cols(nouveaux.slice(i, i + LOT));
+        await client.query(
+          `INSERT INTO records (collection, id, unit, system, data, updated_by)
+           SELECT $1, t.id, t.unit, t.system, t.data::jsonb, $6
+           FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) AS t(id, unit, system, data)`,
+          [name, ids, units, systems, datas, req.user.id]);
+      }
+      for (const [liste, recreer] of [[recrees, true], [majs, false]]) {
+        for (let i = 0; i < liste.length; i += LOT) {
+          const [ids, units, systems, datas] = cols(liste.slice(i, i + LOT));
           await client.query(
-            `INSERT INTO records (collection, id, unit, system, data, updated_by) VALUES ($1,$2,$3,$4,$5,$6)`,
-            [name, it.id, it.unit, it.system, json, req.user.id]);
-          r.created++;
-        } else if (found.get(it.id) === true) {   // supprimé auparavant : recréation
-          await client.query(
-            `UPDATE records SET unit=$3, system=$4, data=$5, deleted=false, version=version+1, updated_at=now(), updated_by=$6
-             WHERE collection=$1 AND id=$2`, [name, it.id, it.unit, it.system, json, req.user.id]);
-          r.created++;
-        } else if (it.overwrite || onConflict === 'update') {
-          await client.query(
-            `UPDATE records SET unit=$3, system=$4, data=$5, version=version+1, updated_at=now(), updated_by=$6
-             WHERE collection=$1 AND id=$2`, [name, it.id, it.unit, it.system, json, req.user.id]);
-          r.updated++;
-        } else {
-          r.skipped++;
+            `UPDATE records r SET unit=t.unit, system=t.system, data=t.data::jsonb, ${recreer ? 'deleted=false, ' : ''}version=r.version+1, updated_at=now(), updated_by=$6
+             FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) AS t(id, unit, system, data)
+             WHERE r.collection=$1 AND r.id=t.id`,
+            [name, ids, units, systems, datas, req.user.id]);
         }
       }
+      r.created += nouveaux.length + recrees.length; r.updated += majs.length;
       totals.created += r.created; totals.updated += r.updated; totals.skipped += r.skipped;
     }
     await client.query(dryRun ? 'ROLLBACK' : 'COMMIT');

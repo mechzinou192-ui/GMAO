@@ -54,6 +54,9 @@ export const config = {
     authWindowMin: entier('RATE_LIMIT_AUTH_WINDOW_MIN', 15, 1, 1440),
     authMax: entier('RATE_LIMIT_AUTH_MAX', 30, 3, 10000),            // tentatives de connexion par adresse IP
   },
+  // Import Excel : lignes par feuille et taille de l'envoi (Mo) — voir docs/decisions.md
+  importMaxLignes: entier('IMPORT_MAX_LIGNES', 100000, 1000, 500000),
+  importMaxMo: entier('IMPORT_MAX_MO', 100, 5, 500),
   shutdownTimeoutSec: entier('SHUTDOWN_TIMEOUT_SEC', 10, 1, 120),
   maxFailedAttempts: 5,
   lockMinutes: 15,

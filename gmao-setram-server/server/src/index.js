@@ -11,6 +11,7 @@ import { authRouter, authRequired, superAdminRequired, mustNotChangePw, csrfGuar
 import { usersRouter } from './users.js';
 import { dataRouter } from './records.js';
 import { importRouter } from './importer.js';
+import { reinitRouter } from './reinitialisation.js';
 import { filesRouter, MAX_FILE_BYTES } from './files.js';
 import { initDemo, comptesPublics } from './demo/seed.js';
 import { genererDemo } from './demo/donnees.js';
@@ -41,8 +42,8 @@ export function buildApp(opts = {}) {
       },
     },
   }));
-  // L'import Excel peut envoyer plusieurs milliers de lignes : limite plus large sur cette seule route
-  app.use('/api/import', express.json({ limit: '25mb' }));
+  // L'import Excel peut envoyer des dizaines de milliers de lignes : limite plus large sur cette seule route (IMPORT_MAX_MO)
+  app.use('/api/import', express.json({ limit: config.importMaxMo + 'mb' }));
   // envoi d'une photo : corps binaire brut (le serveur en vérifie le contenu), taille limitée
   app.use('/api/files', (req, res, next) => (req.method === 'POST' ? express.raw({ type: () => true, limit: MAX_FILE_BYTES })(req, res, next) : next()));
   app.use(express.json({ limit: '2mb' }));
@@ -61,17 +62,18 @@ export function buildApp(opts = {}) {
   // la connexion et les opérations coûteuses (import Excel, envoi de photos)
   app.use('/api', L.global, L.ecritures);
   app.post('/api/auth/login', L.connexion);
-  app.use(['/api/import', '/api/files'], L.couteuses);
+  app.use(['/api/import', '/api/files', '/api/admin'], L.couteuses);
 
   app.use('/api', csrfGuard);
   // Démonstration publique : on ne peut ni créer / modifier des comptes ni changer un mot de passe (comptes partagés)
   app.use(['/api/users', '/api/auth/change-password'], (req, res, next) =>
     (config.demo && req.method !== 'GET' ? res.status(403).json({ error: 'Désactivé dans la version de démonstration.' }) : next()));
-  app.get('/api/config', authRequired, (req, res) => res.json({ units: config.units }));
+  app.get('/api/config', authRequired, (req, res) => res.json({ units: config.units, import: { maxLignes: config.importMaxLignes, maxMo: config.importMaxMo } }));
   app.use('/api/auth', authRouter);
   app.use('/api/users', authRequired, superAdminRequired, usersRouter);
   app.use('/api/data', authRequired, mustNotChangePw, dataRouter);
   app.use('/api/import', authRequired, superAdminRequired, mustNotChangePw, importRouter);
+  app.use('/api/admin', authRequired, superAdminRequired, mustNotChangePw, reinitRouter);
   // Mode démonstration : comptes publics affichés sur l'écran de connexion ; gestion des comptes verrouillée
   app.get('/api/demo', (req, res) => {
     if (!config.demo) return res.status(404).json({ error: 'Route inconnue.' });

@@ -35,6 +35,7 @@ L'interface ne parle **qu'à l'API** (`web/src/api.js`, client unique). Seul le 
 | `numbering-core.js` / `numbering.js` | Numéros DI / OT / DS… attribués par le serveur, sans doublon |
 | `archives-core.js` | Fenêtre de chargement (DI / OT clos anciens non renvoyés par défaut) |
 | `importer.js` | Import Excel « tout ou rien » (une transaction) |
+| `reinitialisation-core.js` / `reinitialisation.js` | « Repartir de zéro » : règles pures (partagées avec la démo) + route transactionnelle (archivage `records_archive`, suppression logique) |
 | `files.js` | Photos : contrôle du contenu, taille, nombre, droits identiques à la DI / l'OT |
 | `db.js`, `migrations/` | Connexion PostgreSQL (ou PGlite en mode local), migrations versionnées, écriture du journal d'audit |
 | `demo/` | Données fictives de démonstration (jamais actives en exploitation : `DEMO` absent) |

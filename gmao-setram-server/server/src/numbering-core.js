@@ -22,7 +22,7 @@ export const SEQUENCES = {
   'pieces:C':   { collection: 'pieces',     prefix: 'C',       perUnit: false, yearly: false, pad: 3 },
 };
 
-export const MAX_BATCH = 200;
+export const MAX_BATCH = 1000;   // numéros réservés en une requête (import de gros volumes)
 
 export const sequenceKey = (collection, variant) => (variant ? `${collection}:${variant}` : collection);
 

@@ -2,10 +2,11 @@ import { useRef, useState } from 'react';
 import { api } from './api.js';
 import { flushAll, refreshAll } from './sync.js';
 import { reserverNumeros } from './numbering.js';
-import { indexerFMP, lireFMP } from './lib/fmp.js';
-import { genererModele, lireClasseur, preparerImport, compterAEcrire, completerCodes, genererRapport, MAX_LIGNES } from './importExcel.js';
+import { indexerFMP, lireFMP, resumeParDossier } from './lib/fmp.js';
+import { genererModele, lireClasseur, preparerImport, compterAEcrire, completerCodes, corpsRequete, genererRapport, MAX_LIGNES, MAX_ENVOI_MO } from './importExcel.js';
 
-const MAX_OCTETS = 15 * 1024 * 1024;
+const MAX_OCTETS = 50 * 1024 * 1024;       // classeur d'import
+const MAX_OCTETS_FMP = 15 * 1024 * 1024;   // une fiche FMP
 const MAX_AFFICHEES = 60;
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -43,16 +44,21 @@ export default function ImportDonnees({ refs }) {
     const fichiers = [...(e.target.files || [])].filter((f) => /\.xlsx$/i.test(f.name) && !f.name.startsWith('~$'));
     e.target.value = '';
     if (!fichiers.length) return;
-    setFmpLecture(true);
+    setFmpLecture({ fait: 0, total: fichiers.length });
     const ExcelJS = (await import('exceljs')).default;
     const lues = [...fmpsRef.current]; const erreurs = [];
+    let fait = 0;
     for (const f of fichiers) {
-      if (f.size > MAX_OCTETS) { erreurs.push(`${f.name} : fichier trop volumineux`); continue; }
-      try {
-        const fmp = await lireFMP(ExcelJS, await f.arrayBuffer(), f.name);
-        const i = lues.findIndex((x) => x.fichier.toLowerCase() === f.name.toLowerCase());
-        if (i >= 0) lues[i] = fmp; else lues.push(fmp);
-      } catch (err) { erreurs.push(`${f.name} : ${err.message}`); }
+      const chemin = f.webkitRelativePath || f.name;            // « FMP/CFO/fiche.xlsx » quand un dossier est choisi
+      if (f.size > MAX_OCTETS_FMP) erreurs.push(`${chemin} : fichier trop volumineux`);
+      else {
+        try {
+          const fmp = await lireFMP(ExcelJS, await f.arrayBuffer(), f.name, chemin);
+          const i = lues.findIndex((x) => (x.chemin || x.fichier).toLowerCase() === chemin.toLowerCase());
+          if (i >= 0) lues[i] = fmp; else lues.push(fmp);
+        } catch (err) { erreurs.push(`${chemin} : ${err.message}`); }
+      }
+      if (++fait % 10 === 0) { setFmpLecture({ fait, total: fichiers.length }); await attendre(0); }
     }
     fmpsRef.current = lues; setFmps(lues); setFmpErreurs(erreurs); setFmpLecture(false);
     if (lectureRef.current) setPrep(recalculer(lectureRef.current, mode));
@@ -72,7 +78,7 @@ export default function ImportDonnees({ refs }) {
     if (!f) return;
     setErreurFatale(''); setRapport(null); setPrep(null); setToutVoir(false);
     if (!/\.xlsx$/i.test(f.name)) return setErreurFatale('Choisissez un fichier Excel au format .xlsx (pas .xls ni .csv : ouvrez-le dans Excel puis « Enregistrer sous » .xlsx).');
-    if (f.size > MAX_OCTETS) return setErreurFatale('Fichier trop volumineux (15 Mo maximum).');
+    if (f.size > MAX_OCTETS) return setErreurFatale('Fichier trop volumineux (50 Mo maximum) : découpez-le (par unité ou par système) et importez les fichiers l\'un après l\'autre.');
     setNomFichier(f.name); setEtape('lecture');
     try {
       await flushAll();                        // enregistre d'abord les modifications en attente
@@ -105,6 +111,12 @@ export default function ImportDonnees({ refs }) {
   async function envoyer() {
     setEtape('envoi'); setErreurFatale('');
     try {
+      // contrôle de la taille AVANT de réserver des numéros : un envoi trop gros serait refusé en entier par le serveur
+      const taille = new Blob([JSON.stringify(corpsRequete(prep))]).size;
+      if (taille > MAX_ENVOI_MO * 1024 * 1024) {
+        setErreurFatale(`Import trop volumineux (${Math.ceil(taille / 1048576)} Mo, maximum ${MAX_ENVOI_MO} Mo) : rien n'a été importé. Découpez le fichier (par unité ou par système) et importez les parties l'une après l'autre.`);
+        setEtape('revue'); return;
+      }
       const body = await completerCodes(prep, reserverNumeros);
       if (!body) { setEtape('confirmation'); return; }       // reserverNumeros a déjà affiché le motif
       const res = await api.importExcel(body);
@@ -142,16 +154,17 @@ export default function ImportDonnees({ refs }) {
         </div>
         <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3" data-testid="import-fmp">
           <div className="text-sm font-semibold">Fiches FMP (pour la feuille « Planning préventif »)</div>
-          <div className="text-xs text-slate-400 mt-0.5">Ajoutez les fichiers FMP vers lesquels pointent les liens du planning : les tâches de chaque visite y sont lues automatiquement (tableau « N° / Opération »). L'ordre n'a pas d'importance : avant ou après le fichier principal.</div>
+          <div className="text-xs text-slate-400 mt-0.5">Ajoutez les fichiers FMP vers lesquels pointent les liens du planning : les tâches de chaque visite y sont lues automatiquement (tableau « N° / Opération »). L'ordre n'a pas d'importance : avant ou après le fichier principal. <b>Un dossier par système ?</b> Choisissez le dossier qui les contient tous (sous-dossiers compris), ou ajoutez les dossiers l'un après l'autre : les fiches s'additionnent.</div>
           <div className="flex flex-wrap gap-2 mt-2 items-center">
             <label className={secondaire + ' cursor-pointer'}>Ajouter des fichiers FMP
               <input type="file" accept=".xlsx" multiple className="hidden" onChange={choisirFMP} aria-label="Fichiers FMP" /></label>
             <label className={secondaire + ' cursor-pointer'}>Ajouter un dossier de FMP
               <input type="file" multiple webkitdirectory="" directory="" className="hidden" onChange={choisirFMP} aria-label="Dossier de FMP" /></label>
-            {fmpLecture && <span className="text-xs text-slate-400">Lecture des FMP…</span>}
+            {fmpLecture && <span className="text-xs text-slate-400">Lecture des FMP… {fmpLecture.fait} / {fmpLecture.total}</span>}
             {fmps.length > 0 && <span className="text-xs text-emerald-300" data-testid="fmp-compte">{fmps.length} FMP lue(s) — {fmps.reduce((a, f) => a + f.taches.length, 0)} tâches</span>}
             {fmps.length > 0 && <button className="text-xs text-slate-400 underline" onClick={() => { fmpsRef.current = []; setFmps([]); setFmpErreurs([]); if (lectureRef.current) setPrep(recalculer(lectureRef.current, mode)); }}>Retirer les FMP</button>}
           </div>
+          {fmps.length > 0 && <div className="mt-2 text-xs text-slate-400" data-testid="fmp-dossiers">Par dossier : {resumeParDossier(fmps).map(([d, n]) => `${d} (${n})`).join(' · ')}</div>}
           {fmpErreurs.length > 0 && <ul className="mt-2 text-xs text-amber-200 space-y-0.5">{fmpErreurs.slice(0, 20).map((m) => <li key={m}>{m}</li>)}</ul>}
         </div>
         {erreurFatale && <div role="alert" className="mt-3 text-sm text-rose-300 bg-rose-900/30 border border-rose-800 rounded-lg px-3 py-2">{erreurFatale}</div>}
@@ -256,7 +269,7 @@ export default function ImportDonnees({ refs }) {
           <div className="mt-3"><button className={primaire} onClick={recommencer}>Faire un autre import</button></div>
         </div>
       )}
-      <div className="text-xs text-slate-500">Limites : {MAX_LIGNES.toLocaleString('fr-FR')} lignes par feuille, 15 Mo par fichier, format .xlsx.</div>
+      <div className="text-xs text-slate-500">Limites : {MAX_LIGNES.toLocaleString('fr-FR')} lignes par feuille, 50 Mo par fichier, {MAX_ENVOI_MO} Mo par envoi, format .xlsx.</div>
     </div>
   );
 }

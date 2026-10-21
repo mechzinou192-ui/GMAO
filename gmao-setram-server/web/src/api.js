@@ -65,6 +65,8 @@ const apiReel = {
   // import Excel : une seule transaction pour toutes les collections (tout ou rien)
   importExcel: (body) => call('POST', '/import', body),
   bulkImport: (collection, items) => call('POST', `/data/${collection}/bulk`, { items }),
+  // repartir de zéro (super administrateur) : { confirmation, sauvegardeFaite, referentiels, numerotation }
+  reinitialiser: (body) => call('POST', '/admin/reinitialiser', body),
 
   users: () => call('GET', '/users'),
   createUser: (u) => call('POST', '/users', u),

@@ -2,7 +2,7 @@
 // Les numéros ne sont plus calculés sur le poste : le serveur garantit qu'ils sont uniques.
 import { api } from './api.js';
 
-const MAX = 200; // taille maximale d'un lot côté serveur
+import { MAX_BATCH as MAX } from '../../server/src/numbering-core.js';   // taille maximale d'un lot côté serveur (1 000)
 
 export const messageNumerotation = (e) =>
   e && e.network

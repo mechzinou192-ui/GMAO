@@ -310,6 +310,66 @@ describe('application complète en mode site statique', () => {
     expect(tb.querySelectorAll('details.gm-viz-table').length).toBeGreaterThanOrEqual(4);
   });
 
+  it('suppression : DI « À transmettre » supprimée côté serveur ; DI avec OT et équipement utilisé : suppression refusée avec la raison', async () => {
+    const recs = apiSite._etat().records;
+    const diLibre = Object.values(recs.dis).find((r) => r.unit === 'Alger' && r.data.etat === 'À Transmettre' && !Object.values(recs.bts).some((b) => b.data.di === r.id));
+    const diAvecOT = Object.values(recs.dis).find((r) => r.unit === 'Alger' && Object.values(recs.bts).some((b) => b.data.di === r.id));
+    await seConnecter('Responsable maintenance');
+    onglet(/Maintenance corrective/);
+    fireEvent.click((await screen.findAllByText(diLibre.id))[0]);
+    fireEvent.click(await screen.findByText('Supprimer la DI ' + diLibre.id));
+    expect(await screen.findByText(/Supprimer définitivement la DI/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Oui, supprimer'));
+    await waitFor(() => expect(apiSite._etat().records.dis[diLibre.id].deleted).toBe(true), { timeout: 4000 });
+    expect(apiSite._etat().audit.some((a) => a.action === 'delete' && a.record_id === diLibre.id)).toBe(true);   // tracé dans le journal
+    fireEvent.click((await screen.findAllByText(diAvecOT.id))[0]);
+    const zone = await screen.findByTestId('zone-suppression');
+    expect(zone.textContent).toMatch(/Suppression impossible : un OT a été généré/);
+    expect(within(zone).getByText('Supprimer').disabled).toBe(true);
+  });
+
+  it('suppression directe : équipement créé par erreur (bouton ✕ de l’arborescence), appareil de mesure, organisme utilisé refusé', async () => {
+    const recs = apiSite._etat().records;
+    const modele = Object.values(recs.equipements).find((r) => r.unit === 'Alger' && r.data.system === 'CFO');
+    const code = modele.data.system + '.ALG.' + modele.data.subCode + '.99';
+    const t = new Date().toISOString();
+    recs.equipements[code] = { ...modele, id: code, version: 1, createdAt: t, updatedAt: t, data: { ...modele.data, code, nom: 'Créé par erreur', sousEquip: [] } };
+    await seConnecter('Super administrateur');
+    onglet(/Arborescence/);
+    fireEvent.click(await screen.findByText('CFO', { selector: 'span', exact: false }));
+    const sous = (await screen.findAllByText(new RegExp('\\(CFO\\.ALG\\.' + modele.data.subCode + '\\)')))[0];
+    fireEvent.click(sous.closest('button'));
+    fireEvent.click(await screen.findByLabelText('Supprimer ' + code));
+    expect(await screen.findByText(/Supprimer définitivement l'équipement/)).toBeTruthy();       // confirmation ouverte directement
+    fireEvent.click(screen.getByText('Oui, supprimer'));
+    await waitFor(() => expect(apiSite._etat().records.equipements[code].deleted).toBe(true), { timeout: 4000 });
+
+    onglet(/Matériaux/);
+    fireEvent.click(await screen.findByText('Appareils de mesure'));
+    const mesure = Object.values(recs.mesures).find((r) => !r.deleted);
+    fireEvent.click(await screen.findByLabelText('Supprimer ' + mesure.id));
+    fireEvent.click(await screen.findByText('Oui, supprimer'));
+    await waitFor(() => expect(apiSite._etat().records.mesures[mesure.id].deleted).toBe(true), { timeout: 4000 });
+
+    fireEvent.click(await screen.findByText('Organismes'));
+    const utilise = Object.values(recs.organismes).find((o) => Object.values(recs.mesures).some((m) => !m.deleted && m.data.organisme === o.data.nom) || Object.values(recs.controles || {}).some((c) => c.data.organisme === o.data.nom));
+    fireEvent.click(await screen.findByLabelText('Supprimer ' + utilise.id));
+    expect((await screen.findByTestId('zone-suppression')).textContent).toMatch(/Suppression impossible/);
+  });
+
+  it('suppression : OT non clôturé supprimé et sa DI repasse « À transmettre »', async () => {
+    const recs = apiSite._etat().records;
+    const ot = Object.values(recs.bts).find((r) => r.unit === 'Alger' && r.data.di && r.data.etat === 'En cours' && !Object.values(recs.dss || {}).some((d) => d.data.bt === r.id));
+    await seConnecter('Super administrateur');
+    onglet(/Maintenance corrective/);
+    fireEvent.click(await screen.findByText('OT correctifs'));
+    fireEvent.click((await screen.findAllByText(ot.id))[0]);
+    fireEvent.click(await screen.findByText(/^Supprimer l'OT /));
+    fireEvent.click(await screen.findByText('Oui, supprimer'));
+    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].deleted).toBe(true), { timeout: 4000 });
+    await waitFor(() => expect(apiSite._etat().records.dis[ot.data.di].data.etat).toBe('À Transmettre'), { timeout: 4000 });
+  });
+
   it('accueil : tableau de bord limité aux volets autorisés', async () => {
     await seConnecter('Exploitation');
     await waitFor(() => expect(document.body.textContent).toContain('Mes infos DI'));
@@ -330,6 +390,64 @@ describe('application complète en mode site statique', () => {
     await seConnecter('Direction');
     onglet(/Indicateurs|KPI/);
     await waitFor(() => expect(document.body.textContent).toMatch(/Disponibilit|MTBF|MTTR/));
+  });
+
+  it('préventif : une DS globale pour toutes les pièces prévues, retrait d’une pièce par le magasin, bon de sortie multi-pièces', async () => {
+    const recs = apiSite._etat().records;
+    const prev = Object.values(recs.bts).find((r) => r.unit === 'Alger' && r.data.plan && r.data.etat !== 'Clôturé' && r.data.etat !== 'Annulé');
+    const stock = (c) => recs.pieces[c].data.stock;
+    const s1 = stock('P-001'), s2 = stock('P-002');
+    prev.data = { ...prev.data, piecesPrevues: [{ code: 'P-001', qte: 2 }, { code: 'P-002', qte: 1 }, { code: 'P-003', qte: 500 }] };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await seConnecter('Super administrateur');
+    onglet(/Ordres de travail/);
+    fireEvent.click((await screen.findAllByText(prev.id))[0]);
+    const bouton = await screen.findByTestId('ds-globale');
+    expect(bouton.textContent).toContain('3 pièces');
+    fireEvent.click(bouton);
+    await waitFor(() => expect(screen.getAllByTestId('ds-ligne')).toHaveLength(3));
+    expect(document.body.textContent).toContain('Stock insuffisant pour');
+    fireEvent.click(screen.getByText('Créer la Demande de Sortie (DS)'));
+    await waitFor(() => expect(Object.values(apiSite._etat().records.dss || {}).some((r) => r.data.bt === prev.id)).toBe(true));
+    const ds = () => Object.values(apiSite._etat().records.dss).find((r) => r.data.bt === prev.id && !r.deleted);
+    expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-001', 'P-002', 'P-003']);       // UNE seule DS, trois pièces
+    expect(ds().data.etat).toBe('En attente pièce');
+    await waitFor(() => expect(apiSite._etat().records.bts[prev.id].data.etat).toBe('En attente pièce'));
+
+    onglet(/Gestion de stock/);
+    const choixSection = await screen.findByDisplayValue('Pièces');
+    fireEvent.change(choixSection, { target: { value: 'ds' } });
+    const code = ds().id;
+    const cellule = await screen.findByTestId('ds-lignes-' + code);
+    fireEvent.click(within(cellule).getByLabelText(/Retirer .* de la DS/, { selector: '[aria-label*="Relais"]' }));
+    await waitFor(() => expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-001', 'P-002']));
+    expect(ds().data.etat).toBe('Transmis au Magasinier');                                      // plus de rupture : transmis au magasin
+
+    fireEvent.click(within(cellule.closest('tr')).getByText('Générer BS'));
+    fireEvent.change(choixSection, { target: { value: 'bs' } });
+    fireEvent.click(await screen.findByText('Traiter / Délivrer'));
+    await waitFor(() => expect(stock('P-001')).toBe(s1 - 2));
+    expect(stock('P-002')).toBe(s2 - 1);
+    await waitFor(() => expect(ds().data.etat).toBe('Traité'));
+    await waitFor(() => expect(apiSite._etat().records.bts[prev.id].data.etat).toBe('En cours'));   // OT débloqué
+  });
+
+  it('administration : repartir de zéro (super admin) — confirmation exigée, données vidées, comptes et référentiels gardés', async () => {
+    await seConnecter('Super administrateur');
+    onglet(/^\s*Administration/);
+    fireEvent.click(await screen.findByText('Repartir de zéro'));
+    const bouton = await screen.findByText('Vider les données');
+    fireEvent.click(bouton);
+    expect(Object.values(apiSite._etat().records.equipements).some((r) => !r.deleted)).toBe(true);   // rien sans confirmation
+    fireEvent.click(screen.getByText(/et vérifié/).closest('label'));
+    fireEvent.change(screen.getByLabelText('Phrase de confirmation'), { target: { value: 'repartir de zero' } });
+    fireEvent.click(bouton);
+    expect(await screen.findByTestId('reinit-ok')).toBeTruthy();
+    const e = apiSite._etat();
+    for (const c of ['equipements', 'dis', 'bts', 'pieces', 'intervenants', 'planning']) expect(Object.values(e.records[c] || {}).every((r) => r.deleted)).toBe(true);
+    expect(Object.values(e.records.systemes).some((r) => !r.deleted)).toBe(true);
+    expect((await apiSite.nextCodes('dis', { unit: 'Alger' }))[0]).toBe(`DI-ALG-${AN}-0001`);
+    expect(e.audit.at(-1).action).toBe('reinitialisation');
   });
 
   it('administration : comptes visibles mais verrouillés, journal consultable', async () => {

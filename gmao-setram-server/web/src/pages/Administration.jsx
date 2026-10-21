@@ -5,12 +5,15 @@ import {api} from "../api.js";
 import {KPI_ALL,KPI_BLOCS,KPI_VUES,ROLES,VOLETS} from "../constantes.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,Chk,Field,Inp,SubTabs} from "../ui/base.jsx";
+import {PHRASE_REINITIALISATION,COLLECTIONS_METIER,COLLECTIONS_REFERENTIELS} from "../../../server/src/reinitialisation-core.js";
 
 export function AdminPage({systemsList,me,importRefs}){
  const [vue,setVue]=useState("acces");
  return (<div>
-  <div className="mb-4"><SubTabs value={vue} onChange={setVue} items={[["acces","Comptes et droits d'accès"],["import","Import de données (Excel)"]]}/></div>
-  {vue==="acces" ? <AdminAcces systemsList={systemsList} me={me}/> : <ImportDonnees refs={importRefs}/>}
+  <div className="mb-4"><SubTabs value={vue} onChange={setVue} items={[["acces","Comptes et droits d'accès"],["import","Import de données (Excel)"],["zero","Repartir de zéro"]]}/></div>
+  {vue==="acces" && <AdminAcces systemsList={systemsList} me={me}/>}
+  {vue==="import" && <ImportDonnees refs={importRefs}/>}
+  {vue==="zero" && <RepartirDeZero/>}   {/* l'onglet Administration n'est ouvert qu'au super administrateur ; le serveur le revérifie */}
  </div>);
 }
 
@@ -97,4 +100,50 @@ export function AdminAcces({systemsList,me}){
     </div>
    </Card>}
   </div></div>;
+}
+
+// Mise en service : vider les données de démonstration / de test avant d'importer les vraies données.
+// Garde-fous : super administrateur, sauvegarde déclarée, phrase à recopier ; côté serveur, archivage + suppression logique.
+const NOMS_COLLECTIONS={equipements:"Équipements",dis:"Demandes d'intervention",bts:"Ordres de travail",planning:"Plans préventifs",compteurs_eq:"Compteurs",
+ pieces:"Articles (pièces, outillage, consommables)",dss:"Demandes de sortie",bs:"Bons de sortie",brs:"Bons de retour",decharges:"Décharges",
+ intervenants:"Intervenants",prestataires:"Prestataires",mesures:"Appareils de mesure",controles:"Contrôles réglementaires",organismes:"Organismes",
+ systemes:"Systèmes",arborescence:"Sous-systèmes (arborescence)",feries:"Jours fériés"};
+export function RepartirDeZero(){
+ const [referentiels,setReferentiels]=useState(false);
+ const [numerotation,setNumerotation]=useState(true);
+ const [sauvegarde,setSauvegarde]=useState(false);
+ const [phrase,setPhrase]=useState("");
+ const [etat,setEtat]=useState({envoi:false,err:"",res:null});
+ const pret=sauvegarde && phrase.trim().toUpperCase()===PHRASE_REINITIALISATION && !etat.envoi;
+ const lancer=async()=>{
+  if(!pret) return;
+  setEtat({envoi:true,err:"",res:null});
+  try{ const res=await api.reinitialiser({confirmation:phrase,sauvegardeFaite:true,referentiels,numerotation}); setEtat({envoi:false,err:"",res}); }
+  catch(e){ setEtat({envoi:false,err:e.message+(e.requestId?" (référence : "+e.requestId+")":""),res:null}); }
+ };
+ if(etat.res) return (<Card><div data-testid="reinit-ok">
+  <div className="font-semibold text-emerald-400">Remise à zéro effectuée — {etat.res.total} élément(s) archivé(s) (opération n° {etat.res.reinitialisation}).</div>
+  <ul className="text-xs text-slate-400 mt-2 grid sm:grid-cols-2 gap-x-6">{Object.entries(etat.res.collections).filter(([,n])=>n>0).map(([c,n])=><li key={c}>{NOMS_COLLECTIONS[c]||c} : {n}</li>)}</ul>
+  <div className="text-sm mt-3">Étape suivante : <b>Import de données (Excel)</b> pour charger vos équipements, articles, intervenants et planning.</div>
+  <div className="flex justify-end mt-3"><Btn onClick={()=>window.location.reload()}>Recharger l'application</Btn></div>
+ </div></Card>);
+ return (<Card>
+  <div className="font-semibold text-rose-400">Repartir de zéro — vider les données avant la mise en service</div>
+  <div className="text-sm text-slate-300 mt-1">À utiliser <b>une seule fois</b>, avant d'importer vos vraies données (par exemple pour retirer les données de démonstration ou d'essai).</div>
+  <div className="grid md:grid-cols-2 gap-4 mt-3 text-sm">
+   <div><div className="text-xs text-slate-400 font-medium mb-1">Sera vidé</div>
+    <ul className="text-xs text-slate-300 list-disc pl-4">{[...COLLECTIONS_METIER,...(referentiels?COLLECTIONS_REFERENTIELS:[])].map(c=><li key={c}>{NOMS_COLLECTIONS[c]||c}</li>)}</ul></div>
+   <div><div className="text-xs text-slate-400 font-medium mb-1">Toujours conservé</div>
+    <ul className="text-xs text-slate-300 list-disc pl-4"><li>Comptes utilisateurs et droits d'accès</li><li>Journal d'audit</li>{!referentiels&&<li>Systèmes, sous-systèmes (arborescence) et jours fériés</li>}</ul>
+    <div className="text-xs text-slate-500 mt-2">Rien n'est effacé physiquement : les éléments sont archivés en base puis retirés de l'application. La DSI peut annuler l'opération (procédure dans le runbook).</div></div>
+  </div>
+  <div className="mt-3 space-y-1">
+   <Chk checked={referentiels} onChange={setReferentiels}>Vider aussi les systèmes, sous-systèmes et jours fériés</Chk>
+   <Chk checked={numerotation} onChange={setNumerotation}>Remettre la numérotation à 1 (DI-…-0001, OT-…-0001, DS-…-0001, P-001…)</Chk>
+   <Chk checked={sauvegarde} onChange={setSauvegarde}>J'ai fait <b>et vérifié</b> une sauvegarde de la base (runbook § sauvegarde)</Chk>
+  </div>
+  <Field label={"Pour confirmer, recopiez : "+PHRASE_REINITIALISATION}><Inp aria-label="Phrase de confirmation" value={phrase} onChange={e=>setPhrase(e.target.value)} placeholder={PHRASE_REINITIALISATION}/></Field>
+  {etat.err && <div className="text-xs text-rose-400 mt-2">{etat.err}</div>}
+  <div className="flex justify-end mt-3"><Btn cls={pret?"bg-rose-700 hover:bg-rose-600 text-white":"bg-slate-700 text-slate-500 cursor-not-allowed"} onClick={lancer}>{etat.envoi?"Remise à zéro en cours…":"Vider les données"}</Btn></div>
+ </Card>);
 }

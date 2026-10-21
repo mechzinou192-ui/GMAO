@@ -14,6 +14,7 @@ import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
 import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
+import { preparerReinitialisation } from '../../../server/src/reinitialisation-core.js';
 import { SEQUENCES, MAX_BATCH, sequenceKey, unitAbbr, currentYear, formatCode } from '../../../server/src/numbering-core.js';
 
 const UNITS = Object.keys(ABBR);
@@ -79,7 +80,8 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       const k = `${cle}|${abbr}|${an}`;
       etat.compteurs[k] = (etat.compteurs[k] || 0) + 1;
       const code = formatCode(def, { abbr, year: currentYear(), n: etat.compteurs[k] });
-      if (!(etat.records[def.collection] || {})[code]) codes.push(code);        // un code déjà pris est sauté
+      const pris = (etat.records[def.collection] || {})[code];
+      if (!pris || pris.deleted) codes.push(code);        // un code déjà pris est sauté (un code supprimé peut resservir)
     }
     return codes;
   };
@@ -173,7 +175,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       const plan = [];
       for (const [name, items] of Object.entries(b.collections)) {
         const def = COLLECTIONS[name]; if (!def) throw err(400, `Collection inconnue : ${name}.`);
-        if (!Array.isArray(items) || items.length > 20000) throw err(400, `${name} : liste invalide (max 20000 éléments).`);
+        if (!Array.isArray(items) || items.length > 100000) throw err(400, `${name} : liste invalide (max 100000 éléments).`);
         const vus = new Set();
         for (const it of items) {
           const u = unitDe(def, it?.unit); if (u === null) throw err(400, `${name} : unité invalide pour « ${it?.id} ».`);
@@ -200,6 +202,24 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       }
       if (!b.dryRun) { journal(user, 'import_excel', { detail: { onConflict, totals, collections: rapport } }); sauver(); }
       return { dryRun: b.dryRun === true, onConflict, totals, collections: rapport };
+    },
+
+    /* ───── repartir de zéro (même règle que le serveur : comptes conservés, suppression logique) ───── */
+    reinitialiser: async (body) => {
+      const user = actuel(); if (!user.super_admin) throw err(403, 'Réservé au super administrateur.');
+      let p; try { p = preparerReinitialisation(body); } catch (e) { throw err(400, e.message); }
+      const t = tick(); const collections = {}; let total = 0;
+      for (const c of p.collections) {
+        let n = 0;
+        for (const r of Object.values(etat.records[c] || {})) if (!r.deleted) { Object.assign(r, { deleted: true, version: r.version + 1, updatedAt: t }); n++; }
+        collections[c] = n; total += n;
+      }
+      for (const k of Object.keys(etat.compteurs)) if (p.sequences.includes(k.split('|')[0])) delete etat.compteurs[k];
+      for (const [id, f] of Object.entries(etat.fichiers)) if (p.collections.includes(f.collection)) delete etat.fichiers[id];
+      const reinitialisation = (etat.reinitialisations = (etat.reinitialisations || 0) + 1);
+      journal(user, 'reinitialisation', { detail: { reinitialisation, collections, total, numerotation: p.numerotation } });
+      sauver();
+      return { reinitialisation, collections, total, numerotation: p.numerotation };
     },
 
     /* ───── photos (conservées le temps de l'onglet) ───── */

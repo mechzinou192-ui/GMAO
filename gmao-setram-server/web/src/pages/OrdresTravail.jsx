@@ -1,5 +1,6 @@
 // Ordres de Travail (OT) : liste, détail, création, compte-rendu et clôture.
 import React,{useState} from "react";
+import {piecesRestantAdemander} from "../lib/ds.js";
 import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {imprimerHtml} from "../imprimer.js";
@@ -91,7 +92,7 @@ export function BTReadOnly({bt,pieces}){
  </div>);
 }
 
-export function BTDetail({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
+export function BTDetail({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
  const clos=bt.etat==="Clôturé";
  return (<div>
   <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3">
@@ -111,7 +112,7 @@ export function BTDetail({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onS
    {bt.dateCloture && <Info l="Clôturé le">{bt.dateCloture}</Info>}
   </div>
   {bt.consigne && bt.consigne!=="-" && <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 mb-2"><span className="text-slate-500">Consigne de la Maintenance : </span>{bt.consigne}</div>}
-  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} dsOuvertes={dsOuvertes} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onCreateDS={onCreateDS}/>}
+  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} dsOuvertes={dsOuvertes} dsDeLOT={dsDeLOT} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onCreateDS={onCreateDS}/>}
   <PiecesJointes collection="bts" recordId={bt.code}/>
  </div>);
 }
@@ -148,7 +149,7 @@ export function BTCreateForm({di,inter,equipements,pieces,onSubmit}){
 }
 
 /* Étape 2 — Saisie par l'intervenant puis clôture */
-export function BTFillForm({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
+export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
  const [releveCpt,setReleveCpt]=useState("");
  const sysBT=systemeDe(bt.eq,bt.nom,equipements);
  const interEq=interPourSys(inter,sysBT);
@@ -192,7 +193,8 @@ export function BTFillForm({bt,dsOuvertes=[],compteur,pieces,inter,equipements,o
   if(compteur){ const e=controleReleve(compteur,{date:todayStr(),valeur:releveCpt}); if(e){setErr("Relevé du compteur : "+e);return;} onCloturer({...data(),releveCompteur:releveCpt}); return; }
   onCloturer(data());
  }
- const allItems=piecesBT;
+ // pièces à demander au magasin : celles saisies dans l'OT, sinon celles prévues par le plan préventif
+ const allItems=piecesBT.length?piecesBT:(bt.piecesPrevues||[]).filter(x=>pieces.some(p=>p.code===x.code&&p.categorie==="Pièce"));
 
  return (<div>
   {compteur && (()=>{const d=dernier(compteur);return <div className="mb-3 rounded-lg border border-sky-600 bg-sky-900/30 p-3" data-testid="releve-cloture">
@@ -269,7 +271,11 @@ export function BTFillForm({bt,dsOuvertes=[],compteur,pieces,inter,equipements,o
   <MateriauxSection label="Consommable utilisé" categorie="Consommable" pieces={pieces} list={consommablesBT} setList={setConsommablesBT}/>
 
   {allItems.length>0 && <div className="mt-3"><div className="text-xs text-slate-400 font-medium">Demande de sortie magasin (DS) — pièces uniquement <span className="text-slate-500">(outillage et consommables : sortie par décharge)</span></div>
-   <div className="flex flex-wrap gap-1 mt-1">{allItems.map((it,i)=><button key={i} className="text-xs text-sky-400 border border-slate-700 rounded px-2 py-1 hover:bg-slate-700" onClick={()=>onCreateDS(it)}>Créer DS — {it.code} × {it.qte}</button>)}</div></div>}
+   {(()=>{const reste=piecesRestantAdemander(allItems,dsDeLOT);return (<div className="flex flex-wrap items-center gap-2 mt-1">
+    <button type="button" data-testid="ds-globale" className="text-xs text-sky-400 border border-sky-700 rounded px-2 py-1 hover:bg-slate-700" onClick={()=>onCreateDS(allItems)}>
+     {reste.length?"Créer une DS globale — "+reste.length+" pièce"+(reste.length>1?"s":"")+" ("+reste.map(x=>x.code+" × "+x.qte).join(", ")+")":"Créer une DS complémentaire"}</button>
+    {dsDeLOT.length>0 && <span className="text-xs text-slate-500">DS déjà émises : {dsDeLOT.map(d=>d.code+" ("+d.etat+")").join(", ")}</span>}
+   </div>);})()}</div>}
 
   <div className="text-right text-sm text-slate-300 mt-3">Coût MO: {coutMO.toLocaleString()} DA — Coût Matières: {coutMat.toLocaleString()} DA — <b>Total: {(coutMO+coutMat).toLocaleString()} DA</b></div>
   {err && <div className="text-xs text-rose-400 text-right mt-1">{err}</div>}

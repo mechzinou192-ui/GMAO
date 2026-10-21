@@ -115,3 +115,23 @@ export function LienFMP({fmp}){
    :fmp.lien?<><span className="text-xs text-slate-500 break-all">{fmp.lien}</span><button type="button" onClick={copier} className="text-xs text-sky-400 underline">Copier le chemin</button></>:null}
  </span>;
 }
+
+// Zone de suppression d'une fiche : bouton désactivé avec la raison tant que l'élément est utilisé ailleurs ;
+// confirmation explicite ; la suppression est logique côté serveur (conservée et tracée dans le journal d'audit).
+export function ZoneSuppression({quoi,bloque,onSupprimer,ouverte=false}){
+ const [demande,setDemande]=React.useState(ouverte);
+ const ref=React.useRef(null);
+ React.useEffect(()=>{ if(ouverte && ref.current && ref.current.scrollIntoView) ref.current.scrollIntoView({block:"nearest"}); },[ouverte]);
+ return <div ref={ref} className="mt-4 pt-3 border-t border-slate-700" data-testid="zone-suppression">
+  {bloque
+   ? <div className="flex items-start gap-2 text-xs text-slate-400"><button type="button" disabled className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-600 text-slate-400 cursor-not-allowed shrink-0">Supprimer</button><span>Suppression impossible : {bloque}</span></div>
+   : !demande
+    ? <button type="button" onClick={()=>setDemande(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-rose-700 hover:bg-rose-600 text-white">Supprimer {quoi}</button>
+    : <div className="rounded-lg border border-rose-700 bg-rose-900/30 p-3 text-sm" role="alertdialog">
+       <div className="text-rose-300 font-medium">Supprimer définitivement {quoi} ?</div>
+       <div className="text-xs text-slate-400 mt-1">Il disparaît pour tous les utilisateurs. La suppression est enregistrée dans le journal d'audit (qui, quand, contenu supprimé).</div>
+       <div className="flex gap-2 mt-2"><button type="button" onClick={onSupprimer} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-rose-700 hover:bg-rose-600 text-white">Oui, supprimer</button>
+        <button type="button" onClick={()=>setDemande(false)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600">Annuler</button></div>
+      </div>}
+ </div>;
+}

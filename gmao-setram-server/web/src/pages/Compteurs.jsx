@@ -3,7 +3,7 @@ import React,{useState} from "react";
 import {exporterXlsx} from "../excel.js";
 import {GRANDEURS,ajouterReleve,codeCompteur,controleReleve,dernier,etatPlanCompteur,fmtNb,isCompteurPlan,moyenneJour,serie} from "../lib/compteurs.js";
 import {frDate,todayStr} from "../lib/dates.js";
-import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,Modal} from "../ui/base.jsx";
+import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,Modal,ZoneSuppression} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
 /* ===== Compteurs d'équipement (km, heures, cycles) et maintenance conditionnelle ===== */
@@ -14,7 +14,7 @@ export function JaugeCompteur({st}){
  return <div className="min-w-[140px]"><div className="flex justify-between text-xs text-slate-400"><span>{fmtNb(st.depuis)} / {fmtNb(st.pas)} {st.unite}</span><b style={{color:coul}}>{st.statut==="Sans relevé"?"—":st.pct+" %"}</b></div>
   <div className="h-1.5 rounded-full bg-slate-600 mt-1 overflow-hidden"><div style={{width:pct+"%",background:coul,height:"100%"}}/></div></div>;
 }
-export function CompteursPage({compteurs,planning,bts,equipements,unit,user,onSave,onDeclencher,onEditPlan}){
+export function CompteursPage({compteurs,planning,bts,equipements,unit,user,onSave,blocage,onSupprimer,onDeclencher,onEditPlan}){
  const [nouveau,setNouveau]=useState(false);
  const [releve,setReleve]=useState(null);
  const liste=compteurs.filter(c=>c.unit===unit);
@@ -63,7 +63,7 @@ export function CompteursPage({compteurs,planning,bts,equipements,unit,user,onSa
     </tr>;})}</tbody></table></div>
   </Card>
   {nouveau&&<Modal title="Nouveau compteur d'équipement" onClose={()=>setNouveau(false)}><CompteurForm equipements={equipements} compteurs={compteurs} user={user} onSubmit={(c)=>{onSave(c);setNouveau(false);}}/></Modal>}
-  {releve&&<Modal wide title={"Relevé — "+releve.code} onClose={()=>setReleve(null)}><ReleveForm compteur={compteurs.find(c=>c.code===releve.code)||releve} user={user} onSubmit={(c)=>{onSave(c);setReleve(null);}}/></Modal>}
+  {releve&&<Modal wide title={"Relevé — "+releve.code} onClose={()=>setReleve(null)}><ReleveForm compteur={compteurs.find(c=>c.code===releve.code)||releve} user={user} onSubmit={(c)=>{onSave(c);setReleve(null);}}/>{onSupprimer&&<ZoneSuppression quoi={"le compteur "+releve.code} bloque={blocage?blocage(releve):null} onSupprimer={()=>{onSupprimer(releve.code);setReleve(null);}}/>}</Modal>}
  </div>);
 }
 export function CompteurForm({equipements,compteurs,user,onSubmit}){

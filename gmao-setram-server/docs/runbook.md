@@ -58,6 +58,24 @@ docker compose logs app | grep 'limite de débit atteinte'       # abus ou limit
 
 **Tester la restauration** sur un serveur de recette au moins une fois par trimestre.
 
+### Annuler une remise à zéro (« Repartir de zéro »)
+
+L'écran *Administration › Repartir de zéro* archive les éléments dans `records_archive` (numéro d'opération dans
+`reinitialisations`) puis les marque supprimés. **Méthode recommandée** : restaurer la sauvegarde faite juste avant.
+Sans sauvegarde, et **seulement si aucune donnée n'a été saisie depuis** (sinon les numéros réattribués écraseraient les nouvelles fiches) :
+
+```sql
+-- N = numéro d'opération affiché à l'écran (ou : SELECT * FROM reinitialisations ORDER BY id DESC;)
+BEGIN;
+UPDATE records r SET data=a.data, unit=a.unit, system=a.system, deleted=false, version=r.version+1, updated_at=now()
+  FROM records_archive a WHERE a.reinitialisation=N AND r.collection=a.collection AND r.id=a.id;
+INSERT INTO counters (name, scope, year, last)
+  SELECT c->>'name', c->>'scope', (c->>'year')::int, (c->>'last')::int
+  FROM reinitialisations, jsonb_array_elements(compteurs) c WHERE id=N
+  ON CONFLICT (name, scope, year) DO UPDATE SET last = GREATEST(counters.last, EXCLUDED.last);
+COMMIT;
+```
+
 ## 6. Mise à jour et retour arrière
 
 1. `./scripts/backup.sh` (**obligatoire**).
@@ -77,4 +95,4 @@ docker compose logs app | grep 'limite de débit atteinte'       # abus ou limit
 
 ## 8. Réglages sans modification du code (`.env`)
 
-`SESSION_HOURS`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SHUTDOWN_TIMEOUT_SEC`, `UNITS` (liste des unités) : modifier `.env` puis `docker compose up -d`. Une valeur invalide empêche le démarrage avec un message explicite (`docker compose logs app`).
+`SESSION_HOURS`, `LOG_LEVEL`, `RATE_LIMIT_*`, `IMPORT_MAX_LIGNES` / `IMPORT_MAX_MO` (import Excel ; derrière nginx, ajuster aussi `client_max_body_size` de `/api/import`), `SHUTDOWN_TIMEOUT_SEC`, `UNITS` (liste des unités) : modifier `.env` puis `docker compose up -d`. Une valeur invalide empêche le démarrage avec un message explicite (`docker compose logs app`).

@@ -8,7 +8,7 @@ import {UNIT_ABBR} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Field,Inp,SubTabs,fmtFourn} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
-export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
+export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,onSupprimerCtrl,onSupprimerOrg,mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
  const [openSys,setOpenSys]=useState(null);
  const [openSub,setOpenSub]=useState(null);
  const [openEq,setOpenEq]=useState(null);
@@ -55,7 +55,7 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
   </div>
 
   {tab==="arbo" && <Card>
-   <div className="text-xs text-slate-500 mb-2">Code = SYSTÈME.UNITÉ.SOUS-SYSTÈME.N° — ex : CFA.{UNIT_ABBR[unit]}.SLT.01 — clic gauche sur un équipement = fiche (voir/modifier), clic droit = créer une DI</div>
+   <div className="text-xs text-slate-500 mb-2">Code = SYSTÈME.UNITÉ.SOUS-SYSTÈME.N° — ex : CFA.{UNIT_ABBR[unit]}.SLT.01 — clic gauche sur un équipement = fiche (voir/modifier), clic droit = créer une DI, ✕ = supprimer (si créé par erreur)</div>
    <div className="space-y-1">
     {systemsList.filter(([c])=>c!=="MESURE"&&c!=="CTRL").map(([code,nom])=>{
      const subs=treeStruct[code]||[];
@@ -92,11 +92,12 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
              <span onClick={()=>onOpenEquip(e)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e});}} className="flex-1 py-1 cursor-pointer hover:text-sky-400">• <span className="text-slate-300">{e.code}</span> — {e.nom}</span>
              {sousList.length>0 && <span className="text-slate-600 mr-1">{sousList.length} sous-équip.</span>}
              <button className="text-slate-500 hover:text-sky-400 px-1" title="Sous-équipements" onClick={()=>setOpenEq(eqOpen?null:e.code)}>{eqOpen?"▲":"▼"}</button>
+             {onSupprimerEquip && <button className="text-slate-600 hover:text-rose-400 px-1" title="Supprimer cet équipement (créé par erreur)" aria-label={"Supprimer "+e.code} onClick={()=>onSupprimerEquip(e)}>{I.x}</button>}
             </div>
             {eqOpen && <div className="pl-4 border-l border-slate-800 ml-2">
              <ul>{sousList.map(se=><li key={se.code} onClick={()=>onOpenSousEquip(e,se)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e,sous:se});}} className="text-xs text-slate-500 py-0.5 flex justify-between items-center group cursor-pointer hover:text-sky-400">
               <span>◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</span>
-              <button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" onClick={ev=>{ev.stopPropagation();onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>
+              <button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>
              </li>)}
              {sousList.length===0 && <li className="text-xs text-slate-700 py-0.5">Aucun sous-équipement.</li>}
              </ul>
@@ -119,11 +120,12 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
    <h2 className="font-semibold text-slate-100 mb-2">Appareils de Mesure & Métrologie</h2>
    <div className="text-xs text-slate-500 mb-2">Cliquez sur une ligne pour voir/modifier sa fiche.</div>
    <div className="overflow-x-auto"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Désignation</th><th>Date étalonnage</th><th>Date péremption</th><th>Organisme vérificateur</th><th>État</th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Désignation</th><th>Date étalonnage</th><th>Date péremption</th><th>Organisme vérificateur</th><th>État</th><th></th></tr></thead>
     <tbody>{mesureList.map(m=>{const s=expStatus(m.peremption);return(<tr key={m.code} onClick={()=>onEditMesure(m)} className="border-t border-slate-700 cursor-pointer hover:bg-slate-700/30">
      <td className="py-1.5">{m.code}</td><td>{m.nom}</td><td className="text-xs text-slate-400">{m.etalonnage}</td>
      <td className="text-xs text-slate-400">{m.peremption}</td><td className="text-xs text-slate-400">{m.organisme}</td>
      <td><span className={"px-2 py-0.5 rounded-full text-xs "+s.cl}>{s.c}</span></td>
+     {onSupprimerMesure && <td className="text-right"><button type="button" aria-label={"Supprimer "+m.code} title="Supprimer (erreur de saisie)" className="text-rose-400 hover:text-rose-300 px-2 text-xs" onClick={(ev)=>{ev.stopPropagation();onSupprimerMesure(m);}}>✕ Supprimer</button></td>}
     </tr>);})}</tbody>
    </table></div>
   </Card>}
@@ -132,11 +134,12 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
    <h2 className="font-semibold text-slate-100 mb-2">Équipements soumis au Contrôle Réglementaire</h2>
    <div className="text-xs text-slate-500 mb-2">Cliquez sur une ligne pour voir/modifier sa fiche.</div>
    <div className="overflow-x-auto"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Équipement</th><th>Organisme de contrôle</th><th>Périodicité légale</th><th>Statut / Registre sécurité</th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Équipement</th><th>Organisme de contrôle</th><th>Périodicité légale</th><th>Statut / Registre sécurité</th><th></th></tr></thead>
     <tbody>{ctrlList.map(c=><tr key={c.code} onClick={()=>onEditCtrl(c)} className="border-t border-slate-700 cursor-pointer hover:bg-slate-700/30">
      <td className="py-1.5">{c.code}</td><td>{c.nom}</td><td className="text-xs text-slate-400">{c.organisme}</td>
      <td className="text-xs text-slate-400">{c.periodicite}</td>
      <td><span className={"px-2 py-0.5 rounded-full text-xs "+(c.statut==="Conforme"||c.statut==="Réserves levées"?"bg-emerald-600 text-emerald-50":c.statut==="Non conforme"?"bg-rose-600 text-rose-50":"bg-amber-600 text-amber-50")}>{c.statut}</span></td>
+     {onSupprimerCtrl && <td className="text-right"><button type="button" aria-label={"Supprimer "+c.code} title="Supprimer (erreur de saisie)" className="text-rose-400 hover:text-rose-300 px-2 text-xs" onClick={(ev)=>{ev.stopPropagation();onSupprimerCtrl(c);}}>✕ Supprimer</button></td>}
     </tr>)}</tbody>
    </table></div>
   </Card>}
@@ -145,11 +148,12 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
    <h2 className="font-semibold text-slate-100 mb-2">Organismes de contrôle et d'étalonnage</h2>
    <div className="text-xs text-slate-500 mb-2">Ces organismes sont proposés dans les fiches « Appareils de Mesure » (étalonnage) et « Contrôles Réglementaires ». Cliquez sur une ligne pour la modifier.</div>
    <div className="overflow-x-auto"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Organisme</th><th>Domaines</th><th>Contact</th><th>Téléphone</th><th>Email</th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code</th><th>Organisme</th><th>Domaines</th><th>Contact</th><th>Téléphone</th><th>Email</th><th></th></tr></thead>
     <tbody>{organismes.map(o=><tr key={o.code} onClick={()=>onEditOrg(o)} className="border-t border-slate-700 cursor-pointer hover:bg-slate-700/30">
      <td className="py-1.5">{o.code}</td><td className="font-medium">{o.nom}</td>
      <td>{(o.domaines||[]).map(d=><span key={d} className="mr-1 px-2 py-0.5 rounded-full text-xs bg-slate-700 text-slate-200">{d}</span>)}</td>
      <td className="text-xs text-slate-400">{o.contact||"—"}</td><td className="text-xs text-slate-400">{o.tel||"—"}</td><td className="text-xs text-slate-400">{o.email||"—"}</td>
+     {onSupprimerOrg && <td className="text-right"><button type="button" aria-label={"Supprimer "+o.code} title="Supprimer (erreur de saisie)" className="text-rose-400 hover:text-rose-300 px-2 text-xs" onClick={(ev)=>{ev.stopPropagation();onSupprimerOrg(o);}}>✕ Supprimer</button></td>}
     </tr>)}</tbody>
    </table></div>
   </Card>}
@@ -159,6 +163,8 @@ export function Arbo({mode="arbo",unit,equipements,systemsList,treeStruct,onAddE
    <div className="fixed z-50 bg-slate-800 border border-slate-600 rounded-lg shadow-xl text-xs overflow-hidden" style={{left:ctx.x,top:ctx.y}}>
     <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100" onClick={()=>{onCreateDI(ctx.sous?{code:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom}:ctx.equip);setCtx(null);}}>Créer une DI pour {ctx.sous?ctx.sous.code+" — "+ctx.sous.nom:ctx.equip.code}</button>
     {ctx.sous && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100 border-t border-slate-700" onClick={()=>{onOpenSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Voir la fiche {ctx.sous.code}</button>}
+    {ctx.sous ? onSupprimerSousEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Supprimer {ctx.sous.code}…</button>
+     : onSupprimerEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerEquip(ctx.equip);setCtx(null);}}>Supprimer {ctx.equip.code}…</button>}
    </div>
   </>}
  </div>);

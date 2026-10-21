@@ -214,7 +214,7 @@ test('numérotation : droits et validations', async () => {
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Paris' })).status, 400);
   assert.equal((await admin.call('POST', '/data/dis/next-code', {})).status, 400);             // unité obligatoire
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Alger', count: 0 })).status, 400);
-  assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Alger', count: 201 })).status, 400);
+  assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Alger', count: 1001 })).status, 400);
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Alger', count: 'a' })).status, 400);
   assert.equal((await admin.call('POST', '/data/pieces/next-code', { variant: 'Z' })).status, 404);
   assert.equal((await admin.call('POST', '/data/equipements/next-code', { unit: 'Alger' })).status, 404); // pas de numérotation serveur
@@ -427,16 +427,49 @@ test('import : un élément supprimé est recréé ; échec en cours de route = 
   assert.equal(await count('pieces'), n0);
 });
 
-test('import : gros volume (3000 lignes) et journal d’audit', async () => {
-  const items = Array.from({ length: 3000 }, (_, i) => ({ id: `P-BIG-${i}`, data: { nom: `Article ${i}`, stock: i } }));
+test('import : gros volume (100 000 lignes en une feuille), mise à jour groupée, journal d’audit', async () => {
+  const N = 100000;
+  const items = Array.from({ length: N }, (_, i) => ({ id: `P-BIG-${i}`, data: { nom: `Article ${i}`, stock: i } }));
   const t0 = Date.now();
   const r = await imp(admin, { collections: { pieces: items } });
-  assert.equal(r.status, 200);
-  assert.equal(r.body.totals.created, 3000);
-  assert.ok(Date.now() - t0 < 60000, 'import trop lent');
-  const log = (await admin.call('GET', '/users/audit/log?limit=50')).body.entries.find(e => e.action === 'import_excel' && e.detail.collections.pieces?.created === 3000);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.totals.created, N);
+  const duree = Date.now() - t0;
+  assert.ok(duree < 120000, 'import trop lent : ' + duree + ' ms');
+  const n = (await q("SELECT count(*)::int AS n FROM records WHERE collection='pieces' AND id LIKE 'P-BIG-%' AND NOT deleted")).rows[0].n;
+  assert.equal(n, N);
+  const log = (await admin.call('GET', '/users/audit/log?limit=50')).body.entries.find(e => e.action === 'import_excel' && e.detail.collections.pieces?.created === N);
   assert.ok(log, 'import absent du journal');
   assert.equal(log.detail.onConflict, 'skip');
+  // second passage : 2 000 mises à jour + 1 000 créations, en lots
+  const maj = Array.from({ length: 2000 }, (_, i) => ({ id: `P-BIG-${i}`, data: { nom: `Article ${i} bis`, stock: 0 } }))
+    .concat(Array.from({ length: 1000 }, (_, i) => ({ id: `P-BIG2-${i}`, data: { nom: 'Nouveau' } })));
+  const r2 = await imp(admin, { onConflict: 'update', collections: { pieces: maj } });
+  assert.deepEqual(r2.body.totals, { created: 1000, updated: 2000, skipped: 0 });
+  const p = (await q("SELECT data, version FROM records WHERE collection='pieces' AND id='P-BIG-1999'")).rows[0];
+  assert.equal(p.data.nom, 'Article 1999 bis'); assert.equal(p.version, 2);
+  await q("DELETE FROM records WHERE collection='pieces' AND (id LIKE 'P-BIG-%' OR id LIKE 'P-BIG2-%')");
+});
+
+test('import : au-delà de la limite (IMPORT_MAX_LIGNES) la feuille est refusée sans rien écrire', async () => {
+  const { config: cfgImp } = await import('../src/config.js');
+  const avant = cfgImp.importMaxLignes; cfgImp.importMaxLignes = 1000;
+  try {
+    const items = Array.from({ length: 1001 }, (_, i) => ({ id: `P-LIM-${i}`, data: { nom: 'x' } }));
+    const r = await imp(admin, { collections: { pieces: items } });
+    assert.equal(r.status, 400); assert.match(r.body.error.message || r.body.error, /max 1000/);
+    assert.equal((await q("SELECT count(*)::int AS n FROM records WHERE id LIKE 'P-LIM-%'")).rows[0].n, 0);
+  } finally { cfgImp.importMaxLignes = avant; }
+  assert.deepEqual((await admin.call('GET', '/config')).body.import, { maxLignes: avant, maxMo: 100 });
+});
+
+test('numérotation : lot de 1 000 numéros en une requête, codes déjà pris sautés', async () => {
+  await admin.call('PUT', `/data/dis/DI-SET-${YEAR}-0003`, { data: { x: 1 }, unit: 'Sétif', system: 'CFO' });
+  const r = await admin.call('POST', '/data/dis/next-code', { unit: 'Sétif', count: 1000 });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.codes.length, 1000); assert.equal(new Set(r.body.codes).size, 1000);
+  assert.ok(!r.body.codes.includes(`DI-SET-${YEAR}-0003`));
+  assert.equal(r.body.codes.at(-1), `DI-SET-${YEAR}-1001`);
 });
 
 // ───────────────────────── Migration 003 : référentiels en une ligne par élément ─────────────────────────
@@ -611,6 +644,55 @@ const { seedDemo, resetDemo, demoDejaPresente } = await import('../src/demo/seed
 const { genererDemo } = await import('../src/demo/donnees.js');
 const { lignesReferentiels } = await import('../src/demo/referentiels.js');
 const { config: cfg } = await import('../src/config.js');
+
+test('repartir de zéro : réservé au super administrateur, confirmation + sauvegarde exigées, archivage, numérotation à 0001', async () => {
+  const vivants = async (c) => (await q('SELECT count(*)::int AS n FROM records WHERE collection=$1 AND NOT deleted', [c])).rows[0].n;
+  await admin.call('PUT', '/data/systemes/SYS-RZ', { data: { code: 'SYS-RZ' } });
+  await admin.call('PUT', `/data/dis/DI-OUA-${YEAR}-0042`, { data: { code: `DI-OUA-${YEAR}-0042` }, unit: 'Ouargla', system: 'CFO' });
+  await admin.call('PUT', '/data/pieces/P-RZ', { data: { code: 'P-RZ' } });
+  const avantSys = await vivants('systemes');
+  const avantDis = await vivants('dis');
+  assert.ok(avantDis > 0);
+
+  await admin.call('POST', '/users', { id: 'resp.rz', nom: 'Resp RZ', role: 'Responsable', password: 'Resp2026motdepasse', droits: { Alger: { systems: ['CFO'], volets: [0, 1, 2, 3, 4, 5, 6] } } });
+  await q("UPDATE users SET must_change_pw=false WHERE id='resp.rz'");
+  const resp = new Client();
+  assert.equal((await resp.call('POST', '/auth/login', { id: 'resp.rz', password: 'Resp2026motdepasse' })).status, 200);
+  assert.equal((await resp.call('POST', '/admin/reinitialiser', { confirmation: 'REPARTIR DE ZERO', sauvegardeFaite: true })).status, 403, 'même avec tous les volets, réservé au super administrateur');
+  let r = await admin.call('POST', '/admin/reinitialiser', { confirmation: 'oui', sauvegardeFaite: true });
+  assert.equal(r.status, 400);
+  r = await admin.call('POST', '/admin/reinitialiser', { confirmation: 'REPARTIR DE ZERO' });
+  assert.equal(r.status, 400);
+  assert.equal(await vivants('dis'), avantDis, 'refus = rien de modifié');
+
+  const depuis = new Date(Date.now() - 1000).toISOString();
+  r = await admin.call('POST', '/admin/reinitialiser', { confirmation: 'repartir de zero', sauvegardeFaite: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.collections.dis, avantDis);
+  assert.ok(r.body.collections.pieces >= 1);
+  assert.equal(r.body.numerotation, true);
+  for (const c of ['dis', 'bts', 'equipements', 'pieces', 'intervenants']) assert.equal(await vivants(c), 0, c);
+  assert.equal(await vivants('systemes'), avantSys, 'référentiels conservés par défaut');
+  assert.ok((await admin.call('GET', '/users')).body.users.length >= 2, 'comptes conservés');
+  // archivage complet, restaurable
+  const arch = (await q('SELECT count(*)::int AS n FROM records_archive WHERE reinitialisation=$1', [r.body.reinitialisation])).rows[0].n;
+  assert.equal(arch, r.body.total);
+  // les autres navigateurs voient les suppressions à la synchronisation suivante
+  const sync = (await admin.call('GET', `/data/dis?since=${encodeURIComponent(depuis)}`)).body.items;
+  assert.ok(sync.length >= avantDis && sync.every(i => i.deleted));
+  // numérotation repartie de 1, et le numéro réattribué s'enregistre (recréation sur l'élément archivé)
+  const n = await admin.call('POST', '/data/dis/next-code', { unit: 'Ouargla' });
+  assert.deepEqual(n.body.codes, [`DI-OUA-${YEAR}-0001`]);
+  assert.equal((await admin.call('PUT', `/data/dis/DI-OUA-${YEAR}-0001`, { data: { x: 2 }, unit: 'Ouargla', system: 'CFO' })).status, 200);
+  const a = (await q("SELECT detail FROM audit_log WHERE action='reinitialisation' ORDER BY id DESC LIMIT 1")).rows[0];
+  assert.equal(a.detail.total, r.body.total);
+
+  // référentiels inclus sur demande, numérotation conservée sur demande
+  r = await admin.call('POST', '/admin/reinitialiser', { confirmation: 'REPARTIR DE ZERO', sauvegardeFaite: true, referentiels: true, numerotation: false });
+  assert.equal(r.status, 200);
+  assert.equal(await vivants('systemes'), 0);
+  assert.deepEqual((await admin.call('POST', '/data/dis/next-code', { unit: 'Ouargla' })).body.codes, [`DI-OUA-${YEAR}-0002`]);
+});
 
 test('démo : la route des comptes publics n\'existe que si DEMO=1', async () => {
   cfg.demo = false;
