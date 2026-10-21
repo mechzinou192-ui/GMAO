@@ -1,0 +1,17 @@
+{
+  "root": true,
+  "env": { "browser": true, "es2022": true, "node": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module", "ecmaFeatures": { "jsx": true } },
+  "plugins": ["react"],
+  "settings": { "react": { "version": "18.3" } },
+  "globals": { "__STATIC_DEMO__": "readonly" },
+  "rules": {
+    "no-undef": "error",
+    "react/jsx-no-undef": "error",
+    "react/jsx-uses-vars": "error",
+    "react/jsx-uses-react": "error",
+    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^React$" }],
+    "no-dupe-keys": "error",
+    "no-unreachable": "error"
+  }
+}
