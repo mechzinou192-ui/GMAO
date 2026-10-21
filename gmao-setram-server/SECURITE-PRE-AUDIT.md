@@ -1,6 +1,6 @@
 # GMAO SETRAM — Dossier de pré-audit sécurité
 
-**Version de l'application : 1.13** · Public : RSSI, DSI, prestataire d'audit
+**Version de l'application : 1.14** · Public : RSSI, DSI, prestataire d'audit
 
 Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue de code) demandé avant toute mise en production. Il récapitule ce qui est en place, ce qui a été contrôlé lors du développement, et ce que l'auditeur doit vérifier. **Il ne remplace pas l'audit externe**, qui n'a pas été réalisé.
 
@@ -10,8 +10,8 @@ Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue
 
 | Contrôle | Résultat (19/10/2026) |
 |---|---|
-| Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs) | 39 / 39 réussis |
-| Tests automatiques interface | 182 / 182 réussis |
+| Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs, limitation de débit, format d'erreur) | 43 / 43 réussis — couverture 96 % des lignes |
+| Tests automatiques interface | 186 / 186 réussis — couverture 99,7 % des règles métier (`lib/`), 70 % de l'interface |
 | Analyse statique (ESLint : variables non définies, code mort) | 0 erreur |
 | `npm audit` dépendances de **production** — serveur | 0 vulnérabilité |
 | `npm audit` dépendances de **production** — interface | 0 vulnérabilité (bibliothèque `uuid` utilisée par l'export Excel forcée en version corrigée 11.1.1) |
@@ -24,16 +24,16 @@ Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue
 | Domaine | Mesure |
 |---|---|
 | Authentification | Mots de passe hachés (bcrypt, coût 12) ; aucun mot de passe par défaut ; changement obligatoire au premier accès ; 10 caractères minimum avec lettre et chiffre |
-| Force brute | Verrouillage du compte après 5 échecs ; limitation du débit des connexions par adresse IP |
+| Force brute et abus | Verrouillage du compte après 5 échecs ; limitation de débit sur **toute l'API** (global, écritures, opérations coûteuses, connexion), réglable par variables d'environnement, réponse 429 + `Retry-After` |
 | Session | Cookie `HttpOnly`, `Secure`, `SameSite=Strict`, 8 h ; invalidée si le compte est désactivé ou le mot de passe changé |
 | Autorisations | Contrôle **côté serveur** à chaque requête, par unité / système / module ; lecture filtrée ligne par ligne ; pré-filtre SQL par unité |
 | CSRF | En-tête `X-Requested-With` obligatoire sur toutes les requêtes API |
 | Injection | Requêtes SQL paramétrées uniquement |
 | XSS / en-têtes | CSP stricte (aucun script ni ressource externe, police embarquée) ; HSTS ; `nosniff` ; `frame-ancestors 'none'` ; React échappe les contenus affichés |
 | Fichiers | Photos contrôlées par leur **contenu** (JPEG / PNG / WebP), 10 Mo, 12 par élément, nom aléatoire, servies en `sandbox` |
-| Traçabilité | Journal d'audit : connexions, échecs, créations, modifications (avant / après), suppressions, imports, photos |
+| Traçabilité | Journal d'audit : connexions, échecs, créations, modifications (avant / après), suppressions, imports, photos ; journal technique JSON avec identifiant de requête |
 | Intégrité | Verrou optimiste (conflit 409) ; numérotation attribuée par le serveur ; suppression logique |
-| Secrets | Variables d'environnement uniquement ; valeurs d'exemple refusées au démarrage |
+| Secrets | Variables d'environnement uniquement ; valeurs d'exemple refusées au démarrage ; détection automatique (gitleaks) dans la CI |
 | Exécution | Image Docker en utilisateur non privilégié ; service systemd durci |
 
 ---

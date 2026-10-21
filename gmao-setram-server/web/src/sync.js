@@ -156,6 +156,12 @@ export function useSynced(name, opts = {}) {
               queue.current.set(id, op);           // réessai automatique
               emitError('Connexion au serveur perdue : vos modifications seront enregistrées dès son retour.');
               clearTimeout(timer.current); timer.current = setTimeout(flush, RETRY_MS);
+            } else if (e.status === 429) {
+              // limite de débit atteinte : la modification est conservée et renvoyée après le délai indiqué par le serveur
+              queue.current.set(id, op);
+              emitError(`Trop de requêtes : vos modifications seront enregistrées dans ${e.retryAfter || 5} s.`);
+              clearTimeout(timer.current); timer.current = setTimeout(flush, Math.max(RETRY_MS, (e.retryAfter || 0) * 1000));
+              return;
             } else if (e.status === 401) {
               return;
             } else {

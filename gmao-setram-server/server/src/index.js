@@ -14,11 +14,17 @@ import { importRouter } from './importer.js';
 import { filesRouter, MAX_FILE_BYTES } from './files.js';
 import { initDemo, comptesPublics } from './demo/seed.js';
 import { genererDemo } from './demo/donnees.js';
+import { requestId, journalAcces, formatErreurs, limiteurs } from './http.js';
+import { log } from './logger.js';
 
-export function buildApp() {
+// opts.rateLimit : limites de débit (les tests en passent de plus basses ; sinon celles de la configuration)
+export function buildApp(opts = {}) {
   const app = express();
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
+  const L = limiteurs(opts.rateLimit || config.rateLimit);
+  // identifiant de requête et format d'erreur unique, avant tout le reste (y compris les erreurs de lecture du corps)
+  app.use('/api', requestId, formatErreurs, journalAcces);
   app.use(helmet({
     hsts: !config.localMode,
     contentSecurityPolicy: {
@@ -42,10 +48,20 @@ export function buildApp() {
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
 
-  app.get('/api/health', async (req, res) => {
+  // Supervision (jamais limitées) : /live = le processus répond ; /health et /ready = la base est joignable
+  app.get('/api/live', (req, res) => res.json({ ok: true }));
+  const pret = async (req, res) => {
     try { await q('SELECT 1'); res.json({ ok: true }); }
-    catch { res.status(503).json({ ok: false }); }
-  });
+    catch { res.status(503).json({ ok: false, error: 'Base de données injoignable.' }); }
+  };
+  app.get('/api/health', pret);
+  app.get('/api/ready', pret);
+
+  // Limitation de débit : toute l'API (par utilisateur, sinon par adresse), renforcée sur les écritures,
+  // la connexion et les opérations coûteuses (import Excel, envoi de photos)
+  app.use('/api', L.global, L.ecritures);
+  app.post('/api/auth/login', L.connexion);
+  app.use(['/api/import', '/api/files'], L.couteuses);
 
   app.use('/api', csrfGuard);
   // Démonstration publique : on ne peut ni créer / modifier des comptes ni changer un mot de passe (comptes partagés)
@@ -71,8 +87,9 @@ export function buildApp() {
   app.use((err, req, res, next) => {
     if (err.type === 'entity.too.large' || err.status === 413) return res.status(413).json({ error: 'Fichier ou envoi trop volumineux.' });
     if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: 'Requête invalide.' });
-    console.error(err);
-    res.status(500).json({ error: 'Erreur serveur.' });
+    // le détail technique va dans le journal, jamais au client ; le requestId permet de relier les deux
+    log.error('erreur serveur', { requestId: req.id, method: req.method, path: req.originalUrl.split('?')[0], erreur: err.message, pile: err.stack });
+    res.status(500).json({ error: 'Erreur serveur. Communiquez la référence ' + (req.id || '') + ' à l\'administrateur.' });
   });
   return app;
 }
@@ -98,8 +115,22 @@ export async function main() {
   // Mode local : écoute uniquement sur ce poste (aucune alerte de pare-feu, rien d'exposé au réseau)
   // HOST : adresse d'écoute. Défaut : localhost en mode local, toutes les interfaces en mode serveur (nécessaire dans un conteneur).
   // Hors Docker, derrière un reverse proxy installé sur la même machine : HOST=127.0.0.1 (le port 3000 n'est alors pas joignable du réseau).
-  const host = process.env.HOST || (config.localMode ? '127.0.0.1' : undefined);
+  const host = config.host;
   const where = config.localMode ? `http://${host}:${config.port}` : `port ${config.port}`;
-  buildApp().listen(config.port, host, () => console.log(`GMAO SETRAM — serveur démarré : ${where}`));
-  process.on('SIGTERM', async () => { await pool.end(); process.exit(0); });
+  const server = buildApp().listen(config.port, host, () => log.info('serveur démarré', { adresse: where, mode: config.localMode ? 'local' : 'serveur', demo: config.demo }));
+  // Arrêt propre : plus de nouvelles connexions, fin des requêtes en cours, fermeture de la base ; arrêt forcé après le délai
+  let arret = false;
+  const arreter = (signal) => {
+    if (arret) return; arret = true;
+    log.info('arrêt demandé', { signal });
+    const force = setTimeout(() => { log.warn('arrêt forcé : requêtes encore en cours'); process.exit(1); }, config.shutdownTimeoutSec * 1000);
+    force.unref();
+    server.close(async () => {
+      try { await pool.end(); } catch (e) { log.error('fermeture de la base', { erreur: e.message }); }
+      log.info('serveur arrêté'); process.exit(0);
+    });
+    server.closeIdleConnections?.call(server);   // connexions inactives (keep-alive) fermées tout de suite
+  };
+  process.on('SIGTERM', () => arreter('SIGTERM'));
+  process.on('SIGINT', () => arreter('SIGINT'));
 }

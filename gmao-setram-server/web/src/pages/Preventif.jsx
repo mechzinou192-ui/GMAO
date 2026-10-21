@@ -1,12 +1,14 @@
 // Planning préventif : plans, plage de déclenchement, agenda, formulaire de plan.
 import React,{useState} from "react";
 import {exporterXlsx} from "../excel.js";
+import {imprimerHtml} from "../imprimer.js";
+import {esc} from "../lib/impression.js";
 import {SEUIL_DEFAUT,dernier,etatPlanCompteur,fmtNb,isCompteurPlan} from "../lib/compteurs.js";
 import {JOURS,MOIS,addMonths,fmtD,occurrence,padN,parseD,todayStr} from "../lib/dates.js";
 import {interPourSys} from "../lib/equipes.js";
 import {JOURS_WEEKEND,congeAt,ferieAt,libConge,nonOuvre} from "../lib/jours.js";
 import {PERIODES,avancement,datesFuturesPlan,datesPlanDansPlage,isPeriodePlan,occurrencesPlan} from "../lib/preventif.js";
-import {Badge,Btn,Card,ExportBtn,Field,HoraireConsignation,Inp,KPI,MateriauxSection,Modal,MultiInter,ProgressBar,Segment,SubTabs} from "../ui/base.jsx";
+import {Badge,Btn,Card,ExportBtn,Field,HoraireConsignation,Inp,KPI,LienFMP,MateriauxSection,Modal,MultiInter,ProgressBar,Segment,SubTabs} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 import {CompteursPage,statutBadge} from "./Compteurs.jsx";
 
@@ -68,7 +70,7 @@ export function PlanningPlans({planning,compteurs,bts,systemsList,unit,onAdd,onE
     <thead><tr className="text-slate-400 text-left"><th className="py-1">Plan</th><th>Système</th><th>Équipement</th><th>Périodicité</th><th>Échéance</th><th>Tâches</th><th>Assigné</th><th>Avancement de l'OT</th><th>État</th><th></th></tr></thead>
     <tbody>{rows.length===0 && <tr><td colSpan="10" className="text-xs text-slate-500 py-3 text-center">Aucun plan préventif pour cette unité.</td></tr>}
     {rows.map(({p,bt,etat})=><tr key={p.code} onClick={()=>onEdit(p)} className="border-t border-slate-700 align-top cursor-pointer hover:bg-slate-700/40">
-     <td className="py-1.5 text-sky-400">{p.code}</td><td className="text-xs">{p.sys}</td>
+     <td className="py-1.5 text-sky-400">{p.code}{p.fmp && <div className="text-[11px] text-slate-500 font-normal" title={p.fmp.titre}>{p.fmp.ref||p.fmp.fichier}</div>}</td><td className="text-xs">{p.sys}</td>
      <td>{p.eq}<br/><span className="text-xs text-slate-400">{p.nom}</span></td>
      <td className="text-xs text-slate-400">{isCompteurPlan(p)?<span>Compteur<div className="text-slate-500">tous les {fmtNb(p.pas)} {(compteurs.find(c=>c.code===p.compteur)||{}).unite||""}</div></span>:p.periode}{isPeriodePlan(p) && <div className="text-slate-500">du {p.debut.split("-").reverse().join("/")} au {p.fin.split("-").reverse().join("/")}</div>}</td><td className="text-xs text-slate-400">{p.date}{p.exc && <div className="text-amber-400" title={p.motifExc}>Exceptionnel</div>}{p.dernier && <div className="text-slate-500">Dernier : {p.dernier}</div>}</td>
      <td className="text-xs text-slate-400">{p.taches.length}</td><td className="text-xs text-sky-400">{(p.assignes||[]).join(", ")||"—"}</td>
@@ -78,7 +80,7 @@ export function PlanningPlans({planning,compteurs,bts,systemsList,unit,onAdd,onE
     </tr>)}</tbody>
    </table></div>
   </Card>
-  {cal && <Modal wide="xl" title="Agenda des OT préventifs à réaliser" onClose={()=>setCal(false)}>
+  {cal && <Modal wide="full" title="Agenda des OT préventifs à réaliser" onClose={()=>setCal(false)}>
    <CalendrierBT rows={rows} bts={bts} onDeclencher={onDeclencher} onOpenBT={(c)=>{setCal(false);onOpenBT(c);}}/>
   </Modal>}
  </div>);
@@ -153,8 +155,9 @@ export function CalendrierBT({rows,bts,onDeclencher,onOpenBT}){
  const now=new Date(); const today=fmtD(now);
  const [cur,setCur]=useState(new Date(now.getFullYear(),now.getMonth(),1));
  const [sel,setSel]=useState(today);
+ const [vue,setVue]=useState("mois");   // jour | mois | annee (vue annuelle type PDC : plans × 12 mois)
  const y=cur.getFullYear(), m=cur.getMonth();
- const limit=new Date(y,m+1,0);
+ const limit=vue==="annee"?new Date(y,11,31):new Date(y,m+1,0);
  // Occurrences : prochaine échéance de chaque plan puis projection selon la périodicité + OT réalisés
  const events=[];
  rows.forEach(({p,bt,etat})=>{
@@ -182,17 +185,28 @@ export function CalendrierBT({rows,bts,onDeclencher,onOpenBT}){
  const nbJours=new Date(y,m+1,0).getDate();
  const cells=[]; for(let i=0;i<offset;i++) cells.push(null); for(let d=1;d<=nbJours;d++) cells.push(d);
  const selEvents=byDay[sel]||[];
- const go=(n)=>setCur(new Date(y,m+n,1));
+ const allerJour=(ds)=>{setSel(ds);setCur(new Date(Number(ds.slice(0,4)),Number(ds.slice(5,7))-1,1));};
+ const go=(n)=>{
+  if(vue==="jour"){const d=parseD(sel);d.setDate(d.getDate()+n);allerJour(fmtD(d));return;}
+  setCur(vue==="annee"?new Date(y+n,m,1):new Date(y,m+n,1));
+ };
+ const ouvrirJour=(ds)=>{setCur(new Date(Number(ds.slice(0,4)),Number(ds.slice(5,7))-1,1));setSel(ds);setVue("mois");};
  return (<div>
   <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-   <div className="flex items-center gap-1">
+   <div className="flex items-center gap-1 flex-wrap">
+    <label className="text-xs text-slate-400 mr-2">Vue
+     <select value={vue} onChange={e=>setVue(e.target.value)} className="ml-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm" aria-label="Vue du calendrier" data-testid="calendrier-vue">
+      <option value="jour">Jour</option><option value="mois">Mois</option><option value="annee">Année complète</option>
+     </select></label>
     <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>go(-1)}>‹</Btn>
-    <div className="text-slate-100 font-semibold w-44 text-center">{MOIS[m]} {y}</div>
+    <div className={"text-slate-100 font-semibold text-center "+(vue==="jour"?"w-64":"w-44")}>{vue==="annee"?"Année "+y:vue==="jour"?parseD(sel).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):MOIS[m]+" "+y}</div>
     <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>go(1)}>›</Btn>
     <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs ml-2" onClick={()=>{setCur(new Date(now.getFullYear(),now.getMonth(),1));setSel(today);}}>Aujourd'hui</Btn>
    </div>
    <div className="flex flex-wrap gap-3 text-xs text-slate-400">{Object.keys(DOT).map(k=><span key={k} className="flex items-center gap-1"><span className={"w-2.5 h-2.5 rounded-full "+DOT[k]}></span>{k}</span>)}</div>
   </div>
+  {vue==="annee" ? <VueAnnuelle annee={y} rows={rows} events={events} onJour={ouvrirJour}/> :
+   vue==="jour" ? <VueJour jour={sel} events={(byDay[sel]||[]).slice().sort((a,b)=>String(a.p.eq).localeCompare(String(b.p.eq)))} onOpenBT={onOpenBT} onDeclencher={onDeclencher}/> :
   <div className="grid md:grid-cols-3 gap-4">
    <div className="md:col-span-2">
     <div className="grid grid-cols-7 gap-1 text-xs text-slate-500 text-center mb-1">{JOURS.map(j=><div key={j}>{j}</div>)}</div>
@@ -209,7 +223,8 @@ export function CalendrierBT({rows,bts,onDeclencher,onOpenBT}){
    </div>
    <div className="space-y-3">
     <div>
-     <div className="text-sm text-slate-100 font-medium">Agenda du {parseD(sel).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</div>
+     <div className="flex items-center justify-between gap-2"><div className="text-sm text-slate-100 font-medium">Agenda du {parseD(sel).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</div>
+      <button type="button" className="text-xs text-sky-400 underline" onClick={()=>setVue("jour")}>Voir la journée</button></div>
      {nonOuvre(sel) && <div className="mt-1 rounded-lg border border-rose-700 bg-rose-900/30 px-2 py-1 text-xs text-rose-300">🎌 {nonOuvre(sel).type==="ferie"?"Jour férié : ":""}{nonOuvre(sel).nom} — travail possible uniquement à titre exceptionnel</div>}
      {selEvents.length===0 && <div className="text-xs text-slate-500 mt-1">Aucun OT prévu ce jour.</div>}
      {selEvents.map(e=><div key={e.key} className="bg-slate-900 border border-slate-700 rounded-lg p-2 mt-2">
@@ -231,7 +246,93 @@ export function CalendrierBT({rows,bts,onDeclencher,onOpenBT}){
      {monthEvents.map(e=><button type="button" key={e.key} onClick={()=>setSel(e.date)} className="w-full flex items-center gap-2 text-xs text-left hover:bg-slate-700/40 rounded px-1 py-1"><span className={"w-2 h-2 rounded-full shrink-0 "+DOT[e.etat]}></span><span className="text-slate-500 w-14 shrink-0">{e.date.slice(8)}/{e.date.slice(5,7)}</span><span className="text-slate-300 truncate">{e.p.nom}</span></button>)}
     </div>
    </div>
+  </div>}
+ </div>);
+}
+
+/* Vue du jour : feuille de route détaillée (équipe, tâches, outillage, consignation, FMP) et impression */
+function VueJour({jour,events,onOpenBT,onDeclencher}){
+ const [ouvert,setOuvert]=useState({});
+ const date=parseD(jour).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+ const fe=nonOuvre(jour);
+ const equipe=[...new Set(events.flatMap(e=>e.p.assignes||[]))];
+ const lot=(l)=>(l||[]).map(x=>x.code+(x.qte>1?" ×"+x.qte:"")).join(", ");
+ const imprimer=()=>{
+  const lignes=events.map((e,i)=>`<tr><td>${i+1}</td><td><b>${esc(e.p.eq)}</b><br>${esc(e.p.nom)}</td><td>${esc(e.p.code)}<br><small>${esc(isCompteurPlan(e.p)?"Compteur":e.p.periode)}</small></td>
+   <td>${esc((e.p.assignes||[]).join(", ")||"à définir")}</td><td>${esc(e.p.horaire||"Jour")}${(e.p.consignation||"Non")==="Oui"?"<br><b>Consignation</b>":""}</td>
+   <td>${(e.p.taches||[]).length} tâche(s)${e.p.fmp?"<br><small>FMP "+esc(e.p.fmp.ref||e.p.fmp.fichier||"")+"</small>":""}</td><td>${esc(lot(e.p.outillage))}</td><td>${esc(e.bt?e.bt.code:"")}<br><small>${esc(e.etat)}</small></td><td></td></tr>`).join("");
+  imprimerHtml(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Planning du ${esc(date)}</title><style>
+   body{font:12px/1.4 Montserrat,Arial,sans-serif;color:#141B3D;margin:18px}h1{font-size:18px;margin:0 0 4px;color:#2A3B90}.s{color:#646B85;margin-bottom:12px}
+   table{border-collapse:collapse;width:100%}th,td{border:1px solid #9AA1B6;padding:5px 6px;vertical-align:top;text-align:left}th{background:#EEF0FA;font-size:11px}
+   td:last-child{width:110px}small{color:#646B85}@page{size:A4 landscape;margin:12mm}</style></head><body>
+   <h1>Planning préventif du ${esc(date)}</h1><div class="s">${events.length} visite(s) · Équipe : ${esc(equipe.join(", ")||"—")}${fe?" · "+esc(fe.nom)+" (jour non ouvré)":""}</div>
+   <table><thead><tr><th>#</th><th>Équipement</th><th>Plan</th><th>Intervenants</th><th>Horaire</th><th>Tâches / FMP</th><th>Outillage</th><th>OT / état</th><th>Visa</th></tr></thead><tbody>${lignes||"<tr><td colspan=9>Aucune visite prévue.</td></tr>"}</tbody></table></body></html>`);
+ };
+ return (<div data-testid="vue-jour">
+  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+   <div className="text-sm text-slate-300"><b>{events.length}</b> visite(s){equipe.length>0 && <> · Équipe : <span className="text-slate-100">{equipe.join(", ")}</span></>}</div>
+   <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={imprimer}>🖨 Imprimer la journée</Btn>
   </div>
+  {fe && <div className="mb-3 rounded-lg border border-rose-700 bg-rose-900/30 px-3 py-2 text-xs text-rose-300">🎌 {fe.type==="ferie"?"Jour férié : ":""}{fe.nom} — travail possible uniquement à titre exceptionnel</div>}
+  {events.length===0 && <div className="text-sm text-slate-500 py-8 text-center">Aucune visite préventive prévue ce jour.</div>}
+  <div className="grid md:grid-cols-2 gap-3">{events.map(e=>{const p=e.p;const vu=!!ouvert[e.key];return <div key={e.key} className="card bg-slate-800/60 border border-slate-700 rounded-xl p-3">
+   <div className="flex items-start justify-between gap-2">
+    <div><div className="text-sky-400 font-semibold">{p.eq} <span className="text-slate-300 font-normal">— {p.nom}</span></div>
+     <div className="text-xs text-slate-500">{p.code} · {isCompteurPlan(p)?"Compteur":p.periode}{p.intitule?" · "+p.intitule:""}</div></div>
+    <Badge t={e.etat}/>
+   </div>
+   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mt-2">
+    <div><span className="text-slate-500">Intervenants : </span>{(p.assignes||[]).join(", ")||"à définir"}</div>
+    <div><span className="text-slate-500">Horaire : </span>{(p.horaire||"Jour")==="Nuit"?"🌙 Nuit":"☀️ Jour"}{(p.consignation||"Non")==="Oui" && <span className="ml-2 px-1.5 rounded bg-rose-600 text-rose-50 text-[10px]">Consignation</span>}</div>
+    {(p.outillage||[]).length>0 && <div><span className="text-slate-500">Outillage : </span>{lot(p.outillage)}</div>}
+    {(p.consommables||[]).length>0 && <div><span className="text-slate-500">Consommables : </span>{lot(p.consommables)}</div>}
+    {p.fmp && <div className="col-span-2"><span className="text-slate-500">FMP : </span><LienFMP fmp={p.fmp}/></div>}
+   </div>
+   <button type="button" className="text-xs text-sky-400 underline mt-2" onClick={()=>setOuvert(o=>({...o,[e.key]:!vu}))}>{vu?"Masquer":"Voir"} les {(p.taches||[]).length} tâche(s)</button>
+   {vu && <ol className="mt-1 text-xs text-slate-300 list-decimal pl-5 space-y-0.5">{(p.taches||[]).map((t,i)=><li key={i}>{typeof t==="string"?t:t.lib}</li>)}</ol>}
+   <div className="flex gap-1 mt-2">
+    {e.bt && <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>onOpenBT(e.bt.code)}>Ouvrir {e.bt.code}</Btn>}
+    {e.first && !e.bt && e.etat!=="Réalisé" && <Btn cls="bg-sky-600 hover:bg-sky-500 text-xs" onClick={()=>onDeclencher(p)}>Déclencher l'OT</Btn>}
+   </div>
+  </div>;})}</div>
+ </div>);
+}
+
+/* Vue annuelle (type PDC) : une ligne par plan, une colonne par mois ; chaque visite est une pastille avec son jour.
+   Un clic sur une pastille ouvre le mois sur ce jour. Ligne de total : charge mensuelle (nombre de visites). */
+function VueAnnuelle({annee,rows,events,onJour}){
+ const MC=["Janv.","Févr.","Mars","Avr.","Mai","Juin","Juil.","Août","Sept.","Oct.","Nov.","Déc."];
+ const dans=events.filter(e=>e.date.startsWith(annee+"-"));
+ const parPlan={}; dans.forEach(e=>{const k=e.p.code;((parPlan[k]=parPlan[k]||Array.from({length:12},()=>[]))[Number(e.date.slice(5,7))-1]).push(e);});
+ const lignes=rows.map(r=>r.p).filter(p=>parPlan[p.code]).sort((a,b)=>String(a.eq).localeCompare(String(b.eq))||a.code.localeCompare(b.code));
+ const totaux=Array.from({length:12},(_,i)=>lignes.reduce((s,p)=>s+parPlan[p.code][i].length,0));
+ const maxT=Math.max(1,...totaux);
+ const exporter=()=>exporterXlsx({fichier:"Planning_annuel_"+annee,feuilles:[{nom:"Planning "+annee,titre:"Planning préventif annuel "+annee,
+  colonnes:[{h:"Plan"},{h:"Code équipement"},{h:"Équipement"},{h:"Périodicité"},{h:"FMP"},{h:"Intervenants"},...MOIS.map(x=>({h:x})),{h:"Total",t:"num"}],
+  lignes:[...lignes.map(p=>[p.code,p.eq,p.nom,isCompteurPlan(p)?"Compteur":p.periode,(p.fmp&&(p.fmp.ref||p.fmp.fichier))||"",(p.assignes||[]).join(", "),
+   ...parPlan[p.code].map(l=>l.map(e=>e.date.slice(8)).join(" ; ")),parPlan[p.code].reduce((s,l)=>s+l.length,0)]),
+   ["Total","","","","","",...totaux.map(String),totaux.reduce((a,b)=>a+b,0)]]}]});
+ return (<div data-testid="vue-annuelle">
+  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+   <div className="text-xs text-slate-500">{lignes.length} plan(s) · {dans.length} visite(s) en {annee} — cliquez sur un jour pour l'ouvrir dans le mois</div>
+   <ExportBtn onClick={exporter}/>
+  </div>
+  <div className="overflow-x-auto"><table className="w-full text-sm gm-annuel">
+   <thead><tr className="text-left"><th className="py-1">Plan / équipement</th>{MC.map((x,i)=><th key={i} className="text-center">{x}</th>)}<th className="text-center">Total</th></tr></thead>
+   <tbody>
+    {lignes.length===0 && <tr><td colSpan="14" className="text-center text-xs text-slate-500 py-4">Aucune visite prévue en {annee}.</td></tr>}
+    {lignes.map(p=><tr key={p.code} className="border-t border-slate-700 align-top">
+     <td className="py-1.5 min-w-[220px]"><span className="text-sky-400">{p.code}</span> <span className="text-xs text-slate-500">{isCompteurPlan(p)?"Compteur":p.periode}</span><div className="text-xs">{p.eq} — <span className="text-slate-400">{p.nom}</span></div>{(p.assignes||[]).length>0 && <div className="text-[11px] text-slate-500">{p.assignes.join(", ")}</div>}</td>
+     {parPlan[p.code].map((l,i)=><td key={i} className="text-center px-1 min-w-[54px]"><div className="flex flex-wrap gap-0.5 justify-center">
+      {l.map(e=><button key={e.key} type="button" onClick={()=>onJour(e.date)} title={e.date.split("-").reverse().join("/")+" — "+e.etat} className={"gm-pastille "+DOT[e.etat]}>{e.date.slice(8)}</button>)}
+     </div></td>)}
+     <td className="text-center font-semibold">{parPlan[p.code].reduce((s,l)=>s+l.length,0)}</td>
+    </tr>)}
+   </tbody>
+   {lignes.length>0 && <tfoot><tr className="border-t-2 border-slate-600"><td className="py-1.5 font-semibold">Visites par mois</td>
+    {totaux.map((t,i)=><td key={i} className="text-center align-bottom"><div className="gm-charge" style={{height:(t?Math.round(4+28*t/maxT):0)+"px"}} title={t+" visite(s)"}/><b>{t}</b></td>)}
+    <td className="text-center font-semibold">{totaux.reduce((a,b)=>a+b,0)}</td></tr></tfoot>}
+  </table></div>
  </div>);
 }
 
@@ -308,6 +409,7 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
   <HoraireConsignation v={f} onChange={o=>setF({...f,...o})}/>
   <div className="text-xs text-slate-400 mb-1 mt-2">Intervenants assignés (plusieurs possibles, optionnel) — {f.assignes.length} sélectionné(s)</div>
   <MultiInter inter={interPourSys(inter,f.sys)} value={f.assignes} onChange={v=>setF({...f,assignes:v})} sys={f.sys} date={parCpt?todayStr():f.date} extraDates={parCpt?[]:datesFuturesPlan(f)}/>
+  {isEdit && item.fmp && <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs"><span className="text-slate-400">Tâches issues de la FMP : </span><LienFMP fmp={item.fmp}/>{item.fmp.titre && <div className="text-slate-500 mt-0.5">{item.fmp.titre}</div>}</div>}
   <div className="text-xs text-slate-400 mt-3 font-medium">Tâches à réaliser à chaque déclenchement ({taches.length})</div>
   {taches.map((t,i)=><div key={i} className="text-xs flex justify-between items-center bg-slate-900 rounded px-2 py-1 mt-1"><span>{i+1}. {t}</span><button className="text-slate-500 hover:text-rose-400" onClick={()=>setTaches(l=>l.filter((_,j)=>j!==i))}>{I.x}</button></div>)}
   <div className="flex gap-1 mt-2">

@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { q, audit } from './db.js';
 
@@ -76,12 +75,8 @@ export function csrfGuard(req, res, next) {
 
 export const authRouter = Router();
 
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Trop de tentatives. Réessayez plus tard.' },
-});
 
-authRouter.post('/login', loginLimiter, async (req, res) => {
+authRouter.post('/login', async (req, res) => {   // limite de débit : voir http.js (montée dans index.js)
   const id = String(req.body?.id ?? '').trim().toLowerCase();
   const password = String(req.body?.password ?? '');
   const remember = !!req.body?.remember;

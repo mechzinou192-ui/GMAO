@@ -71,4 +71,22 @@ describe('useSynced', () => {
     expect(api.bulkImport).toHaveBeenCalledWith('systemes', [{ id: 'CFO', data: { code: 'CFO', nom: 'Courants Forts', ordre: 0 } }]);
     expect(result.current[0]).toEqual([['CFO', 'Courants Forts']]);
   });
+  it('429 : la modification est conservée et renvoyée après le délai, sans rechargement', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    api.list.mockResolvedValue({ items: [rec('A', { code: 'A', n: 1 })], serverTime: 't' });
+    let n = 0;
+    api.save.mockImplementation(async (c, id, p) => { n++; if (n === 1) throw Object.assign(new Error('Trop'), { status: 429, retryAfter: 7 }); return { id, version: (p.version || 0) + 1 }; });
+    const { result } = renderHook(() => useSynced('pieces'));
+    await waitFor(() => expect(result.current[2]).toBe('ready'));
+    act(() => result.current[1](l => l.map(x => ({ ...x, n: 2 }))));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    const chargements = api.list.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(api.save).toHaveBeenCalledTimes(1);                       // pas avant Retry-After (7 s)
+    await act(async () => { vi.advanceTimersByTime(1500); });
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(2));
+    expect(api.save.mock.calls[1][2].data).toEqual({ code: 'A', n: 2 });
+    expect(api.list.mock.calls.length).toBe(chargements);           // aucune perte : pas de rechargement depuis le serveur
+    vi.useRealTimers();
+  });
 });

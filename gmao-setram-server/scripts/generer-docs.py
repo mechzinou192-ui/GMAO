@@ -7,7 +7,7 @@ try:
 except ImportError:
     sys.exit("Module manquant : pip install markdown")
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOCS = {'DOSSIER-DSI.md': 'Dossier DSI', 'GUIDE-UTILISATEUR.md': 'Guide utilisateur', 'PLAN-PILOTE.md': 'Plan de pilote', 'SECURITE-PRE-AUDIT.md': 'Pré-audit sécurité'}
+DOCS = {'DOSSIER-DSI.md': 'Dossier DSI', 'GUIDE-UTILISATEUR.md': 'Guide utilisateur', 'PLAN-PILOTE.md': 'Plan de pilote', 'SECURITE-PRE-AUDIT.md': 'Pré-audit sécurité', 'RAPPORT-CONFORMITE.md': 'Rapport de conformité'}
 CSS = ("body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}"
        "h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}"
        "table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}"

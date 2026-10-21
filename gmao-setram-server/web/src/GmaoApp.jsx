@@ -515,7 +515,7 @@ const [notice,setNotice]=useState(null);
       </span>{tabs[i].c}
      </button>))}
    </nav>
-   <div className="gm-rail-foot mt-auto">v1.13</div>
+   <div className="gm-rail-foot mt-auto">v1.15.2</div>
   </aside>}
 
   <div className="flex-1 min-w-0 flex flex-col">
@@ -556,7 +556,7 @@ const [notice,setNotice]=useState(null);
          onAddMesure={()=>setMesureModal({mode:"add"})}
      onEditMesure={(item)=>setMesureModal({mode:"edit",item})}/>}
    {!voir(tab) && <Card><div className="text-sm text-slate-400">Aucun volet n'est accessible pour votre compte sur cette unité. Contactez le super administrateur.</div></Card>}
-   {tab===7 && sa && <AdminPage systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,organismes,mesures:mesureList,controles:ctrlList}}/>}
+   {tab===7 && sa && <AdminPage systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
    {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}

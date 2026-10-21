@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { config } from './config.js';
+import { log } from './logger.js';
 
 // Mode local : PGlite (PostgreSQL embarqué, 1 connexion). Un verrou garantit que les transactions
 // de requêtes simultanées ne s'entremêlent pas. Même interface que pg.Pool.
@@ -47,7 +48,7 @@ export const pool = config.localMode
       connectionTimeoutMillis: 20_000,      // laisse le temps à une base « endormie » de se réveiller
     });
 // Une connexion inactive coupée par le serveur ne doit JAMAIS faire tomber l'application : on la journalise, le pool en rouvre une.
-if (!config.localMode) pool.on('error', (e) => console.error('[base] connexion inactive perdue (ignorée) :', e.message));
+if (!config.localMode) pool.on('error', (e) => log.warn('base : connexion inactive perdue (ignorée)', { erreur: e.message }));
 export const q = (text, params) => pool.query(text, params);
 
 export async function migrate() {
@@ -62,7 +63,7 @@ export async function migrate() {
       await client.query(fs.readFileSync(path.join(dir, f), 'utf8'));
       await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [f]);
       await client.query('COMMIT');
-      console.log(`[migration] ${f} appliquée`);
+      log.info('migration appliquée', { fichier: f });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -81,6 +82,6 @@ export async function audit(req, action, extra = {}) {
        extra.unit ?? null, extra.detail ? JSON.stringify(extra.detail) : null, req?.ip ?? null]
     );
   } catch (e) {
-    console.error('[audit] échec', e.message);
+    log.error('journal d\'audit : échec d\'écriture', { erreur: e.message });
   }
 }

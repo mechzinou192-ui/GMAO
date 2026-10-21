@@ -33,8 +33,8 @@ describe('modèle Excel', () => {
     expect(noms).toEqual(['Lisez-moi', ...FEUILLES.map((f) => f.nom), 'Référentiels']);
     const ref = wb.getWorksheet('Référentiels');
     expect(ref.getCell('A2').value).toBe('Alger'); expect(ref.getCell('B2').value).toBe('ALG');
-    expect(wb.getWorksheet('Équipements').getCell('A1').value).toBe('Unité *');
-    expect(wb.getWorksheet('Équipements').getCell('A2').dataValidation.formulae[0]).toContain('Alger,Oran');
+    expect(wb.getWorksheet('Équipements').getCell('A1').value).toBe('Repère'); expect(wb.getWorksheet('Équipements').getCell('B1').value).toBe('Unité *');
+    expect(wb.getWorksheet('Équipements').getCell('B2').dataValidation.formulae[0]).toContain('Alger,Oran');
   });
   it('le modèle vierge se relit sans erreur et sans donnée (mais invite à le remplir)', async () => {
     const buf = await genererModele(ExcelJS, ctx()).xlsx.writeBuffer();
@@ -164,6 +164,30 @@ describe('sous-équipements', () => {
     expect(par['CFO.ALG.SST.01'].data.sousEquip.map((s) => s.code)).toEqual(['CFO.ALG.SST.01.01', 'CFO.ALG.SST.01.02']);   // « Bobine » reconnue, « Noyau » ajouté
     expect(par['CFO.ALG.SST.02'].ecrase).toBe(false);
     expect(par['CFO.ALG.SST.02'].data.sousEquip.map((s) => s.nom)).toEqual(['Cuve', 'Radiateur']);
+  });
+  it('import en une seule fois : sous-équipements rattachés par le repère de la feuille Équipements (code GMAO inconnu à l’avance)', async () => {
+    const existant = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T existant', sousEquip: [] };
+    const lec = await lire({
+      'Équipements': [['Repère', ...EQ_H], ['T1', 'Alger', 'CFO', 'SST', 'Transformateur A'], ['t2', 'Alger', 'CFO', 'SST', 'Transformateur B'], ['', 'Alger', 'CFO', 'SST', 'Sans repère']],
+      'Sous-équipements': [['Équipement parent (repère ou code GMAO) *', 'Désignation *'], ['T1', 'Bobine'], ['T1', 'Cuve'], ['T2', 'Bobine'], ['CFO.ALG.SST.01', 'Radiateur']],
+    });
+    const p = preparerImport(lec, ctx({ equipements: [existant] }));
+    expect(p.erreurs).toEqual([]);
+    const par = Object.fromEntries(p.collections.equipements.map((r) => [r.data.nom, r.data]));
+    expect(par['Transformateur A'].code).toBe('CFO.ALG.SST.02');
+    expect(par['Transformateur A'].sousEquip.map((x) => x.code + ' ' + x.nom)).toEqual(['CFO.ALG.SST.02.01 Bobine', 'CFO.ALG.SST.02.02 Cuve']);
+    expect(par['Transformateur B'].sousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.03.01']);   // repère insensible à la casse
+    expect(par['Sans repère'].sousEquip).toEqual([]);
+    expect(par['T existant'].sousEquip.map((x) => x.nom)).toEqual(['Radiateur']);               // code GMAO existant toujours accepté
+  });
+  it('repère en double ou inconnu : erreurs claires, rien n’est importé', async () => {
+    const lec = await lire({
+      'Équipements': [['Repère', ...EQ_H], ['T1', 'Alger', 'CFO', 'SST', 'A'], ['T1', 'Alger', 'CFO', 'SST', 'B']],
+      'Sous-équipements': [['Équipement parent (repère ou code GMAO) *', 'Désignation *'], ['T9', 'Bobine']],
+    });
+    const msgs = preparerImport(lec, ctx()).erreurs.map((e) => e.message).join(' | ');
+    expect(msgs).toMatch(/« T1 » est déjà utilisé/);
+    expect(msgs).toMatch(/« T9 » est introuvable/);
   });
   it('parent introuvable : erreur', async () => {
     const lec = await lire({ 'Sous-équipements': [['Code équipement parent *', 'Désignation *'], ['CFO.ALG.SST.99', 'X']] });

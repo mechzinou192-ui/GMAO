@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 process.env.JWT_SECRET ||= 'test-secret-test-secret-test-secret-1234567890';
 process.env.ADMIN_INITIAL_PASSWORD = 'Initial2026pw';
 process.env.FILES_DIR = `/tmp/gmao-test-files-${process.pid}`;
+// Le serveur principal des tests enchaîne des centaines d'appels : limites hautes ici ; les limites elles-mêmes
+// sont testées sur des instances dédiées (buildApp({ rateLimit })).
+process.env.LOG_LEVEL ||= 'error'; process.env.RATE_LIMIT_GLOBAL_MAX ||= '100000'; process.env.RATE_LIMIT_WRITE_MAX ||= '100000'; process.env.RATE_LIMIT_COSTLY_MAX ||= '10000'; process.env.RATE_LIMIT_AUTH_MAX ||= '10000';
 
 const { migrate, q, pool } = await import('../src/db.js');
 const { buildApp, ensureAdmin } = await import('../src/index.js');
@@ -252,6 +255,71 @@ test('fenêtre de chargement : OT clos anciens laissés de côté, ouverts toujo
   assert.deepEqual((await alg.call('GET', '/data/bts')).body.items.filter((r) => r.id.startsWith('OT-F-')), []);
 });
 
+test('erreurs : format unique { error: { code, message, requestId } }, identifiant de requête repris', async () => {
+  const r = await fetch(base + '/data/inconnue', { headers: { 'X-Requested-With': 'gmao', Cookie: admin.cookie, 'X-Request-Id': 'test-req-123456' } });
+  assert.equal(r.status, 404);
+  assert.equal(r.headers.get('x-request-id'), 'test-req-123456');
+  const b = await r.json();
+  assert.deepEqual(b, { error: { code: 'NOT_FOUND', message: 'Collection inconnue.', requestId: 'test-req-123456' } });
+  const sans = await anon.call('GET', '/auth/me');
+  assert.equal(sans.status, 401); assert.equal(sans.body.error.code, 'UNAUTHENTICATED'); assert.match(sans.body.error.requestId, /^[0-9a-f-]{36}$/);
+  const piege = await fetch(base + '/live', { headers: { 'X-Request-Id': 'x<script>' } });                         // identifiant malsain : remplacé
+  assert.match(piege.headers.get('x-request-id'), /^[0-9a-f-]{36}$/);
+});
+
+test('supervision : /live, /ready et /health répondent sans session', async () => {
+  for (const p of ['/live', '/ready', '/health']) { const r = await anon.call('GET', p); assert.equal(r.status, 200, p); assert.equal(r.body.ok, true); }
+});
+
+test('limitation de débit : 429 + Retry-After + en-têtes RateLimit, limites lues dans la configuration, supervision exemptée', async () => {
+  const lim = { windowSec: 60, globalMax: 10, writeMax: 100, costlyMax: 2, authWindowMin: 15, authMax: 3 };
+  const srv = buildApp({ rateLimit: lim }).listen(0);
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const h = { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao' };
+  try {
+    // connexion : la 4e tentative depuis la même adresse est refusée
+    const essais = [];
+    for (let i = 0; i < 4; i++) essais.push(await fetch(b2 + '/auth/login', { method: 'POST', headers: h, body: JSON.stringify({ id: 'personne', password: 'faux' }) }));
+    assert.deepEqual(essais.map((r) => r.status), [401, 401, 401, 429]);
+    const bloque = essais[3];
+    assert.ok(Number(bloque.headers.get('retry-after')) > 0);
+    assert.equal(bloque.headers.get('ratelimit-limit'), '3');
+    assert.equal((await bloque.json()).error.code, 'RATE_LIMITED');
+    // global : 10 requêtes par minute et par adresse (utilisateur non connecté) ; /live, /ready, /health jamais limités
+    let derniere;
+    for (let i = 0; i < 12; i++) derniere = await fetch(b2 + '/config', { headers: h });
+    assert.equal(derniere.status, 429);
+    for (const p of ['/live', '/ready', '/health']) assert.equal((await fetch(b2 + p)).status, 200, p);
+    // X-Forwarded-For envoyé par le client est ignoré sans TRUST_PROXY : même adresse, toujours bloquée
+    const login = await fetch(b2 + '/auth/login', { method: 'POST', headers: { ...h, 'X-Forwarded-For': '9.9.9.9' }, body: JSON.stringify({ id: 'admin', password: 'x' }) });
+    assert.equal(login.status, 429);
+  } finally { srv.close(); }
+  // une limite plus haute (configuration) laisse passer les mêmes requêtes
+  const srv2 = buildApp({ rateLimit: { ...lim, globalMax: 100, authMax: 50 } }).listen(0);
+  try {
+    const b3 = `http://127.0.0.1:${srv2.address().port}/api`;
+    const st = [];
+    for (let i = 0; i < 12; i++) st.push((await fetch(b3 + '/auth/login', { method: 'POST', headers: h, body: JSON.stringify({ id: 'personne', password: 'faux' }) })).status);
+    assert.ok(st.every((x) => x === 401));
+  } finally { srv2.close(); }
+});
+
+test('limitation de débit : écritures comptées par utilisateur connecté', async () => {
+  const srv = buildApp({ rateLimit: { windowSec: 60, globalMax: 1000, writeMax: 3, costlyMax: 2, authWindowMin: 15, authMax: 50 } }).listen(0);
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  try {
+    const st = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(b2 + `/data/pieces/LIM-${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao', Cookie: admin.cookie }, body: JSON.stringify({ data: { nom: 'x' } }) });
+      st.push(r.status);
+    }
+    assert.deepEqual(st, [200, 200, 200, 429]);
+    // un autre utilisateur n'est pas bloqué par le compteur du premier
+    const r = await fetch(b2 + '/data/pieces', { headers: { 'X-Requested-With': 'gmao', Cookie: tech.cookie } });
+    assert.notEqual(r.status, 429);
+  } finally { srv.close(); }
+});
+
 test('numérotation : le millésime suit l’année civile d’Alger', () => {
   assert.equal(currentYear(new Date('2026-12-31T22:30:00Z')), 2026);   // 23h30 à Alger
   assert.equal(currentYear(new Date('2026-12-31T23:30:00Z')), 2027);   // 00h30 le 1er janvier à Alger
@@ -492,10 +560,10 @@ test('pièces jointes : taille maximale et nombre maximal par élément', async 
   const gros = Buffer.concat([JPEG, Buffer.alloc(10 * 1024 * 1024 + 10, 1)]);
   const r = await fetch(`${base}/files?collection=dis&recordId=DI-F2`, { method: 'POST', body: gros, headers: { 'Content-Type': 'image/jpeg', 'X-Requested-With': 'gmao', Cookie: admin.cookie } });
   assert.equal(r.status, 413);
-  assert.match((await r.json()).error, /trop volumineux/);
+  assert.match((await r.json()).error.message, /trop volumineux/);
   for (let i = 0; i < 12; i++) assert.equal((await upload(admin, { collection: 'dis', recordId: 'DI-F2' }, JPEG)).status, 201, `envoi ${i + 1}`);
   const r13 = await upload(admin, { collection: 'dis', recordId: 'DI-F2' }, JPEG);
-  assert.equal(r13.status, 409); assert.match(r13.body.error, /Maximum 12/);
+  assert.equal(r13.status, 409); assert.match(r13.body.error.message, /Maximum 12/);
 });
 
 test('pièces jointes : mêmes droits que la DI / l’OT correspondant', async () => {
@@ -589,7 +657,7 @@ test('démo : gestion des comptes et mots de passe verrouillés ; reste du site 
   cfg.demo = true;
   try {
     for (const [m, p, b] of [['POST', '/users', { id: 'intrus', nom: 'x', role: 'Technicien', password: 'Motdepasse2026ok', droits: {} }], ['PUT', '/users/demo.technicien', { actif: false }], ['DELETE', '/users/demo.technicien'], ['POST', '/auth/change-password', { current: 'Demo2026-Admin', next: 'Autre2026-mdp-ok' }]]) {
-      const r = await c.call(m, p, b); assert.equal(r.status, 403, `${m} ${p}`); assert.match(r.body.error, /démonstration/);
+      const r = await c.call(m, p, b); assert.equal(r.status, 403, `${m} ${p}`); assert.match(r.body.error.message, /démonstration/);
     }
     assert.equal((await c.call('GET', '/users')).status, 200);                               // consultation toujours possible
     assert.equal((await c.call('GET', '/data/dis')).status, 200);

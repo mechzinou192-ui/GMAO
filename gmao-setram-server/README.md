@@ -8,6 +8,13 @@
 | [`GUIDE-UTILISATEUR.md`](GUIDE-UTILISATEUR.md) | Utilisateurs : utilisation au quotidien, par profil |
 | [`PLAN-PILOTE.md`](PLAN-PILOTE.md) | Direction / chef de projet : pilote sur une unité, indicateurs de réussite |
 | [`SECURITE-PRE-AUDIT.md`](SECURITE-PRE-AUDIT.md) | RSSI / auditeur : mesures en place, périmètre du test d'intrusion |
+| [`RAPPORT-CONFORMITE.md`](RAPPORT-CONFORMITE.md) | DSI : état de conformité aux règles d'ingénierie, résultats réels des contrôles, ce qui reste à vérifier |
+| [`docs/architecture.md`](docs/architecture.md) | Développeur / DSI : composants, flux, modèle de données |
+| [`docs/api.md`](docs/api.md) | Développeur : routes, droits, limites, format d'erreur |
+| [`docs/decisions.md`](docs/decisions.md) | Développeur / DSI : chaque choix technique, sa raison, l'alternative écartée |
+| [`docs/runbook.md`](docs/runbook.md) | Exploitant : démarrer, superviser, retrouver une erreur, sauvegarder, mettre à jour, revenir en arrière |
+
+**Vérification complète en une commande** (identique à la CI, hors Docker) : `./scripts/verifier.sh`.
 
 Versions imprimables (`.html`, images intégrées) : `python3 scripts/generer-docs.py`.
 
@@ -17,8 +24,8 @@ Versions imprimables (`.html`, images intégrées) : `python3 scripts/generer-do
 |---|---|
 | `App.jsx` | Point d'entrée : session, connexion |
 | `GmaoApp.jsx` | Application connectée : données synchronisées, actions métier, menu / en-tête / onglets |
-| `pages/*.jsx` | Un fichier par écran : Accueil, Arborescence, DemandesIntervention, OrdresTravail, Preventif, Compteurs, Stock, Personnel, Indicateurs, Administration, Connexion |
-| `ui/base.jsx`, `ui/icones.jsx` | Composants communs (badges, cartes, fenêtres, champs…) et icônes |
+| `pages/*.jsx` | Un fichier par écran : Accueil, Arborescence (et matériaux), MaintenanceCorrective, DemandesIntervention, OrdresTravail, Preventif, Compteurs, Stock, Personnel, Indicateurs, Administration, Connexion |
+| `ui/base.jsx`, `ui/icones.jsx`, `ui/graphes.jsx` | Composants communs (badges, cartes, fenêtres, champs…), icônes, graphiques SVG |
 | `lib/*.js` | Règles métier pures et testées : dates, préventif, compteurs, KPI, échéances, coûts |
 | `sync.js`, `api.js` | Synchronisation avec le serveur (fenêtre de chargement, conflits, file d'attente) |
 

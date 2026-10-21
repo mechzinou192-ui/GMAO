@@ -1,6 +1,6 @@
 # GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)
 
-**Version de l'application : 1.12** · Public : DSI / RSSI / administrateurs système · Langue : français
+**Version de l'application : 1.14** · Public : DSI / RSSI / administrateurs système · Langue : français
 
 Ce document permet à la DSI d'**héberger, sécuriser, sauvegarder, superviser et mettre à jour** l'application sur son
 infrastructure. Il dit aussi, sans détour, **ce qui a été vérifié et ce qui ne l'a pas été** (§ 12).
@@ -183,7 +183,7 @@ nginx -t && systemctl reload nginx
 5. Lancer `scripts/verifier-installation.sh` (§ 9).
 
 > Les valeurs par défaut (systèmes, arborescence technique, jours fériés 2026-2027) sont créées à la première connexion du compte `admin`.
-> Les **jours fériés** et les **dates religieuses** (Aïd, etc.) doivent être mis à jour chaque année dans l'onglet *Intervenants*.
+> Les **jours fériés** et les **dates religieuses** (Aïd, etc.) doivent être mis à jour chaque année dans le module *Gestion du personnel*.
 
 ---
 
@@ -202,10 +202,19 @@ nginx -t && systemctl reload nginx
 | `SESSION_HOURS` | 8 | Durée d'une session |
 | `ADMIN_INITIAL_PASSWORD` | aléatoire | Mot de passe initial du compte `admin` |
 | `UNITS` | 7 unités SETRAM | Liste des unités, séparées par des virgules, pour en ajouter |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` — journal JSON, une ligne par événement, avec `requestId` |
+| `RATE_LIMIT_WINDOW_SEC` | 60 | Fenêtre des limites globale, écritures et coûteuses |
+| `RATE_LIMIT_GLOBAL_MAX` | 600 | Requêtes par fenêtre et par utilisateur (sinon par IP) sur toute l'API |
+| `RATE_LIMIT_WRITE_MAX` | 300 | Écritures par fenêtre et par utilisateur |
+| `RATE_LIMIT_COSTLY_MAX` | 30 | Import Excel et envois de photos par fenêtre et par utilisateur |
+| `RATE_LIMIT_AUTH_WINDOW_MIN` / `RATE_LIMIT_AUTH_MAX` | 15 / 30 | Tentatives de connexion par adresse IP |
+| `SHUTDOWN_TIMEOUT_SEC` | 10 | Délai laissé aux requêtes en cours lors d'un arrêt |
 | `DEMO` | — | **Ne jamais définir en exploitation** (mode démonstration : comptes publics) |
 
-Valeurs fixes : verrouillage d'un compte après **5** échecs pendant **15 minutes** ; mot de passe de **10 caractères minimum** ;
-maximum **30** tentatives de connexion par adresse et par fenêtre de 15 minutes.
+Toutes les variables sont commentées dans **`.env.example`** (installation A) et `deploy/gmao.env.example` (installation B).
+Une valeur invalide **empêche le démarrage** avec un message explicite. Valeurs fixes : verrouillage d'un compte après **5** échecs
+pendant **15 minutes** ; mot de passe de **10 caractères minimum**. Supervision : `/api/live` (processus), `/api/ready` et `/api/health` (base joignable).
+Exploitation courante (erreurs, comptes, mises à jour, secrets) : **`docs/runbook.md`**.
 
 ---
 
@@ -361,8 +370,10 @@ le proxy d'entreprise, avec les en-têtes du § 6 ; sauvegardes par `pg_dump` pl
 | `web/` | Sources de l'interface et tests (pour la maintenance du code) |
 | `docker-compose.yml`, `Caddyfile`, `Caddyfile.certificat-entreprise`, `.env.example` | Installation A |
 | `deploy/` | `gmao.service`, `nginx.conf.example`, `gmao.env.example` (installation B) |
-| `scripts/` | `verifier-installation.sh`, `backup.sh`, `restore.sh`, `backup-sans-docker.sh`, `verifier.sh` (tests), `assembler-paquet-windows.sh` |
-| `README.md`, `CHANGELOG.md` | Documentation fonctionnelle et historique des versions |
+| `scripts/` | `verifier-installation.sh`, `backup.sh`, `restore.sh`, `backup-sans-docker.sh`, `verifier.sh` (vérification complète, comme la CI), `assembler-paquet-windows.sh` |
+| `docs/` | `architecture.md`, `api.md`, `decisions.md`, `runbook.md` |
+| `README.md`, `CHANGELOG.md`, `GUIDE-UTILISATEUR.md`, `PLAN-PILOTE.md`, `SECURITE-PRE-AUDIT.md`, `RAPPORT-CONFORMITE.md` | Documentation et historique des versions |
+| `../.github/workflows/ci.yml`, `../.gitleaks.toml`, `../.gitignore` | Intégration continue, détection de secrets, fichiers exclus du dépôt |
 
 ### Composants tiers (production)
 Serveur : express 4, helmet 7, pg 8, jsonwebtoken 9, bcryptjs 2, cookie-parser, express-rate-limit, @electric-sql/pglite (base embarquée, mode essai).

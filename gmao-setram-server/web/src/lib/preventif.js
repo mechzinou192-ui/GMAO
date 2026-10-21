@@ -26,7 +26,7 @@ export function occurrencesPlan(p){
  return out;
 }
 export const buildBTPrev=(pl,code,dateGeneration)=>({code,di:null,plan:pl.code,eq:pl.eq,nom:pl.nom,type:"Préventive",consigne:"Plan "+pl.code+" — "+pl.periode+" ("+pl.taches.length+" tâches)",horaire:pl.horaire||"Jour",consignation:pl.consignation||"Non",assigne:(pl.assignes||[]).join(", "),assignes:pl.assignes||[],echeance:pl.date,dateGeneration,
- taches:pl.taches.map(t=>({lib:t,res:null,com:""})),detection:0,gravite:0,dureeIntervention:0,tempsLogistique:0,panne:"-",cause:"-",effet:"-",intervenants:[],pieces:[],outillage:(pl.outillage||[]).map(x=>({...x})),consommables:(pl.consommables||[]).map(x=>({...x})),etat:"En cours"});
+ taches:pl.taches.map(t=>({lib:t,res:null,com:""})),detection:0,gravite:0,dureeIntervention:0,tempsLogistique:0,panne:"-",cause:"-",effet:"-",intervenants:[],pieces:[],outillage:(pl.outillage||[]).map(x=>({...x})),consommables:(pl.consommables||[]).map(x=>({...x})),...(pl.fmp?{fmp:{...pl.fmp}}:{}),...(pl.piecesPrevues&&pl.piecesPrevues.length?{piecesPrevues:pl.piecesPrevues.map(x=>({...x}))}:{}),etat:"En cours"});
 // Nature d'un OT : préventif (issu d'un plan ou de type « Préventive ») ou correctif (issu d'une DI ou hors DI correctif)
 export const estOTPreventif=(b)=>!!b&&(b.type==="Préventive"||!!b.plan);
 export const tRes=(t)=>t.res||(t.fait?"OK":null);

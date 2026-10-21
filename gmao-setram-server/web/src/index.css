@@ -301,6 +301,14 @@ body .badge.bg-slate-600,body .badge.bg-slate-500{background:#EEF0F5;color:#4A51
 .gm-viz-table th,.gm-viz-table td{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 @media (max-width:1000px){.gm-charts{grid-template-columns:1fr}}
 
+/* ---------- Calendrier préventif : vue annuelle ---------- */
+.gm-pastille{min-width:22px;height:18px;padding:0 4px;border-radius:5px;border:0;font-size:10px;font-weight:700;color:#fff;cursor:pointer;line-height:18px}
+.gm-pastille:hover,.gm-pastille:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.gm-charge{width:60%;margin:0 auto 2px;background:#3B52B8;border-radius:3px 3px 0 0;opacity:.85}
+.gm-annuel td,.gm-annuel th{border-left:1px solid var(--line)}
+.gm-annuel td:first-child,.gm-annuel th:first-child{border-left:0}
+body table.w-full.gm-annuel tbody td:first-child{white-space:normal}
+
 /* ---------- Écran de connexion ---------- */
 .gm-login{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);background:var(--bg);font-family:var(--font)}
 .gm-login-hero{position:relative;overflow:hidden;color:#DCE2F7;padding:40px 56px;display:flex;flex-direction:column;

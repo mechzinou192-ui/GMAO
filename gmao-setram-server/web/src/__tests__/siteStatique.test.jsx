@@ -257,6 +257,34 @@ describe('application complète en mode site statique', () => {
     expect(apiSite._etat().records.bts[ot.id].data.etat).not.toBe('Clôturé');
   });
 
+  it('calendrier préventif : vue « Année complète » (plans × 12 mois), retour au mois par un clic sur une visite', async () => {
+    await seConnecter('Responsable maintenance');
+    onglet(/Préventif/);
+    fireEvent.click(await screen.findByText(/Calendrier \/ Agenda/));
+    fireEvent.change(await screen.findByTestId('calendrier-vue'), { target: { value: 'annee' } });
+    const vue = await screen.findByTestId('vue-annuelle');
+    const an = new Date().getFullYear();
+    expect(document.body.textContent).toContain('Année ' + an);
+    for (const m of ['Janv.', 'Juin', 'Déc.']) expect(vue.textContent).toContain(m);
+    const plans = Object.values(apiSite._etat().records.planning).filter((r) => r.unit === 'Alger' && !r.data.declenchement);
+    expect(plans.some((r) => vue.textContent.includes(r.id))).toBe(true);
+    expect(vue.textContent).toContain('Visites par mois');
+    const pastille = vue.querySelector('button.gm-pastille');
+    fireEvent.click(pastille);
+    expect(screen.queryByTestId('vue-annuelle')).toBeNull();                       // retour à la vue du mois
+    expect(screen.getByTestId('calendrier-vue').value).toBe('mois');
+    // vue « Jour » : la journée de la visite cliquée, en détail, avec impression
+    const jour = pastille.title.slice(0, 10).split('/').reverse().join('-');
+    fireEvent.change(screen.getByTestId('calendrier-vue'), { target: { value: 'jour' } });
+    const vj = await screen.findByTestId('vue-jour');
+    expect(vj.textContent).toMatch(/[1-9]\d* visite\(s\)/);
+    expect(vj.textContent).toContain('Imprimer la journée');
+    expect(vj.textContent).toMatch(/Voir les \d+ tâche\(s\)/);
+    fireEvent.click(screen.getAllByText('›')[0]);                                    // jour suivant
+    const lendemain = new Date(jour + 'T12:00:00'); lendemain.setDate(lendemain.getDate() + 1);
+    expect(document.body.textContent).toContain(lendemain.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+  });
+
   it('préventif : filtre des plans par intervenant', async () => {
     await seConnecter('Responsable maintenance');
     onglet(/Préventif/);

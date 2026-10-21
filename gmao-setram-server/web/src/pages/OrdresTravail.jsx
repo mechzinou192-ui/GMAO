@@ -10,7 +10,7 @@ import {interDuSysteme,interPourSys,systemeDe} from "../lib/equipes.js";
 import {btImprimableHtml} from "../lib/impression.js";
 import {congeAt,libConge,nonOuvre} from "../lib/jours.js";
 import {avancement,tRes} from "../lib/preventif.js";
-import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,HoraireConsignation,Info,Inp,KPI,MateriauxSection,MultiInter,ProgressBar,typeLabel} from "../ui/base.jsx";
+import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,HoraireConsignation,Info,Inp,KPI,LienFMP,MateriauxSection,MultiInter,ProgressBar,typeLabel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
 /* ===== Page 2 : Ordres de Travail (générés par la Maintenance, remplis puis clôturés par un autre intervenant) ===== */
@@ -101,6 +101,8 @@ export function BTDetail({bt,dsOuvertes=[],compteur,pieces,inter,equipements,onS
    <Info l="Type">{bt.type}</Info>
    <Info l="DI liée">{bt.di||"—"}</Info>
    {bt.plan && <Info l="Plan préventif">{bt.plan}</Info>}
+   {bt.fmp && <Info l="FMP"><LienFMP fmp={bt.fmp}/></Info>}
+   {bt.piecesPrevues && bt.piecesPrevues.length>0 && <Info l="Pièces prévues (à demander par DS)">{bt.piecesPrevues.map(x=>{const p=pieces.find(q=>q.code===x.code);return (p?p.nom:x.code)+" × "+x.qte;}).join(", ")}</Info>}
    <Info l="Assigné à">{bt.assigne||"—"}</Info>
    <Info l="Durée de travail">{(bt.horaire||"Jour")==="Nuit"?"🌙 Nuit":"☀️ Jour"}</Info>
    <Info l="Consignation">{(bt.consignation||"Non")==="Oui"?<span className="px-2 py-0.5 rounded-full text-xs bg-rose-600 text-rose-50">Oui — nécessaire</span>:"Non"}</Info>

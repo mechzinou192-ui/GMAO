@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Pré-audit sécurité</title><style>body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}img{max-width:100%;border:1px solid #dde;border-radius:6px;margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre,img{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier de pré-audit sécurité</h1>
-<p><strong>Version de l'application : 1.13</strong> · Public : RSSI, DSI, prestataire d'audit</p>
+<p><strong>Version de l'application : 1.14</strong> · Public : RSSI, DSI, prestataire d'audit</p>
 <p>Ce dossier prépare l'<strong>audit de sécurité externe</strong> (test d'intrusion et revue de code) demandé avant toute mise en production. Il récapitule ce qui est en place, ce qui a été contrôlé lors du développement, et ce que l'auditeur doit vérifier. <strong>Il ne remplace pas l'audit externe</strong>, qui n'a pas été réalisé.</p>
 <hr />
 <h2>1. Contrôles réalisés pendant le développement</h2>
@@ -12,12 +12,12 @@
 </thead>
 <tbody>
 <tr>
-<td>Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs)</td>
-<td>39 / 39 réussis</td>
+<td>Tests automatiques serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs, limitation de débit, format d'erreur)</td>
+<td>43 / 43 réussis — couverture 96 % des lignes</td>
 </tr>
 <tr>
 <td>Tests automatiques interface</td>
-<td>182 / 182 réussis</td>
+<td>186 / 186 réussis — couverture 99,7 % des règles métier (<code>lib/</code>), 70 % de l'interface</td>
 </tr>
 <tr>
 <td>Analyse statique (ESLint : variables non définies, code mort)</td>
@@ -52,8 +52,8 @@
 <td>Mots de passe hachés (bcrypt, coût 12) ; aucun mot de passe par défaut ; changement obligatoire au premier accès ; 10 caractères minimum avec lettre et chiffre</td>
 </tr>
 <tr>
-<td>Force brute</td>
-<td>Verrouillage du compte après 5 échecs ; limitation du débit des connexions par adresse IP</td>
+<td>Force brute et abus</td>
+<td>Verrouillage du compte après 5 échecs ; limitation de débit sur <strong>toute l'API</strong> (global, écritures, opérations coûteuses, connexion), réglable par variables d'environnement, réponse 429 + <code>Retry-After</code></td>
 </tr>
 <tr>
 <td>Session</td>
@@ -81,7 +81,7 @@
 </tr>
 <tr>
 <td>Traçabilité</td>
-<td>Journal d'audit : connexions, échecs, créations, modifications (avant / après), suppressions, imports, photos</td>
+<td>Journal d'audit : connexions, échecs, créations, modifications (avant / après), suppressions, imports, photos ; journal technique JSON avec identifiant de requête</td>
 </tr>
 <tr>
 <td>Intégrité</td>
@@ -89,7 +89,7 @@
 </tr>
 <tr>
 <td>Secrets</td>
-<td>Variables d'environnement uniquement ; valeurs d'exemple refusées au démarrage</td>
+<td>Variables d'environnement uniquement ; valeurs d'exemple refusées au démarrage ; détection automatique (gitleaks) dans la CI</td>
 </tr>
 <tr>
 <td>Exécution</td>

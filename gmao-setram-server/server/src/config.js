@@ -3,6 +3,16 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const env = process.env;
+
+// Entier lu dans l'environnement, borné ; une valeur invalide empêche le démarrage (message clair)
+function entier(nom, defaut, min, max) {
+  const brut = env[nom];
+  if (brut === undefined || brut === '') return defaut;
+  const n = Number(brut);
+  if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${nom} invalide : « ${brut} » (entier attendu entre ${min} et ${max})`);
+  return n;
+}
+const NIVEAUX_LOG = ['debug', 'info', 'warn', 'error'];
 // Mode local : pas de DATABASE_URL -> base intégrée (PGlite) stockée dans ./data, sans aucune installation.
 const localMode = !env.DATABASE_URL;
 const dataDir = path.resolve(env.DATA_DIR || './data');
@@ -32,11 +42,25 @@ export const config = {
   units: (env.UNITS ||
     'Alger,Oran,Constantine,Sidi Bel Abbès,Ouargla,Sétif,Mostaganem')
     .split(',').map(s => s.trim()).filter(Boolean),
+  // Adresse d'écoute : défaut localhost en mode local, toutes les interfaces en mode serveur (conteneur)
+  host: env.HOST || (localMode ? '127.0.0.1' : undefined),
+  logLevel: env.LOG_LEVEL || 'info',
+  // Limitation de débit (requêtes par fenêtre) — voir docs/decisions.md
+  rateLimit: {
+    windowSec: entier('RATE_LIMIT_WINDOW_SEC', 60, 1, 3600),
+    globalMax: entier('RATE_LIMIT_GLOBAL_MAX', 600, 10, 100000),     // toute l'API, par utilisateur (sinon par adresse IP)
+    writeMax: entier('RATE_LIMIT_WRITE_MAX', 300, 5, 100000),        // écritures (POST / PUT / DELETE), par utilisateur
+    costlyMax: entier('RATE_LIMIT_COSTLY_MAX', 30, 1, 10000),        // import Excel, envoi de photos, par utilisateur
+    authWindowMin: entier('RATE_LIMIT_AUTH_WINDOW_MIN', 15, 1, 1440),
+    authMax: entier('RATE_LIMIT_AUTH_MAX', 30, 3, 10000),            // tentatives de connexion par adresse IP
+  },
+  shutdownTimeoutSec: entier('SHUTDOWN_TIMEOUT_SEC', 10, 1, 120),
   maxFailedAttempts: 5,
   lockMinutes: 15,
   minPasswordLength: 10,
 };
 
+if (!NIVEAUX_LOG.includes(config.logLevel)) throw new Error(`LOG_LEVEL invalide : « ${config.logLevel} » (${NIVEAUX_LOG.join(', ')})`);
 if (!localMode && /changez-moi/i.test(config.databaseUrl || '')) {
   throw new Error('DATABASE_URL contient encore le mot de passe d\'exemple : personnalisez DB_PASSWORD');
 }

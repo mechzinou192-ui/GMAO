@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool, audit } from './db.js';
 import { COLLECTIONS } from './rights.js';
 import { validId, isObj, resolveUnit } from './records.js';
+import { log } from './logger.js';
 
 export const importRouter = Router(); // monté derrière authRequired + superAdminRequired + mustNotChangePw
 
@@ -92,7 +93,7 @@ importRouter.post('/', async (req, res) => {
     res.json({ dryRun, onConflict, totals, collections: report });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error(e);
+    log.error('erreur serveur', { requestId: req.id, path: req.originalUrl.split('?')[0], erreur: e.message, pile: e.stack });
     res.status(500).json({ error: "Erreur serveur : l'import a été annulé, aucune donnée n'a été modifiée." });
   } finally {
     done();

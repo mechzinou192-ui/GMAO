@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { api } from './api.js';
 import { flushAll, refreshAll } from './sync.js';
 import { reserverNumeros } from './numbering.js';
+import { indexerFMP, lireFMP } from './lib/fmp.js';
 import { genererModele, lireClasseur, preparerImport, compterAEcrire, completerCodes, genererRapport, MAX_LIGNES } from './importExcel.js';
 
 const MAX_OCTETS = 15 * 1024 * 1024;
@@ -16,7 +17,7 @@ function telecharger(buffer, nom) {
 }
 const jour = () => new Date().toISOString().slice(0, 10);
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
-const NOMS = { equipements: 'équipements', pieces: 'articles du magasin', intervenants: 'intervenants', prestataires: 'prestataires', organismes: 'organismes', mesures: 'appareils de mesure', controles: 'contrôles réglementaires' };
+const NOMS = { planning: 'plans préventifs', equipements: 'équipements', pieces: 'articles du magasin', intervenants: 'intervenants', prestataires: 'prestataires', organismes: 'organismes', mesures: 'appareils de mesure', controles: 'contrôles réglementaires' };
 
 // ref : { units, unitAbbr, roles, cdcEtats, orgDom, systemsList, treeStruct, equipements, pieces, intervenants, prestataires, organismes, mesures, controles }
 export default function ImportDonnees({ refs }) {
@@ -30,8 +31,32 @@ export default function ImportDonnees({ refs }) {
   const [rapport, setRapport] = useState(null);
   const [toutVoir, setToutVoir] = useState(false);
   const inputRef = useRef(null);
+  // FMP (fiches de maintenance préventive) lues dans les fichiers choisis : les tâches du planning y sont prises
+  const fmpsRef = useRef([]);
+  const [fmps, setFmps] = useState([]);
+  const [fmpErreurs, setFmpErreurs] = useState([]);
+  const [fmpLecture, setFmpLecture] = useState(false);
 
-  const recalculer = (lecture, m) => preparerImport(lecture, { ...latest.current, today: jour() }, { onConflict: m });
+  const recalculer = (lecture, m) => preparerImport(lecture, { ...latest.current, fmps: indexerFMP(fmpsRef.current), today: jour() }, { onConflict: m });
+
+  async function choisirFMP(e) {
+    const fichiers = [...(e.target.files || [])].filter((f) => /\.xlsx$/i.test(f.name) && !f.name.startsWith('~$'));
+    e.target.value = '';
+    if (!fichiers.length) return;
+    setFmpLecture(true);
+    const ExcelJS = (await import('exceljs')).default;
+    const lues = [...fmpsRef.current]; const erreurs = [];
+    for (const f of fichiers) {
+      if (f.size > MAX_OCTETS) { erreurs.push(`${f.name} : fichier trop volumineux`); continue; }
+      try {
+        const fmp = await lireFMP(ExcelJS, await f.arrayBuffer(), f.name);
+        const i = lues.findIndex((x) => x.fichier.toLowerCase() === f.name.toLowerCase());
+        if (i >= 0) lues[i] = fmp; else lues.push(fmp);
+      } catch (err) { erreurs.push(`${f.name} : ${err.message}`); }
+    }
+    fmpsRef.current = lues; setFmps(lues); setFmpErreurs(erreurs); setFmpLecture(false);
+    if (lectureRef.current) setPrep(recalculer(lectureRef.current, mode));
+  }
 
   async function modele() {
     try {
@@ -103,7 +128,7 @@ export default function ImportDonnees({ refs }) {
       <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
         <div className="text-base font-semibold">Import de données depuis Excel</div>
         <div className="text-sm text-slate-400 mt-1">
-          Chargez d'un coup vos équipements, articles du magasin, intervenants, prestataires, organismes, appareils de mesure et contrôles réglementaires.
+          Chargez d'un coup vos équipements, le planning préventif (avec les tâches de vos FMP), articles du magasin, intervenants, prestataires, organismes, appareils de mesure et contrôles réglementaires.
           Le fichier est contrôlé <b>avant</b> tout enregistrement : si une ligne est incorrecte, rien n'est importé et l'erreur est indiquée (feuille, ligne, colonne).
           Vous pouvez recharger le même fichier sans risque de doublons.
         </div>
@@ -114,6 +139,20 @@ export default function ImportDonnees({ refs }) {
             <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={choisir} aria-label="Fichier Excel à importer" />
           </label>
           {nomFichier && etape !== 'choix' && <span className="text-xs text-slate-400">{nomFichier}</span>}
+        </div>
+        <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3" data-testid="import-fmp">
+          <div className="text-sm font-semibold">Fiches FMP (pour la feuille « Planning préventif »)</div>
+          <div className="text-xs text-slate-400 mt-0.5">Ajoutez les fichiers FMP vers lesquels pointent les liens du planning : les tâches de chaque visite y sont lues automatiquement (tableau « N° / Opération »). L'ordre n'a pas d'importance : avant ou après le fichier principal.</div>
+          <div className="flex flex-wrap gap-2 mt-2 items-center">
+            <label className={secondaire + ' cursor-pointer'}>Ajouter des fichiers FMP
+              <input type="file" accept=".xlsx" multiple className="hidden" onChange={choisirFMP} aria-label="Fichiers FMP" /></label>
+            <label className={secondaire + ' cursor-pointer'}>Ajouter un dossier de FMP
+              <input type="file" multiple webkitdirectory="" directory="" className="hidden" onChange={choisirFMP} aria-label="Dossier de FMP" /></label>
+            {fmpLecture && <span className="text-xs text-slate-400">Lecture des FMP…</span>}
+            {fmps.length > 0 && <span className="text-xs text-emerald-300" data-testid="fmp-compte">{fmps.length} FMP lue(s) — {fmps.reduce((a, f) => a + f.taches.length, 0)} tâches</span>}
+            {fmps.length > 0 && <button className="text-xs text-slate-400 underline" onClick={() => { fmpsRef.current = []; setFmps([]); setFmpErreurs([]); if (lectureRef.current) setPrep(recalculer(lectureRef.current, mode)); }}>Retirer les FMP</button>}
+          </div>
+          {fmpErreurs.length > 0 && <ul className="mt-2 text-xs text-amber-200 space-y-0.5">{fmpErreurs.slice(0, 20).map((m) => <li key={m}>{m}</li>)}</ul>}
         </div>
         {erreurFatale && <div role="alert" className="mt-3 text-sm text-rose-300 bg-rose-900/30 border border-rose-800 rounded-lg px-3 py-2">{erreurFatale}</div>}
       </div>

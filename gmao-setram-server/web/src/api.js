@@ -3,13 +3,17 @@ import { createDemoApi } from './demo/apiDemo.js';
 // Client d'API. Les cookies de session sont httpOnly : le JavaScript n'a jamais accès au jeton.
 const SILENT_401 = ['/auth/login', '/auth/me'];
 
+// Identifiant de requête : envoyé au serveur et repris dans ses journaux (une erreur se retrouve en une recherche)
+const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+
 const call = async (method, path, body) => {
   let r;
+  const rid = nouvelId();
   try {
     r = await fetch('/api' + path, {
       method,
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao' },
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao', 'X-Request-Id': rid },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -18,7 +22,12 @@ const call = async (method, path, body) => {
   const json = await r.json().catch(() => ({}));
   if (!r.ok) {
     if (r.status === 401 && !SILENT_401.includes(path)) window.dispatchEvent(new Event('gmao:unauth'));
-    throw Object.assign(new Error(json.error || 'Erreur ' + r.status), { status: r.status, ...json });
+    // format d'erreur du serveur : { error: { code, message, details?, requestId } } (ancien format { error: "texte" } accepté)
+    const e = json.error && typeof json.error === 'object' ? json.error : { message: json.error };
+    let message = e.message || 'Erreur ' + r.status;
+    if (r.status === 429 && !e.message) message = 'Trop de requêtes. Réessayez dans ' + (r.headers.get('Retry-After') || 'quelques') + ' s.';
+    throw Object.assign(new Error(message), { ...json, status: r.status, code: e.code, details: e.details, requestId: e.requestId || rid,
+      retryAfter: Number(r.headers.get('Retry-After')) || undefined });
   }
   return json;
 };

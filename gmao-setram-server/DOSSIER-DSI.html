@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Dossier DSI</title><style>body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}img{max-width:100%;border:1px solid #dde;border-radius:6px;margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre,img{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Dossier d'hébergement et d'exploitation (DSI)</h1>
-<p><strong>Version de l'application : 1.12</strong> · Public : DSI / RSSI / administrateurs système · Langue : français</p>
+<p><strong>Version de l'application : 1.14</strong> · Public : DSI / RSSI / administrateurs système · Langue : français</p>
 <p>Ce document permet à la DSI d'<strong>héberger, sécuriser, sauvegarder, superviser et mettre à jour</strong> l'application sur son
 infrastructure. Il dit aussi, sans détour, <strong>ce qui a été vérifié et ce qui ne l'a pas été</strong> (§ 12).</p>
 <hr />
@@ -279,7 +279,7 @@ nginx -t &amp;&amp; systemctl reload nginx
 </ol>
 <blockquote>
 <p>Les valeurs par défaut (systèmes, arborescence technique, jours fériés 2026-2027) sont créées à la première connexion du compte <code>admin</code>.
-Les <strong>jours fériés</strong> et les <strong>dates religieuses</strong> (Aïd, etc.) doivent être mis à jour chaque année dans l'onglet <em>Intervenants</em>.</p>
+Les <strong>jours fériés</strong> et les <strong>dates religieuses</strong> (Aïd, etc.) doivent être mis à jour chaque année dans le module <em>Gestion du personnel</em>.</p>
 </blockquote>
 <hr />
 <h2>8. Variables d'environnement</h2>
@@ -348,14 +348,51 @@ Les <strong>jours fériés</strong> et les <strong>dates religieuses</strong> (A
 <td>Liste des unités, séparées par des virgules, pour en ajouter</td>
 </tr>
 <tr>
+<td><code>LOG_LEVEL</code></td>
+<td><code>info</code></td>
+<td><code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code> — journal JSON, une ligne par événement, avec <code>requestId</code></td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT_WINDOW_SEC</code></td>
+<td>60</td>
+<td>Fenêtre des limites globale, écritures et coûteuses</td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT_GLOBAL_MAX</code></td>
+<td>600</td>
+<td>Requêtes par fenêtre et par utilisateur (sinon par IP) sur toute l'API</td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT_WRITE_MAX</code></td>
+<td>300</td>
+<td>Écritures par fenêtre et par utilisateur</td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT_COSTLY_MAX</code></td>
+<td>30</td>
+<td>Import Excel et envois de photos par fenêtre et par utilisateur</td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT_AUTH_WINDOW_MIN</code> / <code>RATE_LIMIT_AUTH_MAX</code></td>
+<td>15 / 30</td>
+<td>Tentatives de connexion par adresse IP</td>
+</tr>
+<tr>
+<td><code>SHUTDOWN_TIMEOUT_SEC</code></td>
+<td>10</td>
+<td>Délai laissé aux requêtes en cours lors d'un arrêt</td>
+</tr>
+<tr>
 <td><code>DEMO</code></td>
 <td>—</td>
 <td><strong>Ne jamais définir en exploitation</strong> (mode démonstration : comptes publics)</td>
 </tr>
 </tbody>
 </table>
-<p>Valeurs fixes : verrouillage d'un compte après <strong>5</strong> échecs pendant <strong>15 minutes</strong> ; mot de passe de <strong>10 caractères minimum</strong> ;
-maximum <strong>30</strong> tentatives de connexion par adresse et par fenêtre de 15 minutes.</p>
+<p>Toutes les variables sont commentées dans <strong><code>.env.example</code></strong> (installation A) et <code>deploy/gmao.env.example</code> (installation B).
+Une valeur invalide <strong>empêche le démarrage</strong> avec un message explicite. Valeurs fixes : verrouillage d'un compte après <strong>5</strong> échecs
+pendant <strong>15 minutes</strong> ; mot de passe de <strong>10 caractères minimum</strong>. Supervision : <code>/api/live</code> (processus), <code>/api/ready</code> et <code>/api/health</code> (base joignable).
+Exploitation courante (erreurs, comptes, mises à jour, secrets) : <strong><code>docs/runbook.md</code></strong>.</p>
 <hr />
 <h2>9. Contrôle de l'installation</h2>
 <pre><code class="language-bash">./scripts/verifier-installation.sh https://gmao.setram.local
@@ -609,11 +646,19 @@ le proxy d'entreprise, avec les en-têtes du § 6 ; sauvegardes par <code>pg_dum
 </tr>
 <tr>
 <td><code>scripts/</code></td>
-<td><code>verifier-installation.sh</code>, <code>backup.sh</code>, <code>restore.sh</code>, <code>backup-sans-docker.sh</code>, <code>verifier.sh</code> (tests), <code>assembler-paquet-windows.sh</code></td>
+<td><code>verifier-installation.sh</code>, <code>backup.sh</code>, <code>restore.sh</code>, <code>backup-sans-docker.sh</code>, <code>verifier.sh</code> (vérification complète, comme la CI), <code>assembler-paquet-windows.sh</code></td>
 </tr>
 <tr>
-<td><code>README.md</code>, <code>CHANGELOG.md</code></td>
-<td>Documentation fonctionnelle et historique des versions</td>
+<td><code>docs/</code></td>
+<td><code>architecture.md</code>, <code>api.md</code>, <code>decisions.md</code>, <code>runbook.md</code></td>
+</tr>
+<tr>
+<td><code>README.md</code>, <code>CHANGELOG.md</code>, <code>GUIDE-UTILISATEUR.md</code>, <code>PLAN-PILOTE.md</code>, <code>SECURITE-PRE-AUDIT.md</code>, <code>RAPPORT-CONFORMITE.md</code></td>
+<td>Documentation et historique des versions</td>
+</tr>
+<tr>
+<td><code>../.github/workflows/ci.yml</code>, <code>../.gitleaks.toml</code>, <code>../.gitignore</code></td>
+<td>Intégration continue, détection de secrets, fichiers exclus du dépôt</td>
 </tr>
 </tbody>
 </table>

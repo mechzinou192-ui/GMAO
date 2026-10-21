@@ -1,5 +1,62 @@
 # Journal des modifications
 
+## 1.15.2 — calendrier préventif : vue « Jour »
+- Option **Jour** dans la liste *Vue* (Jour / Mois / Année complète) et lien « Voir la journée » depuis l'agenda du mois.
+- Feuille de route du jour : une carte par visite (équipement, plan, état, intervenants, horaire, consignation, outillage,
+  consommables, FMP, liste des tâches dépliable), équipe de la journée, déclenchement / ouverture de l'OT.
+- Navigation jour par jour ; **impression de la journée** (A4 paysage, colonne visa) ; jours fériés signalés.
+
+## 1.15.1 — calendrier préventif : vue « Année complète »
+- Liste déroulante **Vue : Mois / Année complète** dans *Préventif › Calendrier / Agenda*.
+- Vue annuelle type PDC : une ligne par plan (équipement, périodicité, intervenants), une colonne par mois, chaque visite
+  en pastille colorée selon son état (planifié, en cours, en retard, réalisé) avec son jour ; clic = ouverture du mois sur ce jour.
+- Ligne **« Visites par mois »** (charge mensuelle avec histogramme) et total annuel ; navigation d'une année à l'autre.
+- **Export Excel** du planning annuel (jours des visites par mois, totaux). Le filtre par intervenant s'applique.
+
+## 1.15.0 — import du planning préventif avec les tâches des FMP
+- Nouvelle feuille d'import **« Planning préventif »** : Code GMAO (ou repère), Type de visite, **Lien FMP de la visite**
+  (lien hypertexte Excel ou chemin), pièces / consommables / outillage à utiliser (désignations séparées par « ; »,
+  quantité facultative « x2 »), première échéance et intervenants facultatifs.
+- **Étape « FMP » de l'import** : ajout des fichiers FMP (ou d'un dossier entier). Le tableau « N° / Opération » de chaque
+  fiche est lu automatiquement (en-têtes fusionnés, sous-équipement, périodicité) ; chaque ligne du planning est rattachée
+  à sa FMP par le nom du fichier du lien ou par la référence documentaire (ORG-CFO-IIT-FOR-0001-A).
+- **Tâches du plan = opérations de la FMP** (celles de la périodicité de la visite si la fiche en distingue plusieurs).
+- **Répartition automatique des intervenants** : technicien du système le moins chargé, hors congés à la date prévue ;
+  modifiable ensuite dans chaque plan. Intervenants imposés possibles dans le fichier.
+- Le plan et l'OT généré conservent la **référence et le lien de la FMP** (affichés dans le plan, l'OT et le bon imprimé) ;
+  pièces prévues reprises dans l'OT (à demander par DS).
+- Réimport sans doublon (même équipement, même visite, même FMP) ; mode « mettre à jour » pour rafraîchir les tâches.
+- Tests : 194 côté interface (dont la FMP réelle ORG-CFO-IIT-FOR-0001-A comme fichier de test).
+
+## 1.14.1 — import Excel : équipements et sous-équipements en une seule fois
+- Feuille **Équipements** : nouvelle colonne facultative **« Repère »** (T1, R02…), unique dans le fichier.
+- Feuille **Sous-équipements** : la colonne **« Équipement parent (repère ou code GMAO) »** accepte le repère de la feuille
+  Équipements **ou** le code GMAO d'un équipement existant. Plus besoin d'importer les équipements, de relever leurs codes,
+  puis d'importer les sous-équipements. Les anciens fichiers (« Code équipement parent ») restent acceptés.
+- Repère en double ou inconnu : erreur claire, rien n'est importé.
+- Tests : 188 côté interface.
+
+## 1.14.0 — mise en conformité pour la DSI (exploitation, sécurité, CI, documentation)
+- **`.env.example`** (manquant jusqu'ici alors que la procédure d'installation le citait) : toutes les variables, commentées ;
+  `.gitignore` ; `UNITS` et les nouveaux réglages transmis par `docker-compose.yml`.
+- **Configuration validée au démarrage** : une valeur invalide (limite, niveau de journal, secret d'exemple) empêche le démarrage
+  avec un message clair ; plus aucune lecture de l'environnement hors de `config.js`.
+- **Limitation de débit sur toute l'API** (global, écritures, opérations coûteuses, connexion), réglable par variables
+  `RATE_LIMIT_*`, clé = utilisateur sinon IP, réponse 429 + `Retry-After` + en-têtes `RateLimit-*` ; supervision jamais limitée.
+  L'interface conserve la modification et la renvoie après le délai (aucune perte).
+- **Format d'erreur unique** `{ error: { code, message, details, requestId } }` ; jamais de détail technique côté client ;
+  les erreurs 500 affichent une **référence** à communiquer.
+- **Identifiant de requête** (`X-Request-Id`) envoyé par l'interface, repris dans la réponse et dans le journal.
+- **Journal JSON** (une ligne par requête API et par événement), niveau `LOG_LEVEL`.
+- **Supervision** : `/api/live` (processus) et `/api/ready` (base) ; `/api/health` inchangée.
+- **Arrêt propre** (SIGTERM / SIGINT) : fin des requêtes en cours, fermeture de la base, arrêt forcé après `SHUTDOWN_TIMEOUT_SEC`.
+- **Secours administrateur** : `node src/reinitialiser-admin.js` (mot de passe provisoire, compte réactivé, audit).
+- **CI GitHub Actions** : tests (base intégrée et PostgreSQL 16), analyse sans avertissement, compilation, audit des dépendances,
+  détection de secrets (gitleaks), construction Docker, démarrage complet et parcours HTTPS de bout en bout, arrêt propre.
+- **Documentation** `docs/` : `architecture.md`, `api.md`, `decisions.md`, `runbook.md` ; **`RAPPORT-CONFORMITE.md`**.
+- Couverture mesurable : `npm run test:coverage` (serveur et interface).
+- Tests : 43 côté serveur, 186 côté interface.
+
 ## 1.13.0 — modules réorganisés, règle DS, filtre préventif, tableau de bord graphique
 - **Gestion de la maintenance corrective** (remplace « Demandes d'intervention ») : onglets **DI** et **OT correctifs**
   (visibles selon les droits DI / OT).

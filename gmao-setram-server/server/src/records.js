@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { COLLECTIONS, canRead, canWrite } from './rights.js';
 import { SEQUENCES, sequenceKey, reserveCodes, MAX_BATCH } from './numbering.js';
 import { ARCHIVABLES, lireFenetre, limiteFenetre } from './archives-core.js';
+import { log } from './logger.js';
 
 export const dataRouter = Router(); // monté derrière authRequired + mustNotChangePw
 
@@ -112,7 +113,7 @@ dataRouter.post('/:collection/next-code', collectionOf, async (req, res) => {
     res.json({ codes });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
-    console.error(e);
+    log.error('erreur serveur', { requestId: req.id, path: req.originalUrl.split('?')[0], erreur: e.message, pile: e.stack });
     res.status(500).json({ error: 'Erreur serveur.' });
   }
 });
@@ -183,7 +184,7 @@ dataRouter.put('/:collection/:id', collectionOf, async (req, res) => {
     res.json(toApi(out));
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error(e);
+    log.error('erreur serveur', { requestId: req.id, path: req.originalUrl.split('?')[0], erreur: e.message, pile: e.stack });
     res.status(500).json({ error: 'Erreur serveur.' });
   } finally {
     done();

@@ -97,7 +97,7 @@ Ouvrez l'OT (clic sur la ligne, ou toucher la carte sur téléphone) :
 - Une échéance un **jour férié ou un week-end** est signalée : changez la date ou confirmez un travail exceptionnel avec son motif.
 - Un intervenant **en congé** à la date prévue est refusé, et une alerte apparaît si un congé est saisi après coup.
 - Le filtre **Intervenant** (en haut à droite) n'affiche que les plans assignés à une personne, y compris dans l'agenda, la plage de déclenchement et les plans au compteur.
-- **Déclencher** génère l'OT préventif ; **Plage de déclenchement** permet de générer en une fois toutes les visites d'une période ; **Calendrier / Agenda** affiche le mois.
+- **Déclencher** génère l'OT préventif ; **Plage de déclenchement** permet de générer en une fois toutes les visites d'une période ; **Calendrier / Agenda** affiche le mois ; la liste **Vue** propose aussi **Jour** (feuille de route détaillée de la journée, imprimable) et **Année complète**, qui affiche toute l'année (une ligne par plan, une colonne par mois, total des visites par mois, export Excel).
 
 ### 6.2 Compteurs d'équipement
 ![Compteurs](docs-img/compteurs.png)
@@ -178,6 +178,8 @@ Chaque écran a un bouton **Exporter Excel**.
 
 - **Comptes et droits d'accès** : pour chaque unité, cochez les **systèmes** et les **modules** autorisés, et éventuellement les indicateurs visibles. Désactiver un compte coupe sa session immédiatement.
 - **Import de données (Excel)** : téléchargez le modèle Excel, remplissez-le, chargez-le : chaque ligne est contrôlée et les erreurs sont listées avant tout envoi. L'import n'est possible que sans erreur, et il est **tout ou rien** : rien n'est enregistré si le serveur refuse une ligne. Le réimporter ne crée pas de doublon.
+  - **Équipements et sous-équipements en une seule fois** : dans la feuille *Équipements*, donnez un **Repère** court (T1, R02…) aux équipements qui ont des composants ; dans la feuille *Sous-équipements*, indiquez ce repère comme *Équipement parent*. Les codes GMAO sont créés automatiquement pour les deux. Pour un équipement déjà dans la GMAO, indiquez directement son code.
+  - **Planning préventif avec les FMP** : remplissez la feuille *Planning préventif* (Code GMAO, Type de visite, lien vers la FMP, outillage…), puis, à l'étape **« Fiches FMP »** de l'écran d'import, ajoutez les fichiers FMP (ou tout le dossier). Les tâches de chaque visite sont lues dans la FMP ; les intervenants sont répartis automatiquement entre les techniciens du système (hors congés) et restent modifiables dans chaque plan. Le lien de la FMP est conservé et affiché dans le plan, l'OT et le bon imprimé.
 
 ---
 

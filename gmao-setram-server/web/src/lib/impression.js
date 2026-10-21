@@ -63,6 +63,7 @@ export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date
 <table class="id">
 <tr><td>Équipement</td><td>${esc(bt.eq)} — ${esc(bt.nom||eq.nom||"")}</td><td>Emplacement</td><td>${val(eq.emplacement)}</td></tr>
 <tr><td>Type</td><td>${val(bt.type)}</td><td>${prev?"Plan préventif":"DI liée"}</td><td>${val(prev?bt.plan:bt.di)}</td></tr>
+${bt.fmp?`<tr><td>FMP</td><td colspan="3">${esc(bt.fmp.ref||bt.fmp.fichier||"")}${bt.fmp.titre?" — "+esc(bt.fmp.titre):""}</td></tr>`:""}
 <tr><td>Assigné à</td><td>${val(bt.assigne)}</td><td>Horaire</td><td>${(bt.horaire||"Jour")==="Nuit"?"Nuit":"Jour"}</td></tr>
 <tr><td>Consignation</td><td>${(bt.consignation||"Non")==="Oui"?"<b>OUI — nécessaire</b>":"Non"}</td><td>Travail exceptionnel</td><td>${bt.exc?esc(bt.motifExc||"Oui"):"Non"}</td></tr>
 <tr><td>Généré le</td><td>${val(bt.dateGeneration)}</td><td>Clôturé le</td><td>${val(bt.dateCloture)}</td></tr>

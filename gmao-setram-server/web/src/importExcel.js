@@ -11,6 +11,10 @@
  * Un fichier rechargé deux fois ne crée jamais de doublons : ce qui existe déjà est reconnu.
  */
 
+import { fmpDuLien, nomFichierLien, tachesPourVisite } from './lib/fmp.js';
+import { congeAt } from './lib/jours.js';
+import { interDuSysteme } from './lib/equipes.js';
+
 export const MAX_LIGNES = 20000;
 const MAX_TEXTE = 300;
 
@@ -100,8 +104,9 @@ const C = (k, h, ex, o = {}) => ({ k, h, ex, t: 'txt', ...o });
 
 export const FEUILLES = [
   { cle: 'equipements', nom: 'Équipements', collection: 'equipements',
-    but: 'Arborescence technique : un équipement par ligne. Le code (CFO.ALG.SST.01) est créé automatiquement.',
+    but: 'Arborescence technique : un équipement par ligne. Le code (CFO.ALG.SST.01) est créé automatiquement. Donnez un « Repère » (T1, T2…) aux équipements qui ont des sous-équipements : la feuille Sous-équipements s\'y réfère, sans attendre le code GMAO.',
     cols: [
+      C('repere', 'Repère', 'T1', { alias: ['repere (facultatif)', 'reference interne', 'ref interne'] }),
       C('unite', 'Unité', 'Alger', { req: true, t: 'unite' }),
       C('systeme', 'Système', 'CFO', { req: true }),
       C('sous', 'Sous-système', 'SST', { req: true }),
@@ -114,9 +119,9 @@ export const FEUILLES = [
       C('code', 'Code', 'laisser vide pour une création', { alias: ['code gmao'] }),
     ] },
   { cle: 'sous', nom: 'Sous-équipements', collection: 'equipements',
-    but: 'Composants d\'un équipement (rattachés à son code). Code créé automatiquement : CFO.ALG.SST.01.01.',
+    but: 'Composants d\'un équipement. Équipement parent : son « Repère » de la feuille Équipements (ex. T1) OU son code GMAO s\'il existe déjà (ex. CFO.ALG.SST.01). Équipements et sous-équipements s\'importent ainsi en une seule fois. Code créé automatiquement : CFO.ALG.SST.01.01.',
     cols: [
-      C('parent', 'Code équipement parent', 'CFO.ALG.SST.01', { req: true, alias: ['equipement parent', 'code equipement'] }),
+      C('parent', 'Équipement parent (repère ou code GMAO)', 'T1', { req: true, alias: ['code equipement parent', 'equipement parent', 'code equipement', 'repere parent', 'parent'] }),
       C('nom', 'Désignation', 'Moteur de traction', { req: true }),
       C('f_nom', 'Fournisseur', 'ElecPro'), C('f_tel', 'Tél. fournisseur', ''), C('f_email', 'Email fournisseur', ''),
       C('code', 'Code', 'laisser vide pour une création'),
@@ -182,6 +187,18 @@ export const FEUILLES = [
       C('peremption', 'Date de péremption', '10/03/2027', { t: 'date' }),
       C('organisme', 'Organisme d\'étalonnage', 'ALGERAC'),
     ] },
+  { cle: 'planning', nom: 'Planning préventif', collection: 'planning',
+    but: 'Une ligne par visite préventive d\'un équipement. Les tâches sont lues automatiquement dans la FMP du lien (ajoutez les fichiers FMP à l\'étape « FMP » de l\'import). Les intervenants sont répartis automatiquement entre les techniciens du système (modifiable ensuite dans chaque plan). Objets à utiliser : désignations ou codes séparés par « ; », quantité facultative (« multimètre x2 »).',
+    cols: [
+      C('eq', 'Code GMAO', 'CFO.ALG.SST.01', { req: true, alias: ['code equipement', 'equipement', 'code gmao equipement', 'repere'] }),
+      C('periode', 'Type de visite', 'Mensuel', { req: true, t: 'visite', alias: ['type de la visite', 'periodicite', 'visite'] }),
+      C('fmp', 'Lien FMP de la visite', 'ORG-CFO-IIT-FOR-0001-A__FMP_Annuelle.xlsx', { lien: true, alias: ['lien fmp', 'fmp', 'lien fmp de la visite', 'fiche fmp'] }),
+      C('pieces', 'Pièces à utiliser', '', { alias: ['piece a utiliser', 'pieces a utiliser', 'pieces'] }),
+      C('conso', 'Consommables à utiliser', '', { alias: ['consomable a utiliser', 'consomable a utilier', 'consommable a utiliser', 'consommables'] }),
+      C('outil', 'Outillage à utiliser', 'multimètre;dynamomètre', { alias: ['outillage a utiliser', 'outillage', 'outils'] }),
+      C('date', 'Première échéance', '', { t: 'date', alias: ['date de la visite', 'prochaine echeance', 'date prevue', 'echeance'] }),
+      C('inter', 'Intervenants (facultatif)', '', { alias: ['intervenants', 'equipe', 'intervenant'] }),
+    ] },
   { cle: 'controles', nom: 'Contrôles réglementaires', collection: 'controles',
     but: 'Contrôles réglementaires périodiques. Code R-01... créé automatiquement.',
     cols: [
@@ -194,6 +211,15 @@ export const FEUILLES = [
 ];
 
 export const PERIODICITES = ['Mensuelle', 'Trimestrielle', 'Semestrielle', 'Annuelle', 'Biennale'];
+export const VISITES = ['Hebdomadaire', 'Mensuel', 'Trimestriel', 'Semestriel', 'Annuel'];
+// « Mensuelle », « mensuel », « Visite annuelle », « M »… -> périodicité de la GMAO
+function lireVisite(v) {
+  const n = norm(lireTexte(v)).replace(/^visite\s+/, '');
+  const abr = { h: 'Hebdomadaire', m: 'Mensuel', t: 'Trimestriel', s: 'Semestriel', a: 'Annuel' };
+  const hit = VISITES.find((p) => n.startsWith(norm(p).slice(0, 6))) || abr[n];
+  if (!hit) throw new Error(`« ${v} » : type de visite inconnu (choix : ${VISITES.join(', ')})`);
+  return hit;
+}
 export const STATUTS_CONTROLE = ['Conforme', 'Réserves levées', 'À contrôler', 'Non conforme'];
 export const CATEGORIES = ['Pièce', 'Outillage', 'Consommable'];
 
@@ -319,13 +345,16 @@ export async function lireClasseur(ExcelJS, buffer) {
       const toutesObligatoires = def.cols.filter((c) => c.req).every((c) => c.k in trouve);
       if (Object.keys(trouve).length >= Math.min(2, def.cols.length) || (toutesObligatoires && Object.keys(trouve).length >= 1)) { entete = r; colonnes = trouve; }
     }
+    const liens = new Set(def.cols.filter((c) => c.lien).map((c) => c.k));
     const lignes = [];
     if (entete) {
       for (let r = entete + 1; r <= ws.rowCount; r++) {
         const row = ws.getRow(r);
         const brut = {}; let plein = false;
         for (const [k, ci] of Object.entries(colonnes)) {
-          const v = valeurCellule(row.getCell(ci).value);
+          const cell = row.getCell(ci);
+          const lien = liens.has(k) ? (cell.hyperlink || (cell.value && typeof cell.value === 'object' && cell.value.hyperlink) || '') : '';
+          const v = lien ? String(lien).trim() : valeurCellule(cell.value);   // colonne « lien » : l'adresse du lien hypertexte, sinon le texte
           brut[k] = v; if (!vide(v)) plein = true;
         }
         if (plein) lignes.push({ ligne: r, brut });
@@ -386,8 +415,9 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
             case 'role': v[c.k] = lireChoix(raw, ctx.roles); break;
             case 'cdc': v[c.k] = lireChoix(raw, ctx.cdcEtats); break;
             case 'periodicite': v[c.k] = lireChoix(raw, PERIODICITES); break;
+            case 'visite': v[c.k] = lireVisite(raw); break;
             case 'statut': v[c.k] = lireChoix(raw, STATUTS_CONTROLE); break;
-            default: v[c.k] = lireTexte(raw);
+            default: v[c.k] = c.lien ? String(raw).trim().slice(0, 1000) : lireTexte(raw);
           }
         } catch (e) { err(def.nom, ligne, c.h, e.message); ok = false; }
       }
@@ -458,6 +488,7 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
   const bumpPrefix = (code) => { const m = String(code).match(/^(.*)\.(\d+)$/); if (m) eqPrefixMax.set(m[1], Math.max(eqPrefixMax.get(m[1]) || 0, +m[2])); };
   ctx.equipements.forEach((e) => bumpPrefix(e.code));
 
+  const parRepere = new Map();     // repère (feuille Équipements) -> code GMAO, attribué ou existant
   if (present('equipements')) {
     const def = defOf('equipements'), s = stats('equipements');
     const lignes = lire(def, lecture.feuilles.equipements); s.lignes = lecture.feuilles.equipements.lignes.length;
@@ -482,6 +513,11 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
         const ex = prendre(parNom, `${v.unite}|${systeme}|${sub.code}|${norm(v.nom)}`);
         rec = ex ? eqIndex.get(ex.code) : null;
         if (!rec) { const n = (eqPrefixMax.get(prefixe) || 0) + 1; eqPrefixMax.set(prefixe, n); code = `${prefixe}.${pad2(n)}`; }
+      }
+      const repere = v.repere ? norm(v.repere) : '';
+      if (repere) {
+        if (parRepere.has(repere)) { err(def.nom, ligne, 'Repère', `« ${v.repere} » est déjà utilisé par une autre ligne : chaque repère doit être unique dans la feuille`); continue; }
+        parRepere.set(repere, rec ? rec.id : code);
       }
       const champs = {
         nom: v.nom,
@@ -512,8 +548,10 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     const explicites = new Set();
     const parParent = new Map();    // parent -> index des sous-équipements existants avant import (consommables)
     for (const { ligne, v } of lignes) {
-      const parent = eqIndex.get(String(v.parent).toUpperCase());
-      if (!parent) { err(def.nom, ligne, 'Code équipement parent', `« ${v.parent} » est introuvable (ni dans la feuille Équipements, ni dans l'application)`); continue; }
+      // parent : repère de la feuille Équipements (prioritaire), sinon code GMAO existant ou créé par ce fichier
+      const viaRepere = parRepere.get(norm(v.parent));
+      const parent = eqIndex.get(viaRepere || String(v.parent).toUpperCase());
+      if (!parent) { err(def.nom, ligne, 'Équipement parent', `« ${v.parent} » est introuvable : ni repère de la feuille Équipements, ni code d'un équipement existant`); continue; }
       const subs = parent.data.sousEquip || (parent.data.sousEquip = []);
       if (!parParent.has(parent.id)) parParent.set(parent.id, indexer(clone(subs), (x) => norm(x.nom)));
       let existant = null; let code = v.code ? v.code.toUpperCase() : '';
@@ -629,6 +667,86 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     }
   }
   for (const rec of interRec.values()) if (!rec.existant || rec.ecrase) ecrire('intervenants', rec.id, { id: rec.id, unit: '', system: null, data: rec.data, ecrase: !!rec.existant || rec.ecrase });
+
+  /* ============ PLANNING PRÉVENTIF (tâches lues dans les FMP) ============ */
+  if (present('planning')) {
+    const def = defOf('planning'), s = stats('planning');
+    const lignes = lire(def, lecture.feuilles.planning); s.lignes = lecture.feuilles.planning.lignes.length;
+    const plans = ctx.planning || [];
+    const existants = indexer(plans, (p) => `${p.eq}|${p.periode}|${(p.fmp && p.fmp.ref) || ''}`);
+    // charge actuelle de chaque intervenant (plans assignés) : la répartition automatique équilibre les tournées
+    const charge = new Map();
+    plans.forEach((p) => (p.assignes || []).forEach((n) => charge.set(n, (charge.get(n) || 0) + 1)));
+    const inter = (ctx.intervenants || []).filter((i) => !i.externe);
+    const parNomInter = new Map((ctx.intervenants || []).concat(ctx.prestataires || []).map((i) => [norm(i.nom), i]));
+    const articles = (ctx.pieces || []);
+    const trouverArticle = (txt, categorie) => {
+      const t = norm(txt);
+      const cat = articles.filter((p) => p.categorie === categorie);
+      return cat.find((p) => norm(p.code) === t) || cat.find((p) => norm(p.nom) === t)
+        || (() => { const c = cat.filter((p) => norm(p.nom).includes(t) || t.includes(norm(p.nom))); return c.length === 1 ? c[0] : null; })();
+    };
+    const listeArticles = (txt, categorie, ligne, colonne) => {
+      const out = [];
+      for (const brut of String(txt || '').split(/[;\n]/).map((x) => x.trim()).filter(Boolean)) {
+        const m = brut.match(/^(.*?)(?:\s*[x×*]\s*(\d+)|\s*\((\d+)\))\s*$/i);
+        const nom = (m ? m[1] : brut).trim(); const qte = m ? Number(m[2] || m[3]) : 1;
+        const a = trouverArticle(nom, categorie);
+        if (!a) { warn(def.nom, ligne, `colonne « ${colonne} » : « ${nom} » introuvable dans la catégorie ${categorie} du magasin — non repris (créez l'article puis réimportez en mode « mettre à jour »)`); continue; }
+        const ex = out.find((x) => x.code === a.code); if (ex) ex.qte += qte; else out.push({ code: a.code, qte });
+      }
+      return out;
+    };
+    const vus = new Set();
+    for (const { ligne, v } of lignes) {
+      const viaRepere = parRepere.get(norm(v.eq));
+      const eq = eqIndex.get(viaRepere || String(v.eq).toUpperCase());
+      if (!eq) { err(def.nom, ligne, 'Code GMAO', `« ${v.eq} » : équipement introuvable (ni dans l'application, ni dans la feuille Équipements)`); continue; }
+      const d = eq.data;
+      if (!v.fmp) { err(def.nom, ligne, 'Lien FMP de la visite', 'lien vers la FMP obligatoire : les tâches de la visite y sont lues'); continue; }
+      const fmp = fmpDuLien(ctx.fmps, v.fmp);
+      if (!fmp) { err(def.nom, ligne, 'Lien FMP de la visite', `FMP « ${nomFichierLien(v.fmp) || v.fmp} » non fournie : ajoutez ce fichier à l'étape « FMP » de l'import`); continue; }
+      const taches = tachesPourVisite(fmp, v.periode);
+      const cle = `${d.code}|${v.periode}|${fmp.ref || ''}`;
+      if (vus.has(cle)) { err(def.nom, ligne, null, `visite ${v.periode.toLowerCase()} de ${d.code} avec la FMP ${fmp.ref || fmp.fichier} en double dans la feuille`); continue; }
+      vus.add(cle);
+      // intervenants : ceux du fichier, sinon répartition automatique (technicien du système le moins chargé, hors congés)
+      const date = v.date || aujourdhui;
+      let assignes = [];
+      if (v.inter) {
+        let bon = true;
+        for (const n of v.inter.split(/[;,\n]/).map((x) => x.trim()).filter(Boolean)) {
+          const p = parNomInter.get(norm(n));
+          if (!p) { err(def.nom, ligne, 'Intervenants (facultatif)', `« ${n} » n'est pas un intervenant connu`); bon = false; break; }
+          assignes.push(p.nom);
+        }
+        if (!bon) continue;
+      } else {
+        const candidats = interDuSysteme(inter, d.system).filter((i) => !/magasin|exploitation|directeur/i.test(i.role || '') && !congeAt(i, date));
+        if (candidats.length) {
+          const choisi = [...candidats].sort((a, b) => (charge.get(a.nom) || 0) - (charge.get(b.nom) || 0) || a.nom.localeCompare(b.nom))[0];
+          assignes = [choisi.nom]; charge.set(choisi.nom, (charge.get(choisi.nom) || 0) + 1);
+        } else warn(def.nom, ligne, `aucun technicien disponible pour le système ${d.system} : plan créé sans intervenant (à affecter dans le plan)`);
+      }
+      const champs = {
+        taches, fmp: { ref: fmp.ref, titre: fmp.titre, lien: v.fmp, fichier: fmp.fichier },
+        piecesPrevues: listeArticles(v.pieces, 'Pièce', ligne, 'Pièces à utiliser'),
+        consommables: listeArticles(v.conso, 'Consommable', ligne, 'Consommables à utiliser'),
+        outillage: listeArticles(v.outil, 'Outillage', ligne, 'Outillage à utiliser'),
+        intitule: fmp.titre,
+      };
+      const ex = prendre(existants, cle);
+      if (ex) {
+        if (maj) { ecrire('planning', ex.code, { id: ex.code, unit: ex.unit, system: ex.sys, data: { ...clone(ex), ...champs, ...(v.date ? { date: v.date } : {}), ...(v.inter ? { assignes } : {}) }, ecrase: true }); s.modifies++; }
+        else s.existants++;
+        continue;
+      }
+      const data = { code: null, unit: d.unit, sys: d.system, eq: d.code, nom: d.nom, periode: v.periode, date, dernier: '', assignes, ...champs,
+        exc: false, motifExc: '', horaire: 'Jour', consignation: 'Non', termine: false };
+      const rec = { id: null, unit: d.unit, system: d.system, data, collection: 'planning' };
+      aCoder.push(rec); sortieDe('planning').set(`nouveau:${aCoder.length}`, rec); s.nouveaux++;
+    }
+  }
 
   /* ============ PRESTATAIRES ============ */
   if (present('prestataires')) {
@@ -754,10 +872,14 @@ export function compterAEcrire(prep) {
 // Attribue les numéros des nouveaux articles (P-001, O-001, C-001) auprès du serveur, puis fabrique le corps de la requête.
 // reserver(collection, { variant, count }) doit retourner un tableau de codes, ou null en cas d'échec.
 export async function completerCodes(prep, reserver) {
-  const groupes = {};
-  for (const r of prep.aCoder) (groupes[r.variant] ||= []).push(r);
-  for (const [variant, recs] of Object.entries(groupes)) {
-    const codes = await reserver('pieces', { variant, count: recs.length });
+  const groupes = new Map();      // collection | variante | unité -> enregistrements (articles : P/O/C ; plans : par unité)
+  for (const r of prep.aCoder) {
+    const k = `${r.collection || 'pieces'}|${r.variant || ''}|${r.collection === 'planning' ? r.unit : ''}`;
+    if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(r);
+  }
+  for (const [k, recs] of groupes) {
+    const [collection, variant, unit] = k.split('|');
+    const codes = await reserver(collection, { ...(variant ? { variant } : {}), ...(unit ? { unit } : {}), count: recs.length });
     if (!codes || codes.length !== recs.length) return null;
     recs.forEach((r, i) => { r.id = codes[i]; r.data.code = codes[i]; });
   }

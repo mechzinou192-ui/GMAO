@@ -22,7 +22,7 @@ export const fmtFourn=(l)=>(l||[]).filter(Boolean).map(f=>f.nom+(f.tel?" — "+f
 export const ouiNon=(b)=>b?"Oui":"Non";
 export const Modal=({title,onClose,children,wide})=>(
  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4" onClick={onClose}>
-  <div className={"gm-modal bg-slate-800 border border-slate-700 rounded-xl w-full "+(wide==="xl"?"max-w-5xl":wide?"max-w-3xl":"max-w-lg")+" p-3 sm:p-5 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto"} onClick={e=>e.stopPropagation()}>
+  <div className={"gm-modal bg-slate-800 border border-slate-700 rounded-xl w-full "+(wide==="full"?"max-w-[1500px]":wide==="xl"?"max-w-5xl":wide?"max-w-3xl":"max-w-lg")+" p-3 sm:p-5 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto"} onClick={e=>e.stopPropagation()}>
    <div className="gm-modal-head flex justify-between items-center mb-3"><h3 className="text-slate-100 font-semibold">{title}</h3><button onClick={onClose} className="gm-icon-btn" aria-label="Fermer">{I.x}</button></div>
    {children}
   </div></div>);
@@ -102,3 +102,16 @@ export function MateriauxSection({label,categorie,pieces,list,setList}){
  </div>);
 }
 export const Chk=({checked,onChange,children})=><label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/>{children}</label>;
+
+// Lien vers la FMP d'origine : ouvrable s'il s'agit d'une adresse web ; un chemin réseau (\\serveur\…, fichier local)
+// ne peut pas être ouvert depuis une page web (sécurité des navigateurs) : il est affiché avec un bouton « Copier ».
+export function LienFMP({fmp}){
+ if(!fmp) return null;
+ const web=/^https?:\/\//i.test(fmp.lien||"");
+ const copier=()=>{try{navigator.clipboard.writeText(fmp.lien||fmp.fichier||"");}catch(e){/* presse-papiers indisponible */}};
+ return <span className="inline-flex flex-wrap items-center gap-2" data-testid="lien-fmp">
+  <b>{fmp.ref||fmp.fichier}</b>
+  {web?<a href={fmp.lien} target="_blank" rel="noopener noreferrer" className="text-sky-400 underline">Ouvrir la FMP</a>
+   :fmp.lien?<><span className="text-xs text-slate-500 break-all">{fmp.lien}</span><button type="button" onClick={copier} className="text-xs text-sky-400 underline">Copier le chemin</button></>:null}
+ </span>;
+}

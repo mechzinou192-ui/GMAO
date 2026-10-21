@@ -1,0 +1,249 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>GMAO SETRAM — Rapport de conformité</title><style>body{font:14px/1.55 Montserrat,-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;max-width:960px;margin:24px auto;padding:0 18px}h1{color:#2A3B90;border-bottom:3px solid #2DC3EA;padding-bottom:6px}h2{color:#2A3B90;margin-top:34px;border-bottom:1px solid #ccd;padding-bottom:3px}h3{margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid #bbb;padding:5px 8px;vertical-align:top;text-align:left}th{background:#eef0fa}code{background:#f3f3f6;padding:1px 4px;border-radius:3px;font-size:12.5px}pre{background:#f3f3f6;padding:10px 12px;border-radius:6px;overflow-x:auto;border:1px solid #dde}pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a030;background:#fff8ea;margin:12px 0;padding:6px 14px}hr{border:0;border-top:1px solid #ccd;margin:26px 0}img{max-width:100%;border:1px solid #dde;border-radius:6px;margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11.5px}h2{page-break-after:avoid}table,pre,img{page-break-inside:avoid}}</style></head><body><h1>GMAO SETRAM — Rapport de conformité aux règles d'ingénierie</h1>
+<p><strong>Version 1.14 · contrôles exécutés le 20/10/2026</strong> · Public : DSI, RSSI, futur mainteneur</p>
+<p>Ce rapport compare l'application aux règles du cahier d'ingénierie remis à la DSI (rôle « ingénieur senior »). Il dit ce qui est conforme, ce qui est volontairement différent (et pourquoi), et ce qui n'a pas pu être vérifié. Les chiffres ci-dessous sont <strong>les résultats réels</strong> des commandes exécutées, pas des estimations.</p>
+<hr />
+<h2>1. Résultats réels des contrôles</h2>
+<table>
+<thead>
+<tr>
+<th>Contrôle</th>
+<th>Commande</th>
+<th>Résultat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tests serveur (authentification, droits, conflits, import, photos, fenêtre de chargement, compteurs, limitation de débit, format d'erreur, supervision, configuration)</td>
+<td><code>cd server &amp;&amp; npm test</code></td>
+<td><strong>43 / 43 réussis</strong></td>
+</tr>
+<tr>
+<td>Couverture du serveur</td>
+<td><code>npm run test:coverage</code></td>
+<td><strong>96,4 %</strong> des lignes · 84,9 % des branches · 93,9 % des fonctions</td>
+</tr>
+<tr>
+<td>Tests interface (règles métier, synchronisation, écrans, site de démonstration complet, bundle minifié)</td>
+<td><code>cd web &amp;&amp; npm test</code></td>
+<td><strong>186 / 186 réussis</strong> (19 fichiers)</td>
+</tr>
+<tr>
+<td>Couverture des règles métier de l'interface (<code>lib/</code>, <code>sync.js</code>, <code>api.js</code>, import Excel, numérotation)</td>
+<td><code>vitest --coverage</code></td>
+<td><strong>95,1 %</strong> des lignes · 85,9 % des branches</td>
+</tr>
+<tr>
+<td>Couverture de toute l'interface (écrans compris)</td>
+<td><code>npm run test:coverage</code></td>
+<td>69,6 % des lignes (les écrans sont vérifiés par les parcours de bout en bout du site de démonstration)</td>
+</tr>
+<tr>
+<td>Analyse du code (références non définies, code mort)</td>
+<td><code>npm run lint -- --max-warnings=0</code></td>
+<td><strong>0 erreur, 0 avertissement</strong></td>
+</tr>
+<tr>
+<td>Compilation de l'application et du site de démonstration</td>
+<td><code>npm run build</code>, <code>npm run build:demo</code></td>
+<td><strong>Réussies</strong></td>
+</tr>
+<tr>
+<td>Audit des dépendances de production (serveur et interface)</td>
+<td><code>npm audit --omit=dev</code></td>
+<td><strong>0 vulnérabilité</strong></td>
+</tr>
+<tr>
+<td>Détection de secrets (gitleaks)</td>
+<td>CI</td>
+<td><strong>Non exécutée ici</strong> (outil non installé, registre Docker inaccessible) — exécutée par la CI à chaque envoi</td>
+</tr>
+<tr>
+<td>Démarrage complet <code>docker compose up</code> + parcours HTTPS</td>
+<td>CI</td>
+<td><strong>Non exécuté ici</strong> : le moteur Docker démarre dans l'environnement de développement, mais le téléchargement des images (<code>postgres</code>, <code>caddy</code>, <code>node</code>) est bloqué par le réseau. La CI le fait à chaque envoi (construction, attente des contrôles de santé, connexion, arrêt propre)</td>
+</tr>
+</tbody>
+</table>
+<p>Pour tout relancer en une commande (hors Docker) : <code>./scripts/verifier.sh</code>.</p>
+<hr />
+<h2>2. Conformité règle par règle</h2>
+<table>
+<thead>
+<tr>
+<th>Règle</th>
+<th>État</th>
+<th>Détail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3 couches séparées (interface → API → base)</td>
+<td>✅</td>
+<td>Seul le serveur accède à PostgreSQL ; l'interface ne parle qu'à l'API</td>
+</tr>
+<tr>
+<td>Simplicité (aucune dépendance inutile)</td>
+<td>✅</td>
+<td>Serveur : 8 dépendances ; graphiques sans bibliothèque ; décisions dans <code>docs/decisions.md</code></td>
+</tr>
+<tr>
+<td>Valeurs variables hors du code</td>
+<td>✅</td>
+<td>Unités (<code>UNITS</code>), limites, durée de session, niveau de journal : variables d'environnement ; systèmes, sous-systèmes, jours fériés, articles : en base</td>
+</tr>
+<tr>
+<td>Variables d'environnement validées au démarrage</td>
+<td>✅</td>
+<td><code>config.js</code> est le seul à lire l'environnement ; valeur invalide ou secret d'exemple = refus de démarrer avec message clair (testé)</td>
+</tr>
+<tr>
+<td><code>.env.example</code> commenté, <code>.gitignore</code></td>
+<td>✅</td>
+<td>Ajoutés (le <code>.env.example</code> manquait alors que la procédure le citait)</td>
+</tr>
+<tr>
+<td>Sécurité par défaut, droits vérifiés côté serveur</td>
+<td>✅</td>
+<td>Par unité / système / module, à chaque requête, lecture filtrée ligne par ligne ; tests d'accès hors périmètre (anti-IDOR)</td>
+</tr>
+<tr>
+<td>Mots de passe, sessions, CSRF, en-têtes</td>
+<td>✅</td>
+<td>bcrypt ; cookie <code>HttpOnly</code> / <code>Secure</code> / <code>SameSite=Strict</code> ; en-tête anti-CSRF ; CSP stricte, HSTS</td>
+</tr>
+<tr>
+<td>Limitation de débit sur toute l'API</td>
+<td>✅</td>
+<td>Global, écritures, opérations coûteuses, connexion ; réglable par <code>RATE_LIMIT_*</code> ; 429 + <code>Retry-After</code> + en-têtes <code>RateLimit-*</code> ; supervision exemptée ; verrouillage du compte après 5 échecs (testé)</td>
+</tr>
+<tr>
+<td>Une action = un seul effet</td>
+<td>✅ (autre méthode)</td>
+<td>Numéros attribués par le serveur + écriture sur ce numéro : un rejeu ne crée jamais de doublon (409) ; une création à la fois côté interface. Pas de table <code>Idempotency-Key</code> : voir § 3</td>
+</tr>
+<tr>
+<td>Format d'erreur unique, jamais de détail technique</td>
+<td>✅</td>
+<td><code>{ error: { code, message, details, requestId } }</code> ; les erreurs 500 affichent une référence à communiquer (testé)</td>
+</tr>
+<tr>
+<td>Erreur localisable en une minute</td>
+<td>✅</td>
+<td>Identifiant de requête (<code>X-Request-Id</code>) envoyé par l'interface, renvoyé et journalisé ; journal JSON une ligne par requête ; procédure dans <code>docs/runbook.md</code></td>
+</tr>
+<tr>
+<td><code>/health</code>, <code>/ready</code>, arrêt propre</td>
+<td>✅</td>
+<td><code>/api/live</code>, <code>/api/ready</code>, <code>/api/health</code> ; arrêt : fin des requêtes en cours puis fermeture de la base (SIGTERM / SIGINT)</td>
+</tr>
+<tr>
+<td>Verrou anti-conflit, suppression logique, audit</td>
+<td>✅</td>
+<td>Colonne <code>version</code> (409), suppression logique, journal avant / après</td>
+</tr>
+<tr>
+<td>Migrations versionnées, index</td>
+<td>✅</td>
+<td><code>server/src/migrations/001</code> à <code>005</code>, jamais modifiées ; index sur unité, date de modification, état</td>
+</tr>
+<tr>
+<td>Docker : utilisateur non privilégié, contrôle de santé, sans secret</td>
+<td>✅</td>
+<td>Voir <code>server/Dockerfile</code>, <code>docker-compose.yml</code></td>
+</tr>
+<tr>
+<td>CI : tests, analyse, compilation, audit, secrets, Docker</td>
+<td>✅</td>
+<td><code>.github/workflows/ci.yml</code> (dont tests sur un vrai PostgreSQL 16)</td>
+</tr>
+<tr>
+<td>Documentation <code>docs/</code></td>
+<td>✅</td>
+<td><code>architecture.md</code>, <code>api.md</code>, <code>decisions.md</code>, <code>runbook.md</code></td>
+</tr>
+<tr>
+<td>Interface : 4 états (chargement, erreur, vide, succès), boutons bloqués pendant l'envoi</td>
+<td>✅</td>
+<td>Écran de chargement, erreurs serveur affichées, listes vides signalées, une création à la fois</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Écarts volontaires (et pourquoi)</h2>
+<p>Le cahier d'ingénierie est écrit pour un <strong>nouveau</strong> projet. Pour une application déjà en place et testée, il dit aussi : « ne réécris pas ce qui fonctionne » et « simplicité d'abord ». Ces écarts sont donc des choix, chacun documenté dans <code>docs/decisions.md</code> avec la condition qui le ferait changer :</p>
+<table>
+<thead>
+<tr>
+<th>Règle du cahier</th>
+<th>Choix retenu</th>
+<th>Raison</th>
+<th>Quand le revoir</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Typage strict TypeScript</td>
+<td>JavaScript + analyse du code + 229 tests</td>
+<td>Une conversion de tout le code serait une réécriture à risque, sans gain fonctionnel</td>
+<td>Si l'équipe de maintenance de la DSI travaille en TypeScript</td>
+</tr>
+<tr>
+<td>API versionnée <code>/api/v1</code></td>
+<td><code>/api/...</code></td>
+<td>Un seul client, livré avec le serveur</td>
+<td>Dès qu'un système externe (ERP, application mobile) consomme l'API</td>
+</tr>
+<tr>
+<td>Listes paginées</td>
+<td>Fenêtre de chargement (DI / OT clos depuis plus de 24 mois exclus) + historique à la demande</td>
+<td>Les indicateurs sont calculés sur des listes complètes</td>
+<td>Si une unité dépasse quelques dizaines de milliers d'OT ouverts ou récents</td>
+</tr>
+<tr>
+<td>Table <code>Idempotency-Key</code></td>
+<td>Numérotation par le serveur + écriture idempotente</td>
+<td>Aucun paiement, e-mail ni appel externe aujourd'hui</td>
+<td>Dès qu'une notification e-mail ou une interface externe est ajoutée</td>
+</tr>
+<tr>
+<td>Compteurs de limitation partagés (Redis)</td>
+<td>En mémoire</td>
+<td>Une seule instance du serveur</td>
+<td>Si la DSI déploie plusieurs instances</td>
+</tr>
+<tr>
+<td>Structure <code>frontend/ backend/ database/</code></td>
+<td><code>web/ server/</code> (migrations dans <code>server/src/migrations</code>)</td>
+<td>Renommer casserait les scripts, la CI et le dossier DSI déjà remis</td>
+<td>Lors d'une refonte majeure</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Comment tester soi-même (10 minutes)</h2>
+<p>Sur l'installation de recette (ou le site de démonstration) :</p>
+<ol>
+<li><strong>Connexion et blocage</strong> : se tromper <strong>6 fois</strong> de mot de passe sur un compte → message « compte verrouillé, réessayez dans quelques minutes ».</li>
+<li><strong>Double clic</strong> : <em>Maintenance corrective</em> › <strong>Nouvelle DI</strong>, remplir, <strong>double-cliquer</strong> sur « Créer la DI » → <strong>une seule</strong> DI créée, avec un seul numéro.</li>
+<li><strong>Droits</strong> : se connecter avec un compte limité à une unité et un système → aucune donnée d'une autre unité n'apparaît, même en changeant l'adresse dans le navigateur.</li>
+<li><strong>Conflit</strong> : ouvrir la même DI dans deux navigateurs, la modifier dans les deux → le second reçoit un message clair, rien n'est écrasé en silence.</li>
+<li><strong>Erreur retrouvable</strong> : <code>docker compose logs app | grep &lt;référence&gt;</code> avec la référence affichée dans un message d'erreur → la ligne du journal apparaît.</li>
+<li><strong>Supervision</strong> : <code>curl -k https://gmao.setram.local/api/ready</code> → <code>{"ok":true}</code>.</li>
+<li><strong>Arrêt propre</strong> : <code>docker compose restart app</code> pendant l'utilisation → les requêtes en cours se terminent, l'interface renvoie automatiquement les modifications en attente dès que le serveur répond à nouveau (le journal affiche <code>"serveur arrêté"</code> puis le redémarrage).</li>
+</ol>
+<hr />
+<h2>5. Ce qui n'a pas pu être vérifié ici</h2>
+<ul>
+<li><strong>Démarrage complet avec Docker</strong> (<code>docker compose up</code>) et parcours HTTPS de bout en bout : vérifiés <strong>uniquement par la CI</strong>. À constater lors de la première installation par la DSI (procédure : <code>DOSSIER-DSI.md</code> § 4 et § 9).</li>
+<li><strong>Détection de secrets</strong> : exécutée par la CI uniquement.</li>
+<li><strong>Charge</strong> (nombre d'utilisateurs simultanés), <strong>test d'intrusion</strong>, <strong>affichage sur vrais téléphones</strong> : non réalisés — voir <code>SECURITE-PRE-AUDIT.md</code> et <code>PLAN-PILOTE.md</code>.</li>
+</ul>
+<hr />
+<h2>6. Points à surveiller avant la mise en production</h2>
+<ol>
+<li>Faire tourner la CI une première fois sur le dépôt de la DSI (GitHub) et vérifier qu'elle est verte, <strong>y compris l'étape Docker</strong>.</li>
+<li>Restaurer une sauvegarde sur un serveur de recette <strong>avant</strong> la mise en service (<code>docs/runbook.md</code> § 5).</li>
+<li>Audit de sécurité externe (<code>SECURITE-PRE-AUDIT.md</code>) et avis du DPO sur les données personnelles.</li>
+<li>Régler <code>TRUST_PROXY</code> selon le reverse proxy réel (sinon la limitation par adresse IP compte mal).</li>
+<li>Superviser <code>/api/ready</code> et surveiller les lignes <code>"limite de débit atteinte"</code> du journal pendant le pilote (ajuster <code>RATE_LIMIT_*</code> si des utilisateurs légitimes sont bloqués).</li>
+</ol></body></html>
