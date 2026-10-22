@@ -1,0 +1,114 @@
+# Runbook — exploitation de la GMAO SETRAM
+
+Procédures courtes pour l'exploitant. Détails d'installation : `DOSSIER-DSI.md`. Commandes données pour l'installation **Docker Compose** (dossier `/opt/gmao-setram-server`) ; équivalents systemd entre parenthèses.
+
+## 1. Démarrer, arrêter, redémarrer
+
+```bash
+docker compose up -d            # démarrer (systemctl start gmao)
+docker compose stop app         # arrêt propre : les requêtes en cours se terminent (systemctl stop gmao)
+docker compose restart app      # redémarrer l'application seule
+docker compose ps               # état ; « healthy » = l'application répond et la base est joignable
+```
+
+## 2. Vérifier que tout va bien
+
+| Contrôle | Commande | Attendu |
+|---|---|---|
+| Application vivante | `curl -sk https://GMAO_HOST/api/live` | `{"ok":true}` |
+| Base joignable | `curl -sk https://GMAO_HOST/api/ready` | `{"ok":true}` (503 si la base est arrêtée) |
+| Installation complète | `INSECURE=1 ./scripts/verifier-installation.sh https://GMAO_HOST` | aucun `[ÉCHEC]` |
+
+Supervision : sonder `/api/ready` toutes les minutes ; alerte après 3 échecs consécutifs.
+
+## 3. Retrouver une erreur en une minute
+
+Chaque réponse porte un en-tête `X-Request-Id` et chaque message d'erreur serveur affiche une **référence** (« Communiquez la référence … »).
+
+```bash
+docker compose logs app | grep '<référence>'                  # (journalctl -u gmao | grep '<référence>')
+docker compose logs app | grep '"level":"error"' | tail -20     # dernières erreurs serveur (avec la pile)
+docker compose logs app | grep 'limite de débit atteinte'       # abus ou limite trop basse
+```
+
+| Symptôme | Couche | Piste |
+|---|---|---|
+| Écran incorrect, bouton sans effet, rien dans le journal | Interface | Console du navigateur (F12) ; vider le cache |
+| Message « Vous n'avez pas le droit… » (403) | Serveur — droits | Vérifier unité / système / module du compte (Administration) |
+| « … modifié par un autre utilisateur » (409) | Serveur — concurrence | Normal : refaire la modification |
+| « Trop de requêtes » (429) | Serveur — limitation | Si fréquent pour des utilisateurs légitimes : augmenter `RATE_LIMIT_*` dans `.env`, puis `docker compose up -d` |
+| Erreur 500 avec référence | Serveur | Rechercher la référence dans le journal |
+| 503 sur `/api/ready` | Base | `docker compose ps db`, `docker compose logs db`, espace disque |
+
+## 4. Comptes
+
+| Besoin | Procédure |
+|---|---|
+| Mot de passe oublié | Administration › Comptes › compte › nouveau mot de passe provisoire (changement exigé à la connexion) |
+| Compte verrouillé (5 échecs) | Attendre 15 min, ou réinitialiser le mot de passe |
+| Départ d'un agent | Désactiver le compte (session coupée immédiatement) ; ne pas supprimer (traçabilité) |
+| Plus aucun super administrateur ne peut se connecter | `docker compose exec app node src/reinitialiser-admin.js` : mot de passe provisoire affiché une fois, compte réactivé et déverrouillé, opération inscrite au journal d'audit |
+
+## 5. Sauvegarde et restauration
+
+```bash
+./scripts/backup.sh                       # base + photos dans backups/ (planifier chaque nuit par cron)
+./scripts/restore.sh backups/<fichier>    # restauration (arrête l'application pendant l'opération)
+```
+
+**Tester la restauration** sur un serveur de recette au moins une fois par trimestre.
+
+### Annuler une remise à zéro (« Repartir de zéro »)
+
+L'écran *Administration › Repartir de zéro* (toutes les unités ou une seule, tous les systèmes ou un seul, catégories au choix ; périmètre noté dans `reinitialisations.unite` / `.systeme`) archive les éléments dans `records_archive` (numéro d'opération dans
+`reinitialisations`) puis les marque supprimés. **Méthode recommandée** : restaurer la sauvegarde faite juste avant.
+Sans sauvegarde, et **seulement si aucune donnée n'a été saisie depuis** (sinon les numéros réattribués écraseraient les nouvelles fiches) :
+
+```sql
+-- N = numéro d'opération affiché à l'écran (ou : SELECT * FROM reinitialisations ORDER BY id DESC;)
+BEGIN;
+UPDATE records r SET data=a.data, unit=a.unit, system=a.system, deleted=false, version=r.version+1, updated_at=now()
+  FROM records_archive a WHERE a.reinitialisation=N AND r.collection=a.collection AND r.id=a.id;
+INSERT INTO counters (name, scope, year, last)
+  SELECT c->>'name', c->>'scope', (c->>'year')::int, (c->>'last')::int
+  FROM reinitialisations, jsonb_array_elements(compteurs) c WHERE id=N
+  ON CONFLICT (name, scope, year) DO UPDATE SET last = GREATEST(counters.last, EXCLUDED.last);
+COMMIT;
+```
+
+## Migration des codes LAC / BIL (une seule fois, v1.18)
+
+Si la base contient déjà des données avec `CFO.<unité>.LAC.<n>` ou `BILLETTIQUE…` :
+1. `./scripts/backup.sh` (**obligatoire**), hors des heures d'utilisation.
+2. Simulation : `docker compose exec app npm run migrer-codes` (hors Docker : `cd server && npm run migrer-codes`) → rapport JSON
+   (éléments modifiés par catégorie, codes renommés, comptes, conflits). **Rien n'est écrit.**
+3. Application : `… npm run migrer-codes -- --appliquer` (une transaction ; en cas de conflit de codes, rien n'est écrit, code de sortie 2).
+4. Demander aux utilisateurs de recharger la GMAO. Retour arrière : restaurer la sauvegarde de l'étape 1.
+
+## Notifications par e-mail (facultatif)
+
+Renseigner dans `.env` : `SMTP_HOST` (serveur de messagerie **interne**), `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER` / `SMTP_PASS`
+si le serveur exige une authentification, `SMTP_FROM`, `GMAO_URL` (lien rappelé dans l'e-mail), puis `docker compose up -d`.
+Sans `SMTP_HOST`, seules les notifications de la cloche existent. Un envoi en échec est journalisé (`"e-mail de notification
+non envoyé"`) et ne bloque jamais la saisie.
+
+## 6. Mise à jour et retour arrière
+
+1. `./scripts/backup.sh` (**obligatoire**).
+2. Déposer la nouvelle version, conserver l'ancien dossier (`/opt/gmao-setram-server.prev`).
+3. `docker compose up -d --build` — les migrations de base s'appliquent automatiquement au démarrage (journal : `"msg":"migration appliquée"`).
+4. Contrôles du § 2.
+
+**Retour arrière** : `docker compose down` → remettre l'ancien dossier → `./scripts/restore.sh <sauvegarde de l'étape 1>` → `docker compose up -d --build`. Les migrations sont additives : on ne les « défait » pas, on restaure la sauvegarde.
+
+## 7. Secrets
+
+| Secret | Rotation | Effet |
+|---|---|---|
+| `JWT_SECRET` | Modifier `.env` puis `docker compose up -d` | Toutes les sessions sont fermées (reconnexion) |
+| `DB_PASSWORD` | `ALTER USER gmao PASSWORD '…'` dans la base, puis `.env`, puis `docker compose up -d` | Aucun pour les utilisateurs |
+| Secret exposé (dépôt, message, capture) | **Immédiatement** : rotation comme ci-dessus + vérifier le journal d'audit | — |
+
+## 8. Réglages sans modification du code (`.env`)
+
+`SESSION_HOURS`, `LOG_LEVEL`, `RATE_LIMIT_*`, `IMPORT_MAX_LIGNES` / `IMPORT_MAX_MO` (import Excel ; derrière nginx, ajuster aussi `client_max_body_size` de `/api/import`), `SHUTDOWN_TIMEOUT_SEC`, `UNITS` (liste des unités) : modifier `.env` puis `docker compose up -d`. Une valeur invalide empêche le démarrage avec un message explicite (`docker compose logs app`).
