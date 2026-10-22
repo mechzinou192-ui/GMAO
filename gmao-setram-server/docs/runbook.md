@@ -60,7 +60,7 @@ docker compose logs app | grep 'limite de débit atteinte'       # abus ou limit
 
 ### Annuler une remise à zéro (« Repartir de zéro »)
 
-L'écran *Administration › Repartir de zéro* archive les éléments dans `records_archive` (numéro d'opération dans
+L'écran *Administration › Repartir de zéro* (toutes les unités ou une seule, tous les systèmes ou un seul, catégories au choix ; périmètre noté dans `reinitialisations.unite` / `.systeme`) archive les éléments dans `records_archive` (numéro d'opération dans
 `reinitialisations`) puis les marque supprimés. **Méthode recommandée** : restaurer la sauvegarde faite juste avant.
 Sans sauvegarde, et **seulement si aucune donnée n'a été saisie depuis** (sinon les numéros réattribués écraseraient les nouvelles fiches) :
 
@@ -75,6 +75,22 @@ INSERT INTO counters (name, scope, year, last)
   ON CONFLICT (name, scope, year) DO UPDATE SET last = GREATEST(counters.last, EXCLUDED.last);
 COMMIT;
 ```
+
+## Migration des codes LAC / BIL (une seule fois, v1.18)
+
+Si la base contient déjà des données avec `CFO.<unité>.LAC.<n>` ou `BILLETTIQUE…` :
+1. `./scripts/backup.sh` (**obligatoire**), hors des heures d'utilisation.
+2. Simulation : `docker compose exec app npm run migrer-codes` (hors Docker : `cd server && npm run migrer-codes`) → rapport JSON
+   (éléments modifiés par catégorie, codes renommés, comptes, conflits). **Rien n'est écrit.**
+3. Application : `… npm run migrer-codes -- --appliquer` (une transaction ; en cas de conflit de codes, rien n'est écrit, code de sortie 2).
+4. Demander aux utilisateurs de recharger la GMAO. Retour arrière : restaurer la sauvegarde de l'étape 1.
+
+## Notifications par e-mail (facultatif)
+
+Renseigner dans `.env` : `SMTP_HOST` (serveur de messagerie **interne**), `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER` / `SMTP_PASS`
+si le serveur exige une authentification, `SMTP_FROM`, `GMAO_URL` (lien rappelé dans l'e-mail), puis `docker compose up -d`.
+Sans `SMTP_HOST`, seules les notifications de la cloche existent. Un envoi en échec est journalisé (`"e-mail de notification
+non envoyé"`) et ne bloque jamais la saisie.
 
 ## 6. Mise à jour et retour arrière
 

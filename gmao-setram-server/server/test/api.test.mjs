@@ -68,9 +68,10 @@ test('routes protégées sans session / sans en-tête CSRF', async () => {
   assert.equal(r.status, 403);
 });
 
-test('création d’un technicien avec droits limités (Alger, CFO, volets 0-1)', async () => {
+// (compte « tech » des tests de droits : profil Chargé système limité aux volets 0-1, pour tester le filtrage par volet)
+test('création d’un compte avec droits limités (Alger, CFO, volets 0-1)', async () => {
   let r = await admin.call('POST', '/users', {
-    id: 'k.belaid', nom: 'K. Belaïd', role: 'Technicien', password: 'Tech2026motdepasse',
+    id: 'k.belaid', nom: 'K. Belaïd', role: 'Chargé système', password: 'Tech2026motdepasse',
     droits: { Alger: { systems: ['CFO'], volets: [0, 1] } },
   });
   assert.equal(r.status, 201);
@@ -92,7 +93,8 @@ test('le technicien ne peut écrire que dans son périmètre', async () => {
   assert.equal((await tech.call('PUT', '/data/bts/OT-1', { data: {}, unit: 'Alger', system: 'CFO' })).status, 403);       // volet 2 non accordé
   assert.equal((await tech.call('PUT', '/data/pieces/P-1', { data: { nom: 'x' } })).status, 403);                         // volet 4 (magasin) non accordé
   assert.equal((await tech.call('PUT', '/data/intervenants/MT-1', { data: { nom: 'x' } })).status, 403);                  // volet 5 non accordé
-  assert.equal((await tech.call('PUT', '/data/systemes/main', { data: { list: [] } })).status, 200);                     // référentiel : volet 0 suffit
+  assert.equal((await tech.call('PUT', '/data/systemes/main', { data: { list: [] } })).status, 403);                     // systèmes : super administrateur seul (organigramme)
+  assert.equal((await tech.call('PUT', '/data/arborescence/CFO.TST', { data: { system: 'CFO', code: 'TST', sub: 'Test' } })).status, 200);   // sous-système : volet 0 suffit
   assert.equal((await tech.call('POST', '/data/equipements/bulk', { items: [] })).status, 403);
   assert.equal((await tech.call('GET', '/data/inconnue')).status, 404);
 });
@@ -148,8 +150,9 @@ test('import en masse + journal d’audit', async () => {
 const { formatCode, currentYear, SEQUENCES, unitAbbr } = await import('../src/numbering.js');
 const YEAR = currentYear();
 
-async function newUser(id, droits, password = 'Motdepasse2026ok') {
-  const r = await admin.call('POST', '/users', { id, nom: id, role: 'Technicien', password: 'Provisoire2026ok', droits });
+// comptes des tests de droits par volet : profil « Chargé système » (volets 0, 1, 2, 3, 5, 6 possibles), sauf profil précisé
+async function newUser(id, droits, password = 'Motdepasse2026ok', role = 'Chargé système') {
+  const r = await admin.call('POST', '/users', { id, nom: id, role, password: 'Provisoire2026ok', droits });
   assert.equal(r.status, 201);
   const c = new Client();
   assert.equal((await c.call('POST', '/auth/login', { id, password: 'Provisoire2026ok' })).status, 200);
@@ -464,12 +467,12 @@ test('import : au-delà de la limite (IMPORT_MAX_LIGNES) la feuille est refusée
 });
 
 test('numérotation : lot de 1 000 numéros en une requête, codes déjà pris sautés', async () => {
-  await admin.call('PUT', `/data/dis/DI-SET-${YEAR}-0003`, { data: { x: 1 }, unit: 'Sétif', system: 'CFO' });
-  const r = await admin.call('POST', '/data/dis/next-code', { unit: 'Sétif', count: 1000 });
+  await admin.call('PUT', `/data/dis/DI-CST-${YEAR}-0003`, { data: { x: 1 }, unit: 'Constantine', system: 'CFO' });
+  const r = await admin.call('POST', '/data/dis/next-code', { unit: 'Constantine', count: 1000 });
   assert.equal(r.status, 200);
   assert.equal(r.body.codes.length, 1000); assert.equal(new Set(r.body.codes).size, 1000);
-  assert.ok(!r.body.codes.includes(`DI-SET-${YEAR}-0003`));
-  assert.equal(r.body.codes.at(-1), `DI-SET-${YEAR}-1001`);
+  assert.ok(!r.body.codes.includes(`DI-CST-${YEAR}-0003`));
+  assert.equal(r.body.codes.at(-1), `DI-CST-${YEAR}-1001`);
 });
 
 // ───────────────────────── Migration 003 : référentiels en une ligne par élément ─────────────────────────
@@ -639,6 +642,345 @@ test('pièces jointes : suppression, journal d’audit, identifiants piégés', 
   assert.equal((await download(admin, g.id)).status, 404);
 });
 
+test('repartir de zéro par périmètre : une seule unité, un seul système, arborescence seule', async () => {
+  const corps = (o) => ({ confirmation: 'REPARTIR DE ZERO', sauvegardeFaite: true, ...o });
+  const vivant = async (c, id) => (await q('SELECT count(*)::int AS n FROM records WHERE collection=$1 AND id=$2 AND NOT deleted', [c, id])).rows[0].n;
+  const put = (c, id, unit, system) => admin.call('PUT', `/data/${c}/${id}`, { data: { code: id }, ...(unit ? { unit, system } : {}) });
+  const suivant = async (unit) => (await admin.call('POST', '/data/dis/next-code', { unit })).body.codes[0];
+  const A = `DI-SET-${YEAR}-7001`, B = `DI-SET-${YEAR}-7002`, C = `DI-MST-${YEAR}-7001`;
+  for (const [id, u, sy] of [[A, 'Sétif', 'CFO'], [B, 'Sétif', 'CFA'], [C, 'Mostaganem', 'CFO']]) assert.equal((await put('dis', id, u, sy)).status, 200);
+
+  // refus : rien n'est modifié
+  for (const o of [{ unit: 'Mars', collections: ['dis'] }, { unit: 'Sétif', collections: ['arborescence'] }, { collections: [] },
+                   { system: 'CFO', collections: ['feries'] }, { collections: ['users'] }])
+    assert.equal((await admin.call('POST', '/admin/reinitialiser', corps(o))).status, 400, JSON.stringify(o));
+  assert.equal(await vivant('dis', A) + await vivant('dis', B) + await vivant('dis', C), 3);
+
+  // une seule unité : les autres unités et les autres catégories restent ; seuls les compteurs de cette unité repartent de 1
+  // (indépendant de l'ordre des tests : d'autres tests ont pu consommer des numéros avant)
+  const mst = (k) => `DI-MST-${YEAR}-${String(k).padStart(4, '0')}`;
+  assert.match(await suivant('Sétif'), new RegExp(`^DI-SET-${YEAR}-\\d{4}$`));
+  const m0 = Number((await suivant('Mostaganem')).slice(-4));
+  let r = await admin.call('POST', '/admin/reinitialiser', corps({ collections: ['dis'], unit: 'Sétif' }));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.unit, 'Sétif');
+  assert.equal(r.body.collections.dis, 2);
+  assert.deepEqual([await vivant('dis', A), await vivant('dis', B), await vivant('dis', C)], [0, 0, 1]);
+  const op = (await q('SELECT unite, systeme, collections FROM reinitialisations WHERE id=$1', [r.body.reinitialisation])).rows[0];
+  assert.deepEqual({ unite: op.unite, systeme: op.systeme, collections: op.collections }, { unite: 'Sétif', systeme: null, collections: ['dis'] });
+  assert.equal(await suivant('Sétif'), `DI-SET-${YEAR}-0001`, 'compteur de l\'unité remis à 1');
+  assert.equal(await suivant('Mostaganem'), mst(m0 + 1), 'compteur des autres unités conservé');
+
+  // un seul système : les autres systèmes restent, la numérotation n'est jamais touchée
+  for (const [id, u, sy] of [[A, 'Sétif', 'CFO'], [B, 'Sétif', 'CFA']]) assert.equal((await put('dis', id, u, sy)).status, 200);
+  r = await admin.call('POST', '/admin/reinitialiser', corps({ collections: ['dis'], system: 'CFO', numerotation: true }));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.numerotation, false);
+  assert.ok(r.body.collections.dis >= 2);
+  assert.deepEqual([await vivant('dis', A), await vivant('dis', B), await vivant('dis', C)], [0, 1, 0]);
+  assert.equal(await suivant('Mostaganem'), mst(m0 + 2));
+
+  // arborescence d'un seul système : l'en-tête « ZZ1 » et « ZZ1.xxx », pas « ZZ10 » ; systèmes et autres catégories conservés
+  for (const id of ['ZZ1', 'ZZ1.SST', 'ZZ10', 'ZZ10.SST']) assert.equal((await put('arborescence', id)).status, 200);
+  const sys = (await q("SELECT count(*)::int AS n FROM records WHERE collection='systemes' AND NOT deleted")).rows[0].n;
+  r = await admin.call('POST', '/admin/reinitialiser', corps({ collections: ['arborescence'], system: 'ZZ1' }));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.collections.arborescence, 2);
+  assert.deepEqual([await vivant('arborescence', 'ZZ1'), await vivant('arborescence', 'ZZ1.SST'), await vivant('arborescence', 'ZZ10'), await vivant('arborescence', 'ZZ10.SST')], [0, 0, 1, 1]);
+  assert.equal((await q("SELECT count(*)::int AS n FROM records WHERE collection='systemes' AND NOT deleted")).rows[0].n, sys);
+  assert.equal(await vivant('dis', B), 1);
+});
+
+// ───────────────────────── Profils, circuit de clôture, notifications, validation DG ─────────────────────────
+const { _definirTransport } = await import('../src/mail.js');
+const attendreQue = async (f, ms = 3000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await f()) return true; await new Promise((r) => setTimeout(r, 30)); } return false; };
+
+test('profils : exploitation = DI seulement, technicien sans création ni clôture, chargé clôture, notifications GMAO + e-mail', async () => {
+  const mails = [];
+  _definirTransport({ sendMail: async (m) => { mails.push(m); } });
+  try {
+    const U = 'Constantine';
+    const expl = await newUser('p.expl', { [U]: { systems: ['CFO'], volets: [1] } }, undefined, 'Exploitation');
+    const tec = await newUser('p.tech', { [U]: { systems: ['CFO'], volets: [2] } }, undefined, 'Technicien');
+    const chg = await newUser('p.charge', { [U]: { systems: ['CFO'], volets: [0, 1, 2, 3, 5, 6] } }, undefined, 'Chargé système');
+    const resp = await newUser('p.resp', { [U]: { systems: ['CFO'], volets: [0, 1, 2, 3, 5, 6] } }, undefined, 'Responsable système');
+    const autre = await newUser('p.resp.mr', { [U]: { systems: ['MR'], volets: [0, 1, 2, 3, 5, 6] } }, undefined, 'Responsable système');
+    await admin.call('PUT', '/users/p.charge', { email: 'charge@setram.dz' });
+    await admin.call('PUT', '/users/p.resp', { email: 'resp@setram.dz' });
+    assert.equal((await admin.call('PUT', '/users/p.resp', { email: 'pas une adresse' })).status, 400);
+    // les volets sont limités au profil : un technicien ne reçoit pas le magasin même si on le coche
+    const t = (await admin.call('GET', '/users')).body.users.find((u) => u.id === 'p.tech');
+    assert.deepEqual(t.droits[U].volets, [2]);
+    assert.equal((await admin.call('POST', '/users', { id: 'p.inconnu', nom: 'x', role: 'Pilote', password: 'Provisoire2026ok', droits: {} })).status, 400);
+
+    // exploitation : crée une DI, ne la fait pas avancer, ne crée pas d'OT
+    const di = { data: { code: 'DI-CST-P1', eq: 'CFO.CST.SST.01', etat: 'À Transmettre' }, unit: U, system: 'CFO' };
+    assert.equal((await expl.call('PUT', '/data/dis/DI-CST-P1', di)).status, 200);
+    let r = await expl.call('PUT', '/data/dis/DI-CST-P1', { ...di, version: 1, data: { ...di.data, etat: 'Transmis' } });
+    assert.equal(r.status, 403); assert.equal(r.body.error.code, 'PROFIL');
+    assert.equal((await expl.call('PUT', '/data/bts/OT-CST-P1', { data: { code: 'OT-CST-P1' }, unit: U, system: 'CFO' })).status, 403);
+
+    // technicien : pas de création d'OT ; remplit, « termine la saisie » ; ne clôture pas
+    const ot = { code: 'OT-CST-P1', eq: 'CFO.CST.SST.01', etat: 'En cours' };
+    assert.equal((await tec.call('PUT', '/data/bts/OT-CST-P1', { data: ot, unit: U, system: 'CFO' })).status, 403);
+    r = await chg.call('PUT', '/data/bts/OT-CST-P1', { data: ot, unit: U, system: 'CFO' });
+    assert.equal(r.status, 200);
+    r = await tec.call('PUT', '/data/bts/OT-CST-P1', { data: { ...ot, etat: 'Clôturé' }, unit: U, system: 'CFO', version: 1 });
+    assert.equal(r.status, 403); assert.match(r.body.error.message, /clôture est faite par le chargé/);
+    r = await tec.call('PUT', '/data/bts/OT-CST-P1', { data: { ...ot, etat: 'À clôturer', panne: 'x' }, unit: U, system: 'CFO', version: 1 });
+    assert.equal(r.status, 200);
+    // notification au chargé et au responsable du système (pas à celui d'un autre système, pas à l'auteur)
+    const nb = async (c) => (await c.call('GET', '/notifications')).body;
+    assert.ok(await attendreQue(async () => (await nb(chg)).nonLues === 1 && (await nb(resp)).nonLues === 1));
+    assert.equal((await nb(autre)).nonLues, 0); assert.equal((await nb(tec)).nonLues, 0);
+    const n = (await nb(chg)).items[0];
+    assert.match(n.texte, /OT OT-CST-P1 — CFO\.CST\.SST\.01 à clôturer : saisie terminée par p\.tech/);
+    assert.equal(n.recordId, 'OT-CST-P1');
+    assert.ok(await attendreQue(() => mails.length === 1));
+    assert.deepEqual(mails[0].bcc.sort(), ['charge@setram.dz', 'resp@setram.dz']);
+    assert.ok(!/panne|cause/i.test(mails[0].text), 'aucun détail technique dans l\'e-mail');
+    // lu / tout lu
+    assert.equal((await chg.call('POST', '/notifications/lues', { ids: [n.id] })).status, 200);
+    assert.equal((await nb(chg)).nonLues, 0);
+    assert.equal((await chg.call('POST', '/notifications/lues', {})).status, 400);
+
+    // le chargé clôture : le responsable est prévenu ; l'OT passe « À valider » par la DG
+    r = await chg.call('PUT', '/data/bts/OT-CST-P1', { data: { ...ot, etat: 'Clôturé', panne: 'x' }, unit: U, system: 'CFO', version: 2 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.validationDG.etat, 'À valider');
+    assert.ok(await attendreQue(async () => (await nb(resp)).items.some((x) => x.type === 'ot_cloture')));
+    assert.ok(!(await nb(chg)).items.some((x) => x.type === 'ot_cloture'));
+    // le technicien ne modifie plus un OT clôturé
+    assert.equal((await tec.call('PUT', '/data/bts/OT-CST-P1', { data: { ...ot, etat: 'Clôturé', panne: 'y' }, unit: U, system: 'CFO', version: 3 })).status, 403);
+  } finally { _definirTransport(null); }
+});
+
+test('validation DG : l\'expert valide ou fait reprendre (motif), ne modifie rien d\'autre ; personne d\'autre ne se valide', async () => {
+  const U = 'Constantine';
+  const droitsToutes = Object.fromEntries(['Alger', 'Oran', 'Constantine'].map((u) => [u, { systems: ['CFO'], volets: [0, 1, 2, 3, 6] }]));
+  const exp = await newUser('p.expert', droitsToutes, undefined, 'Expert DG');
+  const chg = (() => { const c = new Client(); return c; })();
+  assert.equal((await chg.call('POST', '/auth/login', { id: 'p.charge', password: 'Motdepasse2026ok' })).status, 200);
+  const lire = async () => (await admin.call('GET', '/data/bts?unit=Constantine')).body.items.find((i) => i.id === 'OT-CST-P1');
+  let cur = await lire();
+  // l'expert ne change pas la saisie
+  let r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, panne: 'modifiée' }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 403);
+  assert.equal((await exp.call('PUT', '/data/bts/OT-NEW', { data: { code: 'OT-NEW' }, unit: U, system: 'CFO' })).status, 403);
+  // à reprendre sans motif : refusé ; avec motif : l'OT revient « À clôturer » et le chargé est prévenu
+  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 403);
+  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre', motif: 'Cause non renseignée', par: 'p.expert' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 200);
+  assert.ok(await attendreQue(async () => (await chg.call('GET', '/notifications')).body.items.some((x) => x.type === 'ot_a_reprendre' && /Cause non renseignée/.test(x.texte))));
+  // le chargé ne peut pas se valider lui-même : la validation est recalculée par le serveur
+  cur = await lire();
+  r = await chg.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'Clôturé', cause: 'Ventilation', validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 200); assert.equal(r.body.data.validationDG.etat, 'À valider');
+  cur = await lire();
+  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé', par: 'p.expert' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 200);
+  // référentiel : création / modification par le chargé -> « À valider » ; l'avancement d'un plan ne la remet pas en cause
+  r = await chg.call('PUT', '/data/planning/PREV-CST-P1', { data: { code: 'PREV-CST-P1', eq: 'CFO.CST.SST.01', periode: 'Mensuel', date: '2026-11-01' }, unit: U, system: 'CFO' });
+  assert.equal(r.body.data.validationDG.etat, 'À valider');
+  r = await exp.call('PUT', '/data/planning/PREV-CST-P1', { data: { ...r.body.data, validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: 1 });
+  assert.equal(r.status, 200);
+  r = await chg.call('PUT', '/data/planning/PREV-CST-P1', { data: { ...r.body.data, date: '2026-12-01', dernier: '2026-11-01' }, unit: U, system: 'CFO', version: 2 });
+  assert.equal(r.body.data.validationDG.etat, 'Validé');
+  r = await chg.call('PUT', '/data/planning/PREV-CST-P1', { data: { ...r.body.data, periode: 'Trimestriel' }, unit: U, system: 'CFO', version: 3 });
+  assert.equal(r.body.data.validationDG.etat, 'À valider');
+  // l'expert voit son système sur toutes les unités, pas les autres systèmes
+  await admin.call('PUT', '/data/equipements/EQ-EXP-MR', { data: { code: 'EQ-EXP-MR' }, unit: 'Oran', system: 'MR' });
+  await admin.call('PUT', '/data/equipements/EQ-EXP-CFO', { data: { code: 'EQ-EXP-CFO' }, unit: 'Oran', system: 'CFO' });
+  const vus = (await exp.call('GET', '/data/equipements')).body.items.map((i) => i.id);
+  assert.ok(vus.includes('EQ-EXP-CFO') && !vus.includes('EQ-EXP-MR'));
+});
+
+test('administrateur UO : tous les systèmes de son unité, pas d\'import ; comptes seulement si le super admin lui donne la main', async () => {
+  const uo = await newUser('p.admin.uo', { Oran: { systems: ['CFO'], volets: [0, 1, 2, 3, 4, 5, 6] } }, undefined, 'Administrateur UO');
+  const moi = (await uo.call('GET', '/auth/me')).body.user;
+  assert.deepEqual(moi.droits.Oran.systems, ['*']); assert.equal(moi.gestionComptes, false);
+  assert.equal((await uo.call('PUT', '/data/equipements/EQ-UO-1', { data: { code: 'EQ-UO-1' }, unit: 'Oran', system: 'VOIE' })).status, 200);  // tout système
+  assert.equal((await uo.call('PUT', '/data/equipements/EQ-UO-2', { data: { code: 'EQ-UO-2' }, unit: 'Alger', system: 'VOIE' })).status, 403); // autre unité
+  assert.equal((await uo.call('POST', '/import', { collections: { pieces: [] } })).status, 403);
+  assert.equal((await uo.call('GET', '/users')).status, 403);                       // pas la main
+  // le super admin lui donne la main
+  assert.equal((await admin.call('PUT', '/users/p.admin.uo', { gestionComptes: true })).status, 200);
+  const liste = (await uo.call('GET', '/users')).body.users.map((u) => u.id);
+  assert.ok(liste.includes('p.admin.uo') && !liste.includes('admin') && !liste.includes('p.charge'));   // ses unités seulement
+  const nouveau = { id: 'p.tech.oran', nom: 'Tech Oran', role: 'Technicien', password: 'Provisoire2026ok', droits: { Oran: { systems: ['CFO'], volets: [2] } } };
+  assert.equal((await uo.call('POST', '/users', nouveau)).status, 201);
+  assert.equal((await uo.call('POST', '/users', { ...nouveau, id: 'p.x1', droits: { Alger: { systems: ['CFO'], volets: [2] } } })).status, 403);  // autre unité
+  assert.equal((await uo.call('POST', '/users', { ...nouveau, id: 'p.x2', role: 'Expert DG' })).status, 400);                                     // profil réservé
+  assert.equal((await uo.call('POST', '/users', { ...nouveau, id: 'p.x3', superAdmin: true })).status, 201);                                     // ignoré : pas super admin
+  assert.equal((await admin.call('GET', '/users')).body.users.find((u) => u.id === 'p.x3').superAdmin, false);
+  assert.equal((await uo.call('PUT', '/users/p.admin.uo', { gestionComptes: true })).status, 403);   // pas sur lui-même
+  assert.equal((await uo.call('PUT', '/users/p.charge', { nom: 'x' })).status, 403);                 // hors périmètre
+  assert.equal((await uo.call('GET', '/users/audit/log')).status, 403);
+  // le super admin lui retire la main : effet immédiat
+  assert.equal((await admin.call('PUT', '/users/p.admin.uo', { gestionComptes: false })).status, 200);
+  assert.equal((await uo.call('GET', '/users')).status, 403);
+  const audit = (await admin.call('GET', '/users/audit/log?limit=50')).body.entries.find((e) => e.action === 'user_updated' && e.detail.id === 'p.admin.uo' && e.detail.gestionComptes === false);
+  assert.ok(audit, 'retrait de la main tracé');
+});
+
+test('migration des codes : LAC devient un système, BILLETTIQUE devient BIL (simulation, puis application en une transaction)', async () => {
+  const { migrerCodes } = await import('../src/migrer-codes.js');
+  const put = (c, id, unit, system, data) => q(`INSERT INTO records (collection, id, unit, system, data) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (collection, id) DO UPDATE SET unit=EXCLUDED.unit, system=EXCLUDED.system, data=EXCLUDED.data, deleted=false`, [c, id, unit, system, JSON.stringify(data)]);
+  await put('systemes', 'CFO', '', null, { code: 'CFO', nom: 'Courants Forts', ordre: 0 });
+  await put('systemes', 'BILLETTIQUE', '', null, { code: 'BILLETTIQUE', nom: 'Billettique', ordre: 3 });
+  await put('arborescence', 'CFO', '', null, { system: 'CFO', header: true, ordre: 0 });
+  await put('arborescence', 'CFO.LAC', '', null, { system: 'CFO', code: 'LAC', sub: 'LAC / Caténaire', ordre: 1 });
+  await put('arborescence', 'BILLETTIQUE', '', null, { system: 'BILLETTIQUE', header: true, ordre: 3 });
+  await put('arborescence', 'BILLETTIQUE.PTL', '', null, { system: 'BILLETTIQUE', code: 'PTL', sub: 'Portillons', ordre: 0 });
+  await put('equipements', 'CFO.MST.LAC.01', 'Mostaganem', 'CFO', { code: 'CFO.MST.LAC.01', system: 'CFO', subCode: 'LAC', unit: 'Mostaganem', nom: 'Fil de contact', sousEquip: [{ code: 'CFO.MST.LAC.01.SE01', nom: 'Console' }] });
+  await put('equipements', 'CFO.MST.SST.01', 'Mostaganem', 'CFO', { code: 'CFO.MST.SST.01', system: 'CFO', subCode: 'SST', nom: 'Transformateur' });
+  await put('equipements', 'BILLETTIQUE.MST.PTL.01', 'Mostaganem', 'BILLETTIQUE', { code: 'BILLETTIQUE.MST.PTL.01', system: 'BILLETTIQUE', subCode: 'PTL', nom: 'Portillon' });
+  await put('dis', 'DI-MST-MIG-1', 'Mostaganem', 'CFO', { code: 'DI-MST-MIG-1', eq: 'CFO.MST.LAC.01', nom: 'Fil de contact — CFO.MST.LAC.01.SE01', designation: 'Usure' });
+  await put('bts', 'OT-MST-MIG-1', 'Mostaganem', 'BILLETTIQUE', { code: 'OT-MST-MIG-1', eq: 'BILLETTIQUE.MST.PTL.01', consigne: 'Voir BILLETTIQUE.MST.PTL.01' });
+  await put('planning', 'PREV-MST-MIG', 'Mostaganem', 'CFO', { code: 'PREV-MST-MIG', eq: 'CFO.MST.LAC.01', sys: 'CFO' });
+  await put('prestataires', 'EXT-MIG', '', null, { nom: 'Billet-Tech', systemes: ['BILLETTIQUE'] });
+  await admin.call('POST', '/users', { id: 'mig.cfo', nom: 'Mig', role: 'Chargé système', password: 'Provisoire2026ok', droits: { Mostaganem: { systems: ['CFO', 'BILLETTIQUE'], volets: [0, 1, 2] } } });
+  const lire = async (c, id) => (await q('SELECT system, data, deleted FROM records WHERE collection=$1 AND id=$2', [c, id])).rows[0];
+
+  // simulation : rapport, rien d'écrit
+  const sim = await migrerCodes({ appliquer: false });
+  assert.equal(sim.applique, false); assert.deepEqual(sim.conflits, []);
+  assert.ok(sim.idsRenommes.includes('equipements : CFO.MST.LAC.01 -> LAC.MST.CAT.01'));
+  assert.equal((await lire('equipements', 'CFO.MST.LAC.01')).deleted, false);
+  assert.equal(await lire('equipements', 'LAC.MST.CAT.01'), undefined);
+
+  // application
+  const r = await migrerCodes({ appliquer: true });
+  assert.equal(r.applique, true);
+  const lac = await lire('equipements', 'LAC.MST.CAT.01');
+  assert.equal(lac.system, 'LAC'); assert.equal(lac.data.system, 'LAC'); assert.equal(lac.data.subCode, 'CAT');
+  assert.equal(lac.data.sousEquip[0].code, 'LAC.MST.CAT.01.SE01');
+  assert.equal((await lire('equipements', 'CFO.MST.LAC.01')).deleted, true);                      // ancien code conservé, supprimé logiquement
+  assert.equal((await lire('equipements', 'CFO.MST.SST.01')).system, 'CFO');                      // le reste de CFO ne bouge pas
+  assert.equal((await lire('equipements', 'BIL.MST.PTL.01')).system, 'BIL');
+  const di = await lire('dis', 'DI-MST-MIG-1');
+  assert.equal(di.system, 'LAC'); assert.equal(di.data.eq, 'LAC.MST.CAT.01'); assert.equal(di.data.nom, 'Fil de contact — LAC.MST.CAT.01.SE01');
+  const ot = await lire('bts', 'OT-MST-MIG-1');
+  assert.equal(ot.system, 'BIL'); assert.equal(ot.data.consigne, 'Voir BIL.MST.PTL.01');
+  const pl = await lire('planning', 'PREV-MST-MIG');
+  assert.equal(pl.system, 'LAC'); assert.equal(pl.data.sys, 'LAC');
+  assert.deepEqual((await lire('prestataires', 'EXT-MIG')).data.systemes, ['BIL']);
+  assert.equal((await lire('systemes', 'BIL')).data.code, 'BIL');
+  assert.equal((await lire('systemes', 'LAC')).data.nom, 'Ligne Aérienne de Contact');
+  assert.equal((await lire('arborescence', 'CFO.LAC')).deleted, true);
+  assert.equal((await lire('arborescence', 'LAC.CAT')).data.system, 'LAC');
+  assert.equal((await lire('arborescence', 'BIL.PTL')).data.system, 'BIL');
+  const u = (await q("SELECT droits FROM users WHERE id='mig.cfo'")).rows[0];
+  assert.deepEqual(u.droits.Mostaganem.systems.sort(), ['BIL', 'CFO', 'LAC']);                   // qui avait CFO garde la LAC
+  assert.equal((await q("SELECT 1 FROM audit_log WHERE action='migration_codes'")).rows.length, 1);
+  // rejouable : plus rien à changer
+  const encore = await migrerCodes({ appliquer: true });
+  assert.deepEqual(encore.idsRenommes, []); assert.equal(encore.comptes, 0);
+});
+
+test('profils créés par le super administrateur ; profils de consultation (Directeur UO / DG)', async () => {
+  // un « Coordinateur méthodes » : DI + OT + préventif, clôture, sans validation
+  let r = await admin.call('PUT', '/data/profils/Coordinateur méthodes', { data: { libelle: 'Méthodes', volets: [1, 2, 3, 9], cloture: true, rapports: 'pirate' } });
+  assert.equal(r.status, 200);
+  const coord = await newUser('p.coord', { Oran: { systems: ['CFO'], volets: [1, 2, 3, 4] } }, undefined, 'Coordinateur méthodes');
+  const moi = (await coord.call('GET', '/auth/me')).body.user;
+  assert.deepEqual(moi.droits.Oran.volets, [1, 2, 3]);                                      // volets limités au profil (9 et 4 écartés)
+  assert.equal((await coord.call('PUT', '/data/bts/OT-ORN-C1', { data: { code: 'OT-ORN-C1', etat: 'Clôturé' }, unit: 'Oran', system: 'CFO' })).status, 200);
+  assert.equal((await coord.call('PUT', '/data/profils/X', { data: { volets: [0] } })).status, 403);      // organigramme : super admin seul
+  assert.equal((await coord.call('PUT', '/data/systemes/NOUV', { data: { code: 'NOUV' } })).status, 403);
+  // retiré du catalogue : le compte n'a plus de capacités particulières mais garde ses droits par volet
+  assert.equal((await admin.call('DELETE', '/data/profils/Coordinateur méthodes')).status, 200);
+  assert.equal((await admin.call('POST', '/users', { id: 'p.coord2', nom: 'x', role: 'Coordinateur méthodes', password: 'Provisoire2026ok', droits: {} })).status, 400);
+  // Directeur UO : voit son unité, ne modifie rien
+  const dir = await newUser('p.dir.uo', { Oran: { systems: ['CFO'], volets: [0, 1, 2] } }, undefined, 'Directeur UO');
+  assert.deepEqual((await dir.call('GET', '/auth/me')).body.user.droits.Oran.systems, ['*']);
+  assert.ok((await dir.call('GET', '/data/bts')).body.items.some((i) => i.id === 'OT-ORN-C1'));
+  r = await dir.call('PUT', '/data/dis/DI-ORN-DIR', { data: { code: 'DI-ORN-DIR', etat: 'À Transmettre' }, unit: 'Oran', system: 'CFO' });
+  assert.equal(r.status, 403); assert.match(r.body.error.message, /consultation uniquement/);
+});
+
+test('rapports d\'activité : UO -> experts DG (erreurs, commentaire) -> responsable DG -> correction -> nouvelle revue -> clôture', async () => {
+  const U = 'Ouargla';
+  const tous = (v) => Object.fromEntries(['Alger', 'Oran', 'Ouargla'].map((u) => [u, { systems: ['CFO'], volets: v }]));
+  const uo = await newUser('r.uo', { [U]: { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7] } }, undefined, 'Administrateur UO');
+  const e1 = await newUser('r.exp1', tous([0, 1, 2, 3, 6, 7]), undefined, 'Expert DG');
+  const e2 = await newUser('r.exp2', tous([0, 1, 2, 3, 6, 7]), undefined, 'Expert DG');
+  const rdg = await newUser('r.resp.dg', tous([0, 1, 2, 3, 4, 5, 6, 7]), undefined, 'Responsable DG');
+  const chg = await newUser('r.charge', { [U]: { systems: ['CFO'], volets: [0, 1, 2] } }, undefined, 'Chargé système');
+  const XLSX = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('....[Content_Types].xml xl/workbook.xml xl/worksheets/sheet1.xml')]);
+  const DOCX = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('....word/document.xml')]);
+  const XLSM = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('....xl/workbook.xml xl/vbaProject.bin')]);
+  const id = (await uo.call('POST', '/data/rapports/next-code', { unit: U })).body.codes[0];
+  assert.match(id, new RegExp(`^RAP-OUA-${YEAR}-\\d{3}$`));
+  const lire = async () => (await admin.call('GET', `/data/rapports?unit=${U}`)).body.items.find((i) => i.id === id);
+  const ecrire = async (c, data) => { const cur = await lire(); return c.call('PUT', `/data/rapports/${id}`, { data, unit: U, version: cur?.version }); };
+  // 1. brouillon, fichiers contrôlés par leur contenu, pas d'envoi sans fichier
+  let r = await uo.call('PUT', `/data/rapports/${id}`, { data: { code: id, unit: U, titre: 'Rapport septembre', periode: '2026-09', fichiers: [] }, unit: U });
+  assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Brouillon');
+  assert.equal((await chg.call('GET', '/data/rapports')).body.items.length, 0);                 // le chargé n'a pas le volet rapports
+  assert.equal((await upload(uo, { collection: 'rapports', recordId: id, name: 'macro.xlsm' }, XLSM, 'application/octet-stream')).status, 415);
+  assert.equal((await upload(e1, { collection: 'rapports', recordId: id, name: 'x.xlsx' }, XLSX, 'application/octet-stream')).status, 403);   // l'expert ne dépose pas
+  const f1 = await upload(uo, { collection: 'rapports', recordId: id, name: 'Rapport.xlsx' }, XLSX, 'application/octet-stream');
+  assert.equal(f1.status, 201); assert.equal(f1.body.mime, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  const f2 = await upload(uo, { collection: 'rapports', recordId: id, name: 'Rapport.docx' }, DOCX, 'application/octet-stream');
+  assert.equal(f2.status, 201);
+  const dl = await download(e1, f1.body.id);
+  assert.equal(dl.status, 200); assert.match(dl.headers.get('content-disposition'), /^attachment/);
+  let cur = (await lire()).data;
+  assert.equal((await ecrire(uo, { ...cur, etat: 'Envoyé' })).status, 403);                     // pas de fichier déclaré dans le rapport
+  const fichiers = [f1.body, f2.body].map((f) => ({ id: f.id, nom: f.name, mime: f.mime, tour: 1 }));
+  // 2. envoi : les experts ayant le volet rapports sur l'unité sont attendus et notifiés
+  r = await ecrire(uo, { ...cur, fichiers, etat: 'Envoyé' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.data.attendus.sort(), ['r.exp1', 'r.exp2']);
+  const notifs = async (c) => (await c.call('GET', '/notifications')).body.items;
+  assert.ok(await attendreQue(async () => (await notifs(e1)).some((n) => n.type === 'rapport_a_revoir' && n.recordId === id)));
+  assert.equal((await upload(uo, { collection: 'rapports', recordId: id, name: 'tard.xlsx' }, XLSX, 'application/octet-stream')).status, 403);   // entre les mains de la DG
+  assert.equal((await ecrire(uo, { ...(await lire()).data, titre: 'modifié' })).status, 403);
+  // 3. revues : chacun la sienne ; le responsable DG ne décide qu'après toutes les revues
+  cur = (await lire()).data;
+  assert.equal((await ecrire(e1, { ...cur, revues: { 1: { 'r.exp2': { erreurs: 0, terminee: true } } } })).status, 403);
+  r = await ecrire(e1, { ...cur, revues: { 1: { 'r.exp1': { nom: 'Expert 1', erreurs: 2, commentaire: 'MTBF CFO faux ; OT non clôturés comptés', terminee: true } } } });
+  assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Envoyé');
+  cur = (await lire()).data;
+  assert.equal((await ecrire(rdg, { ...cur, etat: 'Clôturé' })).status, 403);
+  r = await ecrire(e2, { ...cur, revues: { 1: { ...cur.revues[1], 'r.exp2': { nom: 'Expert 2', erreurs: 0, commentaire: '', terminee: true } } } });
+  assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'À valider DG');
+  assert.ok(await attendreQue(async () => (await notifs(rdg)).some((n) => n.type === 'rapport_a_valider' && /2 erreur/.test(n.texte))));
+  // 4. responsable DG : clôture refusée (erreurs) ; renvoi pour correction -> l'UO est notifiée
+  cur = (await lire()).data;
+  r = await ecrire(rdg, { ...cur, etat: 'Clôturé' });
+  assert.equal(r.status, 403); assert.match(r.body.error.message, /renvoyez le rapport/);
+  r = await ecrire(rdg, { ...cur, etat: 'À corriger', decision: { motif: 'Corriger le MTBF CFO' } });
+  assert.equal(r.status, 200); assert.equal(r.body.data.decision.etat, 'À corriger');
+  assert.ok(await attendreQue(async () => (await notifs(uo)).some((n) => n.type === 'rapport_a_corriger')));
+  // 5. l'UO corrige (nouveau fichier) et renvoie : tour 2, les experts sont de nouveau notifiés et revoient
+  const f3 = await upload(uo, { collection: 'rapports', recordId: id, name: 'Rapport_v2.xlsx' }, XLSX, 'application/octet-stream');
+  assert.equal(f3.status, 201);
+  cur = (await lire()).data;
+  r = await ecrire(uo, { ...cur, fichiers: [...cur.fichiers, { id: f3.body.id, nom: f3.body.name, mime: f3.body.mime, tour: 2 }], etat: 'Envoyé' });
+  assert.equal(r.status, 200); assert.equal(r.body.data.tour, 2); assert.equal(r.body.data.etat, 'Envoyé');
+  assert.ok(await attendreQue(async () => (await notifs(e2)).filter((n) => n.type === 'rapport_a_revoir' && n.recordId === id).length === 2));
+  for (const [c, nom] of [[e1, 'r.exp1'], [e2, 'r.exp2']]) {
+    cur = (await lire()).data;
+    r = await ecrire(c, { ...cur, revues: { ...cur.revues, 2: { ...(cur.revues[2] || {}), [nom]: { nom, erreurs: 0, commentaire: '', terminee: true } } } });
+    assert.equal(r.status, 200);
+  }
+  cur = (await lire()).data;
+  assert.equal(cur.etat, 'À valider DG');
+  r = await ecrire(rdg, { ...cur, etat: 'Clôturé' });
+  assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Clôturé');
+  const h = r.body.data.historique.map((x) => x.action);
+  assert.ok(h.includes('Envoyé à la DG') && h.includes('Correction renvoyée à la DG') && h.includes('Clôturé par le responsable DG'));
+  assert.ok(await attendreQue(async () => (await notifs(uo)).some((n) => n.type === 'rapport_cloture')));
+  // super administrateur : statut modifiable à la main (réouverture)
+  r = await admin.call('PUT', `/data/rapports/${id}`, { data: { ...r.body.data, etat: 'À corriger' }, unit: U, version: r.body.version });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.data.historique.some((x) => x.action === 'Statut : Clôturé → À corriger'));
+});
+
 // ───────────────────────── Mode démonstration ─────────────────────────
 const { seedDemo, resetDemo, demoDejaPresente } = await import('../src/demo/seed.js');
 const { genererDemo } = await import('../src/demo/donnees.js');
@@ -717,8 +1059,8 @@ test('démo : données créées, comptes utilisables, périmètres respectés, n
   const login = async (id, password) => { const c = new Client(); const r = await c.call('POST', '/auth/login', { id, password }); assert.equal(r.status, 200, id); assert.equal(r.body.user.mustChangePw, false); return c; };
   const comptes = Object.fromEntries(d.users.map(u => [u.id, u]));
   const tech = await login('demo.technicien', comptes['demo.technicien'].password);
-  const dis = (await tech.call('GET', '/data/dis')).body.items;
-  assert.ok(dis.length > 5 && dis.every(i => i.unit === 'Alger' && ['CFO', 'CFA', 'BILLETTIQUE'].includes(i.system)), 'le technicien ne voit que son périmètre');
+  const ots = (await tech.call('GET', '/data/bts')).body.items;          // profil Technicien : volet OT seulement
+  assert.ok(ots.length > 5 && ots.every(i => i.unit === 'Alger' && ['CFO', 'CFA', 'BIL'].includes(i.system)), 'le technicien ne voit que son périmètre');
   const dir = await login('demo.direction', comptes['demo.direction'].password);
   assert.ok(new Set((await dir.call('GET', '/data/dis')).body.items.map(i => i.unit)).size >= 4, 'la direction voit toutes les unités');
   assert.equal((await dir.call('PUT', '/data/dis/DI-X', { unit: 'Alger', system: 'CFO', data: { code: 'DI-X' } })).status, 403);   // lecture seule en pratique

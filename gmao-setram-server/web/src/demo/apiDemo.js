@@ -14,13 +14,17 @@ import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
 import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
-import { preparerReinitialisation } from '../../../server/src/reinitialisation-core.js';
+import { controleProfil, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises } from '../../../server/src/profils-core.js';
+import { ajusterRapport } from '../../../server/src/rapports-core.js';
+import { detectDocumentOctets } from '../../../server/src/fichiers-core.js';
+import { evenements, estDestinataire } from '../../../server/src/notifications-core.js';
+import { preparerReinitialisation, enregistrementConcerne } from '../../../server/src/reinitialisation-core.js';
 import { SEQUENCES, MAX_BATCH, sequenceKey, unitAbbr, currentYear, formatCode } from '../../../server/src/numbering-core.js';
 
 const UNITS = Object.keys(ABBR);
 const CLE = 'gmao-demo-statique-v3';
-const ATTACHABLE = new Set(['dis', 'bts']);
-const MAX_FICHIERS = 12, MAX_OCTETS = 10 * 1024 * 1024;
+const ATTACHABLE = new Set(['dis', 'bts', 'rapports']);
+const MAX_FICHIERS = 12, MAX_OCTETS = 10 * 1024 * 1024, MAX_DOC = 25 * 1024 * 1024;
 const DEMO_BLOQUEE = 'Désactivé dans la version de démonstration.';
 
 const err = (status, message, extra = {}) => Object.assign(new Error(message), { status, ...extra });
@@ -53,6 +57,8 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
   };
   const sauver = () => { try { stockage && stockage.setItem(CLE, JSON.stringify({ ...etat, fichiers: {} })); } catch { /* quota dépassé : sans importance pour une démo */ } };
   etat = charger();
+  const majProfils = () => definirProfilsPersonnalises(Object.values(etat.records.profils || {}).filter((r) => !r.deleted).map((r) => ({ ...r.data, nom: r.id })));
+  majProfils();
 
   /* ───── utilitaires ───── */
   const publicUser = (u) => ({ id: u.id, nom: u.nom, role: u.role, actif: true, superAdmin: u.superAdmin, mustChangePw: false, droits: u.droits });
@@ -69,6 +75,18 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
     if (etat.audit.length > 500) etat.audit.shift();
   };
   const enregistrer = (r) => r;
+  // notifications (cloche) : mêmes règles que le serveur, gardées le temps de l'onglet ; pas d'e-mail en démonstration
+  const notifier = (auteur, collection, recordId, unit, system, cur, next) => {
+    const liste = (etat.notifications ||= []);
+    for (const evt of evenements(collection, cur, next, auteur)) {
+      for (const c of comptes) {
+        const u = { id: c.id, role: c.role, actif: true, droits: c.droits, super_admin: c.superAdmin };
+        if (!estDestinataire(u, evt, unit, system, auteur.id)) continue;
+        liste.unshift({ id: (etat.notifSeq = (etat.notifSeq || 0) + 1), userId: c.id, at: new Date().toISOString(), type: evt.type, collection, recordId, unit, texte: evt.texte, lu: false });
+      }
+    }
+    if (liste.length > 500) liste.length = 500;
+  };
 
   /* ───── numérotation (mêmes formats que le serveur) ───── */
   const reserver = (cle, { unit, count = 1 }) => {
@@ -120,6 +138,15 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (!canWrite(user, collection, u, sys)) throw err(403, "Vous n'avez pas le droit de modifier ces données.");
       const cur = rows[id];
       const t = tick();
+      const avant = cur && !cur.deleted ? cur.data : null;
+      const refus = controleProfil(user, collection, avant, data);            // mêmes règles de profil que le serveur
+      if (refus) throw err(403, refus, { code: 'PROFIL' });
+      data = ajusterValidation(user, collection, avant, data, t);
+      if (collection === 'rapports') {
+        const experts = comptes.filter((c) => !c.superAdmin && catalogue()[nomProfil(c.role)]?.rapports === 'expert' && (c.droits?.[u]?.volets || []).includes(7));
+        data = ajusterRapport(user, avant, data, { experts, maintenant: t });
+        if (data.etat === 'Envoyé' && avant?.etat !== 'Envoyé' && !experts.length) throw err(409, 'Aucun expert DG n’a accès aux rapports de cette unité : le rapport ne peut pas être envoyé.', { code: 'SANS_EXPERT' });
+      }
       let out;
       if (cur && !cur.deleted) {
         if (!canWrite(user, collection, cur.unit, cur.system)) throw err(403, "Vous n'avez pas le droit de modifier ces données.");
@@ -134,6 +161,8 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
         out = rows[id] = { id, unit: u, system: sys, data: JSON.parse(JSON.stringify(data)), version: 1, deleted: false, createdAt: t, updatedAt: t };
         journal(user, 'create', { collection, recordId: id, unit: u, detail: { version: 1, system: sys } });
       }
+      notifier(user, collection, id, u, sys, avant, out.data);
+      if (collection === 'profils') majProfils();
       sauver();
       return enregistrer(toApi(out));
     },
@@ -141,7 +170,9 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       const user = actuel(); const cur = col(collection)[id];
       if (!cur || cur.deleted) throw err(404, 'Introuvable.');
       if (!canWrite(user, collection, cur.unit, cur.system)) throw err(403, "Vous n'avez pas le droit de supprimer ces données.");
+      const refus = controleProfil(user, collection, cur.data, null); if (refus) throw err(403, refus, { code: 'PROFIL' });
       Object.assign(cur, { deleted: true, version: cur.version + 1, updatedAt: tick() });
+      if (collection === 'profils') majProfils();
       journal(user, 'delete', { collection, recordId: id, unit: cur.unit });
       sauver();
       return { ok: true };
@@ -207,19 +238,22 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
     /* ───── repartir de zéro (même règle que le serveur : comptes conservés, suppression logique) ───── */
     reinitialiser: async (body) => {
       const user = actuel(); if (!user.super_admin) throw err(403, 'Réservé au super administrateur.');
-      let p; try { p = preparerReinitialisation(body); } catch (e) { throw err(400, e.message); }
+      let p; try { p = preparerReinitialisation(body, { units: UNITS }); } catch (e) { throw err(400, e.message); }
       const t = tick(); const collections = {}; let total = 0;
       for (const c of p.collections) {
         let n = 0;
-        for (const r of Object.values(etat.records[c] || {})) if (!r.deleted) { Object.assign(r, { deleted: true, version: r.version + 1, updatedAt: t }); n++; }
+        for (const r of Object.values(etat.records[c] || {})) if (enregistrementConcerne(c, r, p)) { Object.assign(r, { deleted: true, version: r.version + 1, updatedAt: t }); n++; }
         collections[c] = n; total += n;
       }
-      for (const k of Object.keys(etat.compteurs)) if (p.sequences.includes(k.split('|')[0])) delete etat.compteurs[k];
-      for (const [id, f] of Object.entries(etat.fichiers)) if (p.collections.includes(f.collection)) delete etat.fichiers[id];
+      for (const k of Object.keys(etat.compteurs)) {
+        const [nom, portee] = k.split('|');
+        if (p.sequences.includes(nom) && (!p.scopes || p.scopes.includes(portee))) delete etat.compteurs[k];
+      }
+      if (!p.unit && !p.system) for (const [id, f] of Object.entries(etat.fichiers)) if (p.collections.includes(f.collection)) delete etat.fichiers[id];
       const reinitialisation = (etat.reinitialisations = (etat.reinitialisations || 0) + 1);
-      journal(user, 'reinitialisation', { detail: { reinitialisation, collections, total, numerotation: p.numerotation } });
+      journal(user, 'reinitialisation', { detail: { reinitialisation, collections, total, numerotation: p.numerotation, unit: p.unit || null, system: p.system || null } });
       sauver();
-      return { reinitialisation, collections, total, numerotation: p.numerotation };
+      return { reinitialisation, collections, total, numerotation: p.numerotation, unit: p.unit || null, system: p.system || null };
     },
 
     /* ───── photos (conservées le temps de l'onglet) ───── */
@@ -238,9 +272,17 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       const rec = (etat.records[collection] || {})[recordId];
       if (!rec || rec.deleted) throw err(404, "Enregistrement introuvable (a-t-il bien été enregistré ?).");
       if (!canWrite(user, collection, rec.unit, rec.system)) throw err(403, "Vous n'avez pas le droit d'ajouter une pièce jointe ici.");
+      const doc = collection === 'rapports';
+      if (doc) { const refus = depotRapportRefuse(user, rec); if (refus) throw err(403, refus); }
       if (!blob || !blob.size) throw err(400, 'Aucun fichier reçu.');
-      if (blob.size > MAX_OCTETS) throw err(413, 'Fichier ou envoi trop volumineux.');
-      const mime = await detecterImage(blob);
+      if (blob.size > (doc ? MAX_DOC : MAX_OCTETS)) throw err(413, 'Fichier ou envoi trop volumineux.');
+      let mime;
+      if (doc) {
+        const k = detectDocumentOctets(await octets(blob, blob.size));
+        if (k?.refus) throw err(415, k.refus);
+        if (!k) throw err(415, 'Format non accepté : Excel (.xlsx), Word (.docx) ou PDF.');
+        mime = k.mime;
+      } else mime = await detecterImage(blob);
       if (!mime) throw err(415, 'Format non accepté : photos JPEG, PNG ou WebP uniquement.');
       if (Object.values(etat.fichiers).filter((f) => f.collection === collection && f.recordId === recordId).length >= MAX_FICHIERS)
         throw err(409, `Maximum ${MAX_FICHIERS} pièces jointes par élément.`);
@@ -257,6 +299,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (!f) throw err(404, 'Fichier introuvable.');
       const rec = (etat.records[f.collection] || {})[f.recordId];
       if (!rec || !canWrite(user, f.collection, rec.unit, rec.system)) throw err(403, "Vous n'avez pas accès à ce fichier.");
+      if (f.collection === 'rapports') { const refus = depotRapportRefuse(user, rec); if (refus) throw err(403, refus); }
       delete etat.fichiers[id];
       const u = blobs.get(id); if (u && URL.revokeObjectURL) URL.revokeObjectURL(u); blobs.delete(id);
       journal(user, 'file_deleted', { collection: f.collection, recordId: f.recordId, unit: rec.unit, detail: { id, name: f.name } });
@@ -282,7 +325,18 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       comptes: comptes.map(({ id, nom, role, password, description }) => ({ id, nom, role, motDePasse: password, description })) }),
 
     // pour les tests : état interne et remise à zéro
-    _reinitialiser: () => { etat = initial(); sauver(); },
+    notifications: async () => {
+      const user = actuel(); const miennes = (etat.notifications || []).filter((n) => n.userId === user.id);
+      return { items: miennes.slice(0, 50).map(({ userId, ...n }) => { void userId; return n; }), nonLues: miennes.filter((n) => !n.lu).length };
+    },
+    marquerLues: async (b = {}) => {
+      const user = actuel();
+      const ids = Array.isArray(b.ids) ? b.ids.map(Number) : null;
+      if (b.tout !== true && !(ids && ids.length)) throw err(400, 'ids ou tout attendu.');
+      for (const n of etat.notifications || []) if (n.userId === user.id && (b.tout === true || ids.includes(n.id))) n.lu = true;
+      sauver(); return { ok: true };
+    },
+    _reinitialiser: () => { etat = initial(); majProfils(); sauver(); },
     _etat: () => etat,
   };
   return api;
@@ -294,6 +348,14 @@ async function octets(blob, n) {
   if (part.arrayBuffer) return new Uint8Array(await part.arrayBuffer());
   return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(new Uint8Array(r.result)); r.onerror = () => ko(r.error); r.readAsArrayBuffer(part); });
 }
+// mêmes règles que le serveur (files.js) pour les documents des rapports d'activité
+function depotRapportRefuse(user, rec) {
+  const role = roleRapports(user);
+  if (role !== 'uo' && role !== 'admin') return 'Seule l\'UO joint les fichiers de son rapport.';
+  if (role === 'uo' && !['Brouillon', 'À corriger'].includes(rec.data?.etat)) return 'Rapport entre les mains de la DG : fichiers non modifiables.';
+  return null;
+}
+
 export async function detecterImage(blob) {
   const b = await octets(blob, 12);
   if (b.length < 12) return null;

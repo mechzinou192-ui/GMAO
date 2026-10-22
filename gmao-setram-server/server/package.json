@@ -1,6 +1,6 @@
 {
   "name": "gmao-setram-server",
-  "version": "1.16.2",
+  "version": "1.19.0",
   "private": true,
   "type": "module",
   "main": "src/start.js",
@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node src/start.js",
     "test": "node --test test/api.test.mjs",
-    "test:coverage": "node --test --experimental-test-coverage test/api.test.mjs"
+    "test:coverage": "node --test --experimental-test-coverage test/api.test.mjs",
+    "migrer-codes": "node src/migrer-codes.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -20,6 +21,7 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "10.0.16",
     "pg": "^8.12.0"
   }
 }

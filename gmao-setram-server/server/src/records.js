@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import { pool, q, audit } from './db.js';
+import { controleProfil, ajusterValidation, catalogue, nomProfil } from './profils-core.js';
+import { ajusterRapport } from './rapports-core.js';
+import { rechargerProfils } from './profils.js';
+import { notifier } from './notifications.js';
 import { config } from './config.js';
 import { COLLECTIONS, canRead, canWrite } from './rights.js';
 import { SEQUENCES, sequenceKey, reserveCodes, MAX_BATCH } from './numbering.js';
@@ -140,6 +144,21 @@ dataRouter.put('/:collection/:id', collectionOf, async (req, res) => {
     const { rows } = await client.query(
       'SELECT * FROM records WHERE collection=$1 AND id=$2 FOR UPDATE', [collection, id]);
     const cur = rows[0];
+    const avant = cur && !cur.deleted ? cur.data : null;
+    // profil : ce que la personne a le droit de faire (technicien sans clôture, exploitation DI seulement, expert = validation…)
+    const refus = controleProfil(req.user, collection, avant, b.data);
+    if (refus) { await client.query('ROLLBACK'); return res.status(403).json({ error: refus, code: 'PROFIL' }); }
+    b.data = ajusterValidation(req.user, collection, avant, b.data);   // modification d'un référentiel / clôture : « À valider » par la DG
+    if (collection === 'rapports') {
+      // experts DG attendus pour la revue : comptes actifs au rôle « expert » ayant le volet rapports sur l'unité
+      const { rows: comptes } = await client.query('SELECT id, nom, role, droits FROM users WHERE actif AND NOT super_admin');
+      const experts = comptes.filter((u) => catalogue()[nomProfil(u.role)]?.rapports === 'expert' && (u.droits?.[unit]?.volets || []).includes(7));
+      b.data = ajusterRapport(req.user, avant, b.data, { experts });
+      if (b.data.etat === 'Envoyé' && avant?.etat !== 'Envoyé' && !experts.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Aucun expert DG n’a accès aux rapports de cette unité : le rapport ne peut pas être envoyé. Contactez le super administrateur.', code: 'SANS_EXPERT' });
+      }
+    }
     let out;
     if (cur && !cur.deleted) {
       // il faut aussi avoir le droit sur l'emplacement actuel (pas de déplacement vers/depuis une unité interdite)
@@ -182,6 +201,8 @@ dataRouter.put('/:collection/:id', collectionOf, async (req, res) => {
         : { version: out.version, system, recreated: !!cur },
     });
     res.json(toApi(out));
+    if (collection === 'profils') rechargerProfils();
+    notifier(req.user, collection, id, unit, system, avant, out.data);   // après la réponse : n'allonge pas la saisie
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     log.error('erreur serveur', { requestId: req.id, path: req.originalUrl.split('?')[0], erreur: e.message, pile: e.stack });
@@ -199,9 +220,12 @@ dataRouter.delete('/:collection/:id', collectionOf, async (req, res) => {
   if (!cur) return res.status(404).json({ error: 'Élément introuvable.' });
   if (!canWrite(req.user, collection, cur.unit, cur.system))
     return res.status(403).json({ error: "Vous n'avez pas le droit de supprimer ces données." });
+  const refus = controleProfil(req.user, collection, cur.data, null);
+  if (refus) return res.status(403).json({ error: refus, code: 'PROFIL' });
   await q(`UPDATE records SET deleted=true, version=version+1, updated_at=now(), updated_by=$3
            WHERE collection=$1 AND id=$2`, [collection, id, req.user.id]);
   await audit(req, 'delete', { collection, recordId: id, unit: cur.unit, detail: { version: cur.version + 1, system: cur.system, before: snapshot(cur.data) } });
+  if (collection === 'profils') rechargerProfils();
   res.json({ ok: true });
 });
 

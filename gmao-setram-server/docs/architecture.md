@@ -35,6 +35,10 @@ L'interface ne parle **qu'à l'API** (`web/src/api.js`, client unique). Seul le 
 | `numbering-core.js` / `numbering.js` | Numéros DI / OT / DS… attribués par le serveur, sans doublon |
 | `archives-core.js` | Fenêtre de chargement (DI / OT clos anciens non renvoyés par défaut) |
 | `importer.js` | Import Excel « tout ou rien » (une transaction) |
+| `profils-core.js` | Profils (exploitation, technicien, chargé / responsable système, administrateur UO, expert DG…) : contrôle de chaque écriture, validation DG recalculée, délégation des comptes (fonctions pures, partagées avec la démo) |
+| `notifications-core.js` / `notifications.js` / `mail.js` | Qui prévenir (OT à clôturer, clôture, reprise DG), table `notifications`, e-mail SMTP interne facultatif |
+| `rapports-core.js` / `fichiers-core.js` / `profils.js` | Circuit des rapports d'activité (contrôles par rôle, tours de revue, notifications), reconnaissance des documents Excel / Word / PDF, chargement des profils créés par le super admin |
+| `migration-codes-core.js` / `migrer-codes.js` | Migration unique des codes (LAC système à part, BILLETTIQUE → BIL), simulation puis application |
 | `reinitialisation-core.js` / `reinitialisation.js` | « Repartir de zéro » : règles pures (partagées avec la démo) + route transactionnelle (archivage `records_archive`, suppression logique) |
 | `files.js` | Photos : contrôle du contenu, taille, nombre, droits identiques à la DI / l'OT |
 | `db.js`, `migrations/` | Connexion PostgreSQL (ou PGlite en mode local), migrations versionnées, écriture du journal d'audit |

@@ -20,10 +20,7 @@ async function openNewUser() {
   render(<App />);
   fireEvent.click(await screen.findByText('Administration', { selector: 'nav button' }));
   fireEvent.click(await screen.findByText('+ Nouvel utilisateur'));
-  const [nom, ident, pw] = await waitFor(() => {
-    const i = [...document.querySelectorAll('input')].filter(x => x.type !== 'checkbox' && !x.disabled);
-    const f = i.slice(-3); if (f.length < 3) throw new Error('form'); return f;
-  });
+  const [nom, ident, pw] = await waitFor(() => [screen.getByLabelText(/^Nom complet/), screen.getByLabelText(/^Identifiant/), screen.getByLabelText(/^Mot de passe/)]);
   return { nom, ident, pw };
 }
 
@@ -57,5 +54,38 @@ describe('Création de compte', () => {
     fireEvent.change(pw, { target: { value: 'Technicien2026' } });
     fireEvent.click(screen.getByText('Enregistrer'));
     await screen.findByText(/Cet identifiant existe déjà/);
+  });
+});
+
+const caseUnite = (u) => screen.getAllByText(u, { selector: 'b' }).map((b) => b.closest('label')).find((l) => l && l.querySelector('input[type=checkbox]'));
+
+describe('Profils et délégation', () => {
+  it('le profil fixe les volets ; l’administrateur UO a tous les systèmes et reçoit la main sur les comptes', async () => {
+    const { nom, ident, pw } = await openNewUser();
+    fireEvent.change(nom, { target: { value: 'Admin Oran' } });
+    fireEvent.change(ident, { target: { value: 'admin.oran' } });
+    fireEvent.change(pw, { target: { value: 'Provisoire2026' } });
+    fireEvent.click(caseUnite('Oran'));
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: 'Administrateur UO' } });
+    expect(screen.getByText(/Tous les droits métier de son unité/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('donner-la-main').closest('label'));
+    fireEvent.change(screen.getByLabelText(/^E-mail/), { target: { value: 'admin.oran@setram.dz' } });
+    fireEvent.click(screen.getByText('Enregistrer'));
+    await waitFor(() => expect(api.createUser).toHaveBeenCalled());
+    expect(api.createUser.mock.calls[0][0]).toMatchObject({ id: 'admin.oran', role: 'Administrateur UO', gestionComptes: true, email: 'admin.oran@setram.dz',
+      droits: { Oran: { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7] } } });
+  });
+
+  it('technicien : un seul volet (OT) ; l’expert DG reçoit toutes les unités', async () => {
+    const { nom, ident, pw } = await openNewUser();
+    fireEvent.change(nom, { target: { value: 'Tech' } }); fireEvent.change(ident, { target: { value: 'tech.x' } }); fireEvent.change(pw, { target: { value: 'Provisoire2026' } });
+    fireEvent.click(caseUnite('Alger'));
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: 'Expert DG' } });
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: 'Technicien' } });
+    fireEvent.click(screen.getByText('Enregistrer'));
+    await waitFor(() => expect(api.createUser).toHaveBeenCalled());
+    const d = api.createUser.mock.calls[0][0].droits;
+    expect(Object.keys(d).length).toBe(7);                                   // l'expert DG avait étendu à toutes les unités
+    expect(Object.values(d).every((g) => g.volets.length === 1 && g.volets[0] === 2)).toBe(true);
   });
 });

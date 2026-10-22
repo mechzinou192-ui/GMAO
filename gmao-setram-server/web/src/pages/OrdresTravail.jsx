@@ -11,7 +11,7 @@ import {interDuSysteme,interPourSys,systemeDe} from "../lib/equipes.js";
 import {btImprimableHtml} from "../lib/impression.js";
 import {congeAt,libConge,nonOuvre} from "../lib/jours.js";
 import {avancement,tRes} from "../lib/preventif.js";
-import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,HoraireConsignation,Info,Inp,KPI,LienFMP,MateriauxSection,MultiInter,ProgressBar,typeLabel} from "../ui/base.jsx";
+import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,HoraireConsignation,Info,Inp,KPI,LienFMP,MateriauxSection,MultiInter,ProgressBar,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
 /* ===== Page 2 : Ordres de Travail (générés par la Maintenance, remplis puis clôturés par un autre intervenant) ===== */
@@ -25,6 +25,7 @@ export function BTPage({bts,pieces,titre="Ordres de Travail (OT)",sousTitre,onNo
   <KPI items={[
    ["OT en cours",bts.filter(b=>b.etat==="En cours").length,"text-amber-400"],
    ["En attente pièce",bts.filter(b=>b.etat==="En attente pièce").length,"text-rose-400"],
+   ["À clôturer",bts.filter(b=>b.etat==="À clôturer").length,"text-sky-400"],
    ["OT clôturés",bts.filter(b=>b.etat==="Clôturé").length,"text-emerald-400"],
    ["Coût total clôturés (DA)",bts.filter(b=>b.etat==="Clôturé").reduce((s,b)=>s+coutBT(b,pieces).total,0).toLocaleString(),"text-sky-400"],
   ]}/>
@@ -33,7 +34,7 @@ export function BTPage({bts,pieces,titre="Ordres de Travail (OT)",sousTitre,onNo
     <div><h2 className="font-semibold text-slate-100">{titre}</h2><div className="text-xs text-slate-500">{sousTitre||"Cliquez sur une ligne pour saisir le compte-rendu puis clôturer"}</div></div>
     <div className="flex gap-2"><ExportBtn onClick={exportBT}/>{onNouveauBT&&<Btn onClick={onNouveauBT}><span className="flex items-center gap-1">{I.plus} Nouvel OT</span></Btn>}</div>
    </div>
-   <div className="flex flex-wrap gap-1 mt-2">{["Tous","En cours","En attente pièce","Clôturé"].map(f=><Btn key={f} cls={"text-xs "+(filtre===f?"bg-sky-600 text-white":"bg-slate-700 hover:bg-slate-600 text-slate-200")} onClick={()=>setFiltre(f)}>{f}</Btn>)}</div>
+   <div className="flex flex-wrap gap-1 mt-2">{["Tous","En cours","En attente pièce","À clôturer","Clôturé"].map(f=><Btn key={f} cls={"text-xs "+(filtre===f?"bg-sky-600 text-white":"bg-slate-700 hover:bg-slate-600 text-slate-200")} onClick={()=>setFiltre(f)}>{f}</Btn>)}</div>
    <div className="md:hidden mt-3 space-y-2" data-testid="bt-cartes">
     {liste.map(b=><div key={b.code} onClick={()=>onOpenBT(b)} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 cursor-pointer active:bg-slate-700/40">
      <div className="flex items-start justify-between gap-2"><span className="text-sky-400 font-medium">{b.code}</span><Badge t={b.etat}/></div>
@@ -92,7 +93,16 @@ export function BTReadOnly({bt,pieces}){
  </div>);
 }
 
-export function BTDetail({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
+// Bandeau de validation DG (OT clôturé, équipement, plan) : affiché à tous, posé par l'expert DG
+export function BandeauValidation({v}){
+ if(!v) return null;
+ const cls=v.etat==="Validé"?"border-emerald-600 bg-emerald-900/30 text-emerald-200":v.etat==="À reprendre"?"border-rose-600 bg-rose-900/30 text-rose-200":"border-amber-600 bg-amber-900/30 text-amber-200";
+ return <div className={"text-xs rounded-lg border px-3 py-2 mb-2 "+cls} data-testid="validation-dg">
+  <b>Validation DG : {v.etat}</b>{v.par && v.etat!=="À valider"?" — "+v.par:""}{v.le?" le "+String(v.le).slice(0,10).split("-").reverse().join("/"):""}{v.motif?" — motif : "+v.motif:""}
+ </div>;
+}
+
+export function BTDetail({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onTerminer,peutCloturer=true,onCreateDS,onStatut}){
  const clos=bt.etat==="Clôturé";
  return (<div>
   <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3">
@@ -111,8 +121,13 @@ export function BTDetail({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equi
    {bt.dateGeneration && <Info l="Généré le">{bt.dateGeneration}</Info>}
    {bt.dateCloture && <Info l="Clôturé le">{bt.dateCloture}</Info>}
   </div>
+  {onStatut && <div className="mb-2"><StatutManuel etats={ETATS_MANUELS.ot} valeur={bt.etat} quoi={bt.code} onAppliquer={onStatut}/></div>}
+  <BandeauValidation v={bt.validationDG}/>
+  {bt.etat==="À clôturer" && <div className="text-xs rounded-lg border border-sky-600 bg-sky-900/30 text-sky-200 px-3 py-2 mb-2" data-testid="ot-a-cloturer">
+   <b>Saisie terminée</b>{bt.saisieTerminee?" par "+bt.saisieTerminee.par+" le "+String(bt.saisieTerminee.le||"").slice(0,16).replace("T"," "):""} — {peutCloturer?"à contrôler puis clôturer.":"en attente de clôture par le chargé ou le responsable du système."}
+  </div>}
   {bt.consigne && bt.consigne!=="-" && <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 mb-2"><span className="text-slate-500">Consigne de la Maintenance : </span>{bt.consigne}</div>}
-  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} dsOuvertes={dsOuvertes} dsDeLOT={dsDeLOT} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onCreateDS={onCreateDS}/>}
+  {clos ? <BTReadOnly bt={bt} pieces={pieces}/> : <BTFillForm bt={bt} dsOuvertes={dsOuvertes} dsDeLOT={dsDeLOT} compteur={compteur} pieces={pieces} inter={inter} equipements={equipements} onSave={onSave} onCloturer={onCloturer} onTerminer={onTerminer} peutCloturer={peutCloturer} onCreateDS={onCreateDS}/>}
   <PiecesJointes collection="bts" recordId={bt.code}/>
  </div>);
 }
@@ -149,8 +164,8 @@ export function BTCreateForm({di,inter,equipements,pieces,onSubmit}){
 }
 
 /* Étape 2 — Saisie par l'intervenant puis clôture */
-export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onCreateDS}){
- const [releveCpt,setReleveCpt]=useState("");
+export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,equipements,onSave,onCloturer,onTerminer,peutCloturer=true,onCreateDS}){
+ const [releveCpt,setReleveCpt]=useState(bt.releveCompteur!==undefined?String(bt.releveCompteur):"");
  const sysBT=systemeDe(bt.eq,bt.nom,equipements);
  const interEq=interPourSys(inter,sysBT);
  const interSys=interDuSysteme(interEq,sysBT);
@@ -183,6 +198,20 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
  const coutLot=(lot)=>lot.reduce((s,it)=>{const pc=pieces.find(p=>p.code===it.code);return s+(pc?pc.prix*it.qte:0);},0);
  const coutMat=coutLot(piecesBT)+coutLot(outillageBT)+coutLot(consommablesBT);
  const data=()=>({...f,assignes:intervenants.length?intervenants.map(x=>x.nom):(bt.assignes||[]),taches,panne:f.panne||"-",cause:f.cause||"-",effet:f.effet||"-",intervenants,pieces:piecesBT,outillage:outillageBT,consommables:consommablesBT});
+ // contrôles communs à « Terminer la saisie » (technicien) et à « Clôturer » (chargé / responsable)
+ function controleSaisie(){
+  if(taches.length>0 && pct<100) return "Saisie incomplète : "+taches.filter(t=>tRes(t)).length+"/"+taches.length+" tâches contrôlées ("+pct+" %). Chaque tâche doit être cochée OK ou Non OK.";
+  if(nokSansCom()) return "Commentaire obligatoire pour chaque tâche « Non OK ».";
+  if(nokSansChoix()) return "Pour chaque tâche « Non OK », indiquez si une DI doit être créée ou non.";
+  if(!isPrev && taches.length===0 && !f.panne.trim()) return "Renseignez la panne / le constat.";
+  if(intervenants.length===0) return "Ajoutez au moins un intervenant.";
+  if(compteur){ const e=controleReleve(compteur,{date:todayStr(),valeur:releveCpt}); if(e) return "Relevé du compteur : "+e; }
+  return "";
+ }
+ function terminer(){
+  const e=controleSaisie(); if(e){setErr(e);return;}
+  setErr(""); onTerminer({...data(),...(compteur?{releveCompteur:releveCpt}:{})});
+ }
  function cloturer(){
   if(taches.length>0 && pct<100){setErr("Clôture impossible : "+taches.filter(t=>tRes(t)).length+"/"+taches.length+" tâches contrôlées ("+pct+" %). Chaque tâche doit être cochée OK ou Non OK.");return;}
   if(nokSansCom()){setErr("Commentaire obligatoire pour chaque tâche « Non OK ».");return;}
@@ -281,7 +310,9 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
   {err && <div className="text-xs text-rose-400 text-right mt-1">{err}</div>}
   <div className="flex justify-end gap-2 mt-3">
    <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>{if(nokSansCom()){setErr("Commentaire obligatoire pour chaque tâche « Non OK ».");return;}setErr("");onSave(data());}}>Enregistrer</Btn>
-   <Btn cls={(attente||pct<100)?"bg-slate-700 text-slate-500":"bg-emerald-600 hover:bg-emerald-500 text-white"} onClick={()=>{ if(!attente) cloturer(); }}>Clôturer l'OT</Btn>
+   {peutCloturer
+    ? <Btn cls={(attente||pct<100)?"bg-slate-700 text-slate-500":"bg-emerald-600 hover:bg-emerald-500 text-white"} onClick={()=>{ if(!attente) cloturer(); }}>Clôturer l'OT</Btn>
+    : <Btn cls={pct<100?"bg-slate-700 text-slate-500":"bg-sky-600 hover:bg-sky-500 text-white"} onClick={terminer}>{bt.etat==="À clôturer"?"Mettre à jour la saisie":"Terminer la saisie"}</Btn>}
   </div>
  </div>);
 }

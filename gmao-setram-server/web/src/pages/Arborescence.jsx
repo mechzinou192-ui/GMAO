@@ -46,7 +46,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
  return (<div className="space-y-4">
   {mode!=="arbo" && <SubTabs value={tab} onChange={setTab} items={[["mesure","Appareils de mesure"],["ctrl","Contrôles réglementaires"],["org","Organismes"]]}/>}
   <div className="flex flex-wrap gap-2 justify-end">
-   {tab==="arbo" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddSystem}><span className="flex items-center gap-1">{I.plus} Ajouter un système</span></Btn>}
+   {tab==="arbo" && onAddSystem && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddSystem}><span className="flex items-center gap-1">{I.plus} Ajouter un système</span></Btn>}
    {tab==="mesure" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddMesure}><span className="flex items-center gap-1">{I.plus} Ajouter un appareil</span></Btn>}
    {tab==="org" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddOrg}><span className="flex items-center gap-1">{I.plus} Ajouter un organisme</span></Btn>}
    {tab==="ctrl" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddCtrl}><span className="flex items-center gap-1">{I.plus} Ajouter un contrôle</span></Btn>}
@@ -66,7 +66,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
         <span className="font-medium text-slate-100">{code} <span className="text-xs text-slate-400 font-normal">— {nom}</span></span>
        </button>
        <span className="text-xs text-slate-500 mr-2">{subs.length} sous-systèmes</span>
-       <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSystem(code,nom)} title="Modifier le nom du système">✎</button>
+       {onEditSystem && <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSystem(code,nom)} title="Modifier ou supprimer le système (super administrateur)" aria-label={"Modifier le système "+code}>✎</button>}
        <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>onAddSubSystem(code)}>+ Sous-système</Btn>
        <button onClick={()=>setOpenSys(isOpen?null:code)} className="ml-2 text-xs text-slate-500">{isOpen?"▲":"▼"}</button>
       </div>

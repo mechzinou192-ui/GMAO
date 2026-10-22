@@ -57,6 +57,16 @@ export const config = {
   // Import Excel : lignes par feuille et taille de l'envoi (Mo) — voir docs/decisions.md
   importMaxLignes: entier('IMPORT_MAX_LIGNES', 100000, 1000, 500000),
   importMaxMo: entier('IMPORT_MAX_MO', 100, 5, 500),
+  // E-mails de notification (facultatif) : désactivés tant que SMTP_HOST est vide. Serveur de messagerie INTERNE.
+  smtp: {
+    host: (env.SMTP_HOST || '').trim(),
+    port: entier('SMTP_PORT', 25, 1, 65535),
+    secure: env.SMTP_SECURE === 'true',                       // true = TLS direct (port 465) ; sinon STARTTLS si proposé
+    user: env.SMTP_USER || '',
+    pass: env.SMTP_PASS || '',
+    from: env.SMTP_FROM || 'GMAO SETRAM <gmao@setram.local>',
+    url: env.GMAO_URL || '',                                  // adresse de la GMAO rappelée dans l'e-mail
+  },
   shutdownTimeoutSec: entier('SHUTDOWN_TIMEOUT_SEC', 10, 1, 120),
   maxFailedAttempts: 5,
   lockMinutes: 15,

@@ -1,11 +1,11 @@
 // Gestion de stock : articles, achats, décharges, DS / BS / BR.
 import React,{useState} from "react";
 import {exporterXlsx} from "../excel.js";
-import {Badge,Btn,Card,ExportBtn,Field,Inp,fmtFourn,ouiNon} from "../ui/base.jsx";
+import {Badge,Btn,Card,ETATS_MANUELS,ExportBtn,Field,Inp,StatutManuel,fmtFourn,ouiNon} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 import {DS_MODIFIABLES,lignesDS,totalDS,quantiteDS,construireLignes,lignesEnRupture} from "../lib/ds.js";
 
-export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onRetirerLigneDS,onOpenPiece,onAddPiece,onEditPiece}){
+export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onRetirerLigneDS,onStatutDS,onStatutBS,onOpenPiece,onAddPiece,onEditPiece}){
  const SECTIONS=[
   ["pieces","Pièces"],["consommables","Consommables"],["outillage","Outillage"],
   ["decharges","Décharges (Outillage / Consommables)"],["ds","Demandes de Sortie (DS) — Pièces"],["bs","Bons de Sortie (BS)"],["br","Bons de Retour (BR)"],
@@ -101,7 +101,8 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
      <td>{DS_MODIFIABLES.includes(d.etat) && <div className="flex gap-1">
       <Btn cls="bg-emerald-600 hover:bg-emerald-500 text-xs" onClick={()=>onGenererBS(d.code)}>Générer BS</Btn>
       <Btn cls="bg-rose-700 hover:bg-rose-600 text-xs" onClick={()=>onAnnulerDS(d.code)}>Annuler</Btn>
-     </div>}{d.bs && <div className="text-xs text-slate-500 mt-0.5">{d.bs}</div>}</td>
+     </div>}{d.bs && <div className="text-xs text-slate-500 mt-0.5">{d.bs}</div>}
+     {onStatutDS && <StatutManuel etats={ETATS_MANUELS.ds} valeur={d.etat} quoi={d.code} onAppliquer={(e,m)=>onStatutDS(d.code,e,m)}/>}</td>
     </tr>)}</tbody>
    </table></div>}
 
@@ -111,7 +112,8 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
     {bsList.map(b=><tr key={b.code} className="border-t border-slate-700">
      <td className="py-1.5">{b.code}</td><td className="text-xs text-slate-400">{b.ds}</td><td>{lignesDS(b).map((l,i)=><div key={i} className="whitespace-nowrap">{l.pieceNom} × {l.qte}</div>)}</td>
      <td>{quantiteDS(b)}</td><td>{totalDS(b).toLocaleString()} DA</td><td><Badge t={b.etat}/></td>
-     <td>{b.etat==="À traiter" && <Btn cls="bg-emerald-600 hover:bg-emerald-500 text-xs" onClick={()=>onTraiterBS(b.code)}>Traiter / Délivrer</Btn>}</td>
+     <td>{b.etat==="À traiter" && <Btn cls="bg-emerald-600 hover:bg-emerald-500 text-xs" onClick={()=>onTraiterBS(b.code)}>Traiter / Délivrer</Btn>}
+      {onStatutBS && <StatutManuel etats={ETATS_MANUELS.bs} valeur={b.etat} quoi={b.code+" (le stock n'est pas modifié)"} onAppliquer={(e,m)=>onStatutBS(b.code,e,m)}/>}</td>
     </tr>)}</tbody>
    </table></div>}
 

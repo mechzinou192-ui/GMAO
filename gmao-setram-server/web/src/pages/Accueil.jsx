@@ -13,9 +13,9 @@ export const Compteur=({lib,val,coul,onClick})=><button type="button" className=
 export const ageJours=(s)=>{if(!s) return 0; const d=parseD(s); return Math.floor((parseD(todayStr())-d)/864e5);};
 export function Accueil({tabOk,unit,dis,bts,planning,compteurs=[],pieces,alertes,sa,onGo,onNewDI,onNewOT,onOpenDI,onOpenOT}){
  const fav=[
-  tabOk(1)&&{k:"ndi",lib:"Nouvelle demande d'intervention",coul:"green",ic:I.plus2,go:onNewDI},
+  tabOk(1)&&onNewDI&&{k:"ndi",lib:"Nouvelle demande d'intervention",coul:"green",ic:I.plus2,go:onNewDI},
   (tabOk(1)||tabOk(2))&&{k:"di",lib:"Maintenance corrective (DI / OT)",coul:"purple",ic:I.flag,go:()=>onGo(1)},
-  tabOk(2)&&{k:"not",lib:"Nouvel OT préventif",coul:"teal",ic:I.plus2,go:onNewOT},
+  tabOk(2)&&onNewOT&&{k:"not",lib:"Nouvel OT préventif",coul:"teal",ic:I.plus2,go:onNewOT},
   tabOk(2)&&{k:"ot",lib:"Ordres de travail préventifs",coul:"blue",ic:I.wrench,go:()=>onGo(2)},
   tabOk(3)&&{k:"pp",lib:"Planning préventif",coul:"orange",ic:I.cal,go:()=>onGo(3)},
   tabOk(0)&&{k:"arb",lib:"Arborescence technique",coul:"navy",ic:I.tree,go:()=>onGo(0)},
@@ -47,9 +47,10 @@ export function Accueil({tabOk,unit,dis,bts,planning,compteurs=[],pieces,alertes
     </div>
    </Panel>}
    {tabOk(2)&&<Panel title="Mes infos OT" action={<button className="gm-panel-link" onClick={()=>onGo(2)}>Voir tout ›</button>}>
-    <div className="gm-counters">
+    <div className="gm-counters is-5">
      <Compteur lib="En cours" val={nb(bts,b=>b.etat==="En cours")} coul="blue" onClick={()=>onGo(2)}/>
      <Compteur lib="En attente pièce" val={nb(bts,b=>b.etat==="En attente pièce")} coul="red" onClick={()=>onGo(2)}/>
+     <Compteur lib="À clôturer" val={nb(bts,b=>b.etat==="À clôturer")} coul="blue" onClick={()=>onGo(1)}/>
      <Compteur lib="Préventifs ouverts" val={nb(bts,b=>b.type==="Préventive"&&b.etat!=="Clôturé"&&b.etat!=="Annulé")} coul="orange" onClick={()=>onGo(2)}/>
      <Compteur lib="Clôturés" val={nb(bts,b=>b.etat==="Clôturé")} coul="green" onClick={()=>onGo(2)}/>
     </div>

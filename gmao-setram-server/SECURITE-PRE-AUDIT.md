@@ -42,14 +42,14 @@ Ce dossier prépare l'**audit de sécurité externe** (test d'intrusion et revue
 
 **Test d'intrusion (boîte grise, 3 à 5 jours) :**
 1. Authentification : force brute, énumération de comptes, fixation et vol de session, réinitialisation de mot de passe.
-2. **Contrôle d'accès** (priorité) : avec un compte limité (une unité, un système, un module), tenter de lire et modifier les données d'une autre unité, d'un autre système ou d'un autre module — API `/api/data/*`, `/api/files`, `/api/import`, numérotation.
+2. **Contrôle d'accès** (priorité) — y compris les **profils** (technicien qui tente de clôturer ou créer un OT, exploitation hors DI, expert DG qui modifie une saisie ou se crée un élément) et la **délégation des comptes** à l'administrateur UO (création hors de ses unités, attribution d'un profil réservé, élévation en super administrateur) : avec un compte limité (une unité, un système, un module), tenter de lire et modifier les données d'une autre unité, d'un autre système ou d'un autre module — API `/api/data/*`, `/api/files`, `/api/import`, numérotation.
 3. Élévation de privilège vers le super administrateur (`/api/users`).
 4. Injections (SQL, JSON, en-têtes) et XSS stockée (désignations, commentaires, noms de fichiers).
-5. Téléversement de fichiers : contournement du contrôle de type, fichiers polyglottes, volume.
+5. Téléversement de fichiers : contournement du contrôle de type, fichiers polyglottes, volume — y compris les **documents des rapports d'activité** (.xlsx / .docx / PDF reconnus par leur contenu, macros refusées, téléchargement forcé).
 6. Configuration HTTPS du reverse proxy (protocoles, suites, certificats) et en-têtes.
 7. Déni de service applicatif : imports volumineux, requêtes sans fenêtre de chargement.
 
-**Revue de code ciblée (1 à 2 jours) :** `server/src/auth.js`, `rights-core.js`, `records.js`, `files.js`, `importer.js`, `users.js`.
+**Revue de code ciblée (1 à 2 jours) :** `server/src/auth.js`, `rights-core.js`, `profils-core.js`, `notifications.js`, `mail.js`, `records.js`, `files.js`, `importer.js`, `users.js`.
 
 **Livrables attendus :** rapport classé par criticité, preuves, recommandations, puis contre-audit après corrections.
 

@@ -87,11 +87,18 @@ PUT /api/data/dis/DI-ALG-2026-0042
 
 | Méthode | Route | Rôle | Corps | Réponses |
 |---|---|---|---|---|
-| POST | `/admin/reinitialiser` | super administrateur (limite « coûteuses ») | `{ "confirmation": "REPARTIR DE ZERO", "sauvegardeFaite": true, "referentiels": false, "numerotation": true }` | 200 `{ reinitialisation, collections: { nom: n }, total, numerotation }` · 400 (confirmation / sauvegarde) · 403 · 500 (rien n'est modifié) |
+| POST | `/admin/reinitialiser` | super administrateur (limite « coûteuses ») | `{ "confirmation": "REPARTIR DE ZERO", "sauvegardeFaite": true, "collections": ["dis","bts"], "unit": "Oran", "system": "CFO", "numerotation": true }` (`collections`, `unit`, `system` facultatifs ; ancien format `referentiels` accepté si `collections` est absent) | 200 `{ reinitialisation, collections: { nom: n }, total, numerotation, unit, system }` · 400 (confirmation / sauvegarde / périmètre) · 403 · 500 (rien n'est modifié) |
 
 Une transaction : copie dans `records_archive`, suppression logique (`deleted=true`, `version+1`, visible des autres
 navigateurs à la synchronisation suivante), photos des DI / OT masquées, compteurs de numérotation remis à zéro si
 `numerotation`. Comptes utilisateurs et `audit_log` jamais modifiés. Action `reinitialisation` dans le journal d'audit.
+
+Périmètre : `collections` = catégories à vider (par défaut tout le métier) ; `unit` = une seule unité (éléments portant cette
+unité ; refusé avec `systemes`, `arborescence`, `feries`, communs à toutes les unités ; seuls les compteurs de cette unité
+sont remis à 1) ; `system` = un seul système (éléments portant ce système ; pour `systemes` / `arborescence` : l'en-tête
+`CFO` et ses lignes `CFO.xxx` ; refusé avec `feries` ; la numérotation n'est jamais remise à 1). Le périmètre est conservé
+dans `reinitialisations.unite` / `.systeme` (migration `007`). Les photos des DI / OT ne sont masquées que pour une remise à
+zéro sans unité ni système.
 
 ## Pièces jointes (photos)
 
@@ -102,15 +109,56 @@ navigateurs à la synchronisation suivante), photos des DI / OT masquées, compt
 | GET | `/files/:id` | lecture | Contenu (en-têtes `nosniff`, CSP `sandbox`) |
 | DELETE | `/files/:id` | écriture | Suppression (fichier effacé du disque, audit conservé) |
 
-## Comptes (super administrateur)
+## Comptes (super administrateur, ou administrateur UO à qui il a donné la main)
+
+`role` = profil : `Exploitation`, `Gestionnaire de stock`, `Technicien`, `Chargé système`, `Responsable système`,
+`Administrateur UO`, `Expert DG`, `Directeur` (anciens intitulés acceptés et convertis). Les volets sont ramenés à ceux du
+profil ; l'administrateur UO reçoit `systems: ["*"]` (tous les systèmes). Administrateur UO délégué : uniquement les comptes
+de ses unités, profils d'unité (pas d'administrateur UO, d'expert DG ni de super administrateur), ni `superAdmin` ni
+`gestionComptes` ; pas d'accès au journal d'audit.
 
 | Méthode | Route | Corps / paramètres |
 |---|---|---|
-| GET | `/users` | — |
-| POST | `/users` | `{ id, nom, role, password, superAdmin, droits: { "Alger": { systems: ["CFO"], volets: [0,1,2], kpi?: [...] } } }` → 201 · 409 identifiant pris |
+| GET | `/users` | — (administrateur UO : les comptes de son périmètre) |
+| POST | `/users` | `{ id, nom, role, password, email?, superAdmin?, gestionComptes?, droits: { "Alger": { systems: ["CFO"], volets: [0,1,2], kpi?: [...] } } }` → 201 · 400 profil inconnu / e-mail invalide · 403 hors périmètre · 409 identifiant pris |
 | PUT | `/users/:id` | mêmes champs, `password` = réinitialisation (changement exigé, sessions coupées) |
 | DELETE | `/users/:id` | — (pas son propre compte) |
 | GET | `/users/audit/log?limit=…` | Journal d'audit |
+
+## Rapports d'activité (collection `rapports`, volet 7)
+
+Enregistrement par `PUT /data/rapports/:code` (numéro : `POST /data/rapports/next-code { unit }` → `RAP-ALG-2026-001`).
+Le serveur contrôle chaque transition selon le rôle du profil (`rapports-core.js`) et calcule `tour`, `attendus`
+(experts DG actifs ayant le volet 7 sur l'unité ; 409 `SANS_EXPERT` si aucun), le passage à `À valider DG` quand toutes
+les revues du tour sont terminées, `decision` et `historique`. Fichiers : `POST /files?collection=rapports&recordId=…`
+(Excel .xlsx, Word .docx ou PDF reconnus par leur contenu, 25 Mo, 30 par rapport ; macros et .xls / .doc refusés ;
+dépôt réservé à l'UO tant que le rapport est en brouillon ou à corriger ; téléchargement en `attachment`).
+Notifications : `rapport_a_revoir`, `rapport_a_valider`, `rapport_a_corriger`, `rapport_cloture`.
+
+## Profils personnalisés (collection `profils`)
+
+`PUT /data/profils/:nom` `{ data: { libelle, volets, cloture, creerOT, diSeulement, saisieSeule, valide, lectureSeule,
+rapports, toutesUnites, tousSystemes, delegationComptes, delegable } }` — super administrateur seul (comme `systemes`).
+Lisibles par tous ; pris en compte immédiatement par le serveur (rechargés après chaque modification).
+
+## Notifications
+
+| Méthode | Route | Corps | Réponse |
+|---|---|---|---|
+| GET | `/notifications` | — | `{ items: [{ id, at, type, collection, recordId, unit, texte, lu }] (50 dernières), nonLues }` |
+| POST | `/notifications/lues` | `{ ids: [..] }` ou `{ tout: true }` | `{ ok: true }` · 400 |
+
+Créées par le serveur lors d'un enregistrement : `ot_a_cloturer` (OT passé « À clôturer » → chargés et responsables du
+système et de l'unité), `ot_cloture` (clôture par un chargé → responsables), `ot_a_reprendre` / `referentiel_a_reprendre`
+(expert DG → chargés et responsables). E-mail en copie cachée si `SMTP_HOST` est renseigné et le compte a une adresse.
+
+## Profils et validation DG à l'enregistrement (`PUT` / `DELETE /data/...`)
+
+Refus **403** `{ error: { code: "PROFIL", message } }` : exploitation hors DI ou DI déjà prise en charge ; technicien qui
+crée, supprime, clôture un OT ou modifie un OT clôturé ; expert DG qui modifie autre chose que `validationDG` (et l'état
+`Clôturé` → `À clôturer` avec `validationDG.etat = "À reprendre"` et un motif) ; clôture par un profil sans clôture.
+`validationDG` est recalculé par le serveur pour tout autre profil (`{ etat: "À valider", depuis, par }` à la création /
+modification d'un équipement, plan ou sous-système, et à la clôture d'un OT) : la réponse contient la valeur enregistrée.
 
 ## Divers
 

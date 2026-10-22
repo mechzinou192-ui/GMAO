@@ -1,5 +1,105 @@
 # Journal des modifications
 
+## 1.19.0 — rapports d'activité UO / DG, profils DG, profils personnalisables, statuts manuels
+
+### Rapports d'activité maintenance (nouveau volet 7)
+- L'administrateur UO crée le rapport du mois (brouillon), joint ses fichiers **Excel, Word ou PDF** (contrôlés par leur
+  contenu ; fichiers à macros et anciens formats .xls / .doc refusés ; 25 Mo par fichier) et l'**envoie à la DG**.
+- Chaque **expert DG** ayant le volet rapports sur l'unité est notifié, relève le **nombre d'erreurs** et son
+  **commentaire**, puis « Termine sa revue ». Quand toutes les revues sont terminées, le **responsable DG** est notifié.
+- Le responsable DG **clôture** (possible seulement sans erreur ni commentaire) ou **renvoie à l'UO pour correction**
+  (motif). L'UO est notifiée, joint la version corrigée et renvoie : nouveau **tour de revue**, les experts sont notifiés
+  de nouveau… jusqu'à la clôture. Historique complet dans le rapport ; chaque étape est contrôlée par le serveur.
+- Numérotation `RAP-<unité>-<année>-001`. Lien vers les fichiers : téléchargement (jamais ouverts dans la page).
+
+### Profils
+- Nouveaux profils : **Responsable DG** (valide / clôture les rapports, consulte tout), **Directeur UO** (consulte son
+  unité), **Directeur DG** (consulte tout). Les profils de consultation ne modifient rien (refus du serveur).
+- **Profils personnalisables** (Administration › Profils) : le super administrateur crée ses profils pour suivre
+  l'organigramme, en combinant modules et capacités (clôture, création d'OT, DI seulement, saisie seule, validation DG,
+  consultation, rôle dans les rapports, délégation des comptes…). Mêmes contrôles serveur que les profils de base.
+
+### Super administrateur
+- **Changement manuel du statut** des DI, OT, DS, BS (et des rapports), avec motif : tracé dans l'élément
+  (`historiqueStatut`) et dans le journal d'audit ; aucun effet automatique (stock, DI liée, préventif).
+- **Systèmes** : ajout, modification et suppression réservés au super administrateur ; un système se supprime **avec ses
+  sous-systèmes** tant qu'aucun équipement n'y est rattaché (dans aucune unité).
+
+## 1.18.0 — profils, circuit de clôture, notifications, validation DG, codes LAC / BIL
+
+### Profils (appliqués par le serveur à chaque enregistrement, pas seulement masqués à l'écran)
+| Profil | Peut faire |
+|---|---|
+| Exploitation | Créer des DI (modifiables tant qu'elles sont « À transmettre ») ; rien d'autre |
+| Gestionnaire de stock | Magasin uniquement |
+| Technicien | Remplir les OT de son périmètre ; **ne crée pas et ne clôture pas** d'OT : « Terminer la saisie » |
+| Chargé système | Son (ses) système(s) et leurs intervenants : DI, OT, préventif, personnel, indicateurs ; génère et **clôture** les OT |
+| Responsable système | Comme le chargé ; prévenu quand le chargé clôture |
+| Administrateur UO | Tous les droits métier de son unité, **tous les systèmes** ; pas d'import ; comptes de son unité **seulement si le super administrateur lui en donne la main** (révocable, tracé) |
+| Expert DG | Son (ses) système(s) **sur toutes les unités**, en consultation ; **valide** les OT clôturés et les référentiels |
+| Directeur | Indicateurs |
+- Les volets cochés sont limités à ceux du profil ; anciens intitulés renommés (Chargé de Maintenance → Chargé système,
+  Responsable → Responsable système, Magasinier → Gestionnaire de stock). Migration `008`.
+
+### Circuit de clôture et notifications
+- Nouvel état d'OT **« À clôturer »** : le technicien termine sa saisie (mêmes contrôles qu'une clôture) ; le chargé et le
+  responsable du système sont **notifiés** ; l'un d'eux contrôle et clôture. Si le chargé clôture, le responsable est notifié.
+- Cloche : notifications (non lues en premier, « tout marquer comme lu »), clic = ouverture de l'OT. Compteur « À clôturer »
+  sur l'accueil et filtre dans les listes d'OT.
+- **E-mail** en plus (facultatif) : serveur de messagerie interne (`SMTP_*`), adresse e-mail dans la fiche du compte ;
+  texte court (numéro d'OT, équipement), aucun détail technique. Dépendance `nodemailer` 10.0.16 (0 vulnérabilité).
+
+### Validation DG
+- Écran **Validation DG** (expert DG, super administrateur) : OT clôturés, équipements, plans préventifs, sous-systèmes
+  « À valider » ; **Valider** ou **À reprendre** avec motif obligatoire (un OT revient « À clôturer », le chargé et le
+  responsable sont notifiés). Bandeau de validation sur l'OT, la fiche équipement et la liste des plans.
+- Toute création / modification d'un référentiel, et toute clôture d'OT, par une unité remet l'élément « À valider »
+  (calculé par le serveur : personne ne peut se valider soi-même). L'avancement automatique d'un plan après une visite
+  ne remet pas sa validation en cause.
+
+### Codes
+- **LAC** devient un système à part (sous-système **CAT** — caténaire) ; **BILLETTIQUE** devient **BIL**. Référentiel par défaut,
+  démonstration et modèle d'import mis à jour.
+- Script **`npm run migrer-codes`** pour une base existante : simulation par défaut, `--appliquer` en une transaction ;
+  `CFO.<unité>.LAC.<n>` → `LAC.<unité>.CAT.<n>`, `BILLETTIQUE…` → `BIL…` dans les équipements, sous-équipements, DI, OT,
+  plans, compteurs, prestataires et droits des comptes (qui avait CFO reçoit LAC). Anciens codes conservés (suppression
+  logique), opération tracée dans le journal d'audit.
+
+### Démonstration
+- Comptes ajoutés : **Chargé système CFO** et **Expert DG CFO** ; le « Responsable maintenance » est administrateur UO.
+
+## 1.17.0 — Assistant GMAO ; « Repartir de zéro » à la carte
+
+### Assistant GMAO
+- Bouton **Assistant** (bulle) dans la barre du haut : panneau de discussion, questions en français courant.
+- **Panne** (« portillon bloqué », « surchauffe transformateur ») : interventions similaires trouvées dans les DI et OT
+  correctifs, causes et actions les plus fréquentes, pièces utilisées, durée moyenne, intervenants qui connaissent
+  ce type de panne ; chaque DI / OT est cliquable.
+- **Intervenant** (« synthèse de K. Belaïd », matricule) : OT correctifs / préventifs, heures pointées, activité sur
+  90 jours, répartition par système et par équipement, OT en cours ; **points forts** (référent d'un système,
+  dépannage plus rapide que l'équipe, préventif tenu, polyvalence, habilitations à jour) et **points d'attention**
+  (habilitation expirée, OT ouverts > 7 j, préventif à rattraper, durée supérieure à l'équipe). Réservé aux profils
+  ayant accès au personnel ou aux indicateurs ; avertissement « ce n'est pas une évaluation ».
+- **Équipement** (code ou nom) : pannes récurrentes, causes, MTBF, durée de dépannage, préventif (retards), dernières DI.
+- **Magasin** (« stock fusible », « articles sous le seuil »), **situation** (OT en cours / en attente pièce / ouverts
+  > 7 j, DI à transmettre, préventifs en retard), **pannes les plus fréquentes** (90 jours).
+- **Aucune IA externe** : questions analysées par mots-clés, réponses calculées sur les données déjà chargées pour
+  l'utilisateur (mêmes droits, unité sélectionnée). Rien ne sort du poste ; aucune configuration serveur.
+
+### « Repartir de zéro » à la carte
+- **Périmètre au choix** : catégories à vider (cases à cocher), **une seule unité** (ex. Oran) et/ou **un seul système**
+  (ex. CFO). Pour l'arborescence, le système choisi vide son en-tête et ses sous-systèmes (`CFO`, `CFO.xxx`) ; les autres
+  systèmes sont conservés. Résumé « Sera vidé » avant confirmation.
+- Une unité exclut les référentiels (communs à toutes les unités) ; un système exclut les jours fériés et la remise à 1
+  de la numérotation ; avec une unité, seuls les compteurs de cette unité repartent de 1.
+- Route `POST /api/admin/reinitialiser` : nouveaux champs facultatifs `collections`, `unit`, `system` (ancien format
+  toujours accepté). Migration `007` (périmètre noté dans `reinitialisations`). Même comportement dans la démonstration.
+
+## 1.16.3 — « Repartir de zéro » plus simple à confirmer
+- La phrase de confirmation accepte accents, minuscules et espaces (« Repartir de zéro » fonctionne).
+- Le champ n'affiche plus la phrase en grisé (elle pouvait laisser croire que le champ était déjà rempli) ;
+  la phrase à taper est écrite au-dessus, et la liste de ce qui manque pour activer le bouton s'affiche en direct.
+
 ## 1.16.2 — imports de gros volume, FMP rangées par système
 - Limites d'import relevées : **100 000 lignes par feuille** (au lieu de 20 000), fichier de **50 Mo** (au lieu de 15),
   envoi de **100 Mo** (au lieu de 25). Réglables par la DSI : `IMPORT_MAX_LIGNES`, `IMPORT_MAX_MO` (`.env`).

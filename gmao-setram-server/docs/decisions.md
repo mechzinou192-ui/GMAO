@@ -61,3 +61,24 @@ Format : **décision** — raison — alternative écartée. Ajouter une ligne �
 | O7 | Police **Montserrat embarquée** (`@fontsource`) | Charte SETRAM sans appel externe | Google Fonts (bloqué par la CSP, dépendance Internet) |
 | O8 | **Pas de formateur automatique (Prettier) ni de crochets pre-commit** pour l'instant | Reformater ~6 000 lignes produirait un écart massif sans valeur et masquerait l'historique ; la CI bloque déjà toute erreur d'analyse ou de test | Prettier + husky : à activer au moment où la DSI reprend la maintenance du code (une seule passe de formatage, isolée dans un commit dédié) |
 | O9 | Couverture mesurée (`npm run test:coverage`) mais **pas de seuil bloquant** dans la CI | Règles métier déjà couvertes à 96 % (serveur) et 99,7 % (`web/src/lib`) ; l'affichage est vérifié par des tests de parcours | Seuil global de 80 % sur l'interface (les écrans y descendraient artificiellement) |
+
+## Assistant GMAO sans IA externe (v1.17)
+
+**Choix** : l'assistant comprend la question par mots-clés et **calcule** la réponse (recherche, comptages, moyennes)
+dans le navigateur, sur les données déjà autorisées pour l'utilisateur. Pas de modèle de langage.
+**Pourquoi** : aucune donnée (pannes, noms, temps des intervenants) ne sort de SETRAM, pas d'accès Internet ni de
+clé payante, réponses traçables (chaque chiffre vient d'une DI / d'un OT cliquable), rien à valider par le RSSI / DPO.
+**Limite** : questions hors des types prévus (panne, intervenant, équipement, stock, situation) → recherche de panne
+par mots-clés. **Quand revoir** : si la DSI met à disposition un modèle de langage hébergé chez SETRAM (ex. Ollama),
+il pourra reformuler ces réponses calculées sans changer leur source.
+
+## Profils vérifiés par le serveur ; notifications ; e-mail facultatif (v1.18)
+
+**Choix** : le profil (colonne `users.role`) fixe ce que la personne peut faire, les droits (`users.droits`) fixent où.
+Les règles sont dans `server/src/profils-core.js`, pures et partagées avec la démonstration, et appliquées à chaque
+`PUT` / `DELETE` : masquer un bouton ne suffit pas. La validation DG est recalculée par le serveur (personne ne se valide
+soi-même). Les notifications sont créées par le serveur après l'enregistrement (table `notifications`), l'e-mail est
+facultatif (`nodemailer`, version figée, transport désactivé tant que `SMTP_HOST` est vide, accès fichiers / URL coupés,
+texte court sans détail technique). **Pourquoi** : besoin exprimé (technicien sans clôture, validation DG, délégation des
+comptes révocable) et règle « droits vérifiés côté serveur ». **Quand revoir** : annuaire d'entreprise (rôles AD / LDAP),
+ou circuit de validation plus riche (plusieurs niveaux).

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { lignesDS, totalDS, quantiteDS, libelleArticlesDS, construireLignes, lignesEnRupture, etatSelonStock, retirerLigneDS, piecesRestantAdemander } from '../lib/ds.js';
-import { preparerReinitialisation, COLLECTIONS_METIER } from '../../../server/src/reinitialisation-core.js';
+import { preparerReinitialisation, enregistrementConcerne, filtreSql, COLLECTIONS_METIER } from '../../../server/src/reinitialisation-core.js';
 
 const PIECES = [
   { code: 'P-001', nom: 'Fusible', prix: 100, stock: 10, categorie: 'Pièce' },
@@ -62,6 +62,8 @@ describe('repartir de zéro : règles communes serveur / démonstration', () => 
     expect(() => preparerReinitialisation({ confirmation: 'oui', sauvegardeFaite: true })).toThrow(/REPARTIR DE ZERO/);
     expect(() => preparerReinitialisation({ confirmation: 'REPARTIR DE ZERO' })).toThrow(/sauvegarde/);
     expect(() => preparerReinitialisation(null)).toThrow();
+    expect(preparerReinitialisation({ confirmation: 'Repartir  de  Zéro', sauvegardeFaite: true }).numerotation).toBe(true);   // accents et espaces tolérés
+    expect(() => preparerReinitialisation({ confirmation: 'REPARTIR A ZERO', sauvegardeFaite: true })).toThrow();
     const p = preparerReinitialisation({ confirmation: '  repartir de zero ', sauvegardeFaite: true });
     expect(p.collections).toEqual(COLLECTIONS_METIER);
     expect(p.numerotation).toBe(true);
@@ -72,5 +74,52 @@ describe('repartir de zéro : règles communes serveur / démonstration', () => 
     expect(p.collections).toEqual(expect.arrayContaining(['systemes', 'arborescence', 'feries', 'equipements']));
     expect(p.collections).not.toContain('users');
     expect(p.sequences).toEqual([]);
+  });
+});
+
+describe('repartir de zéro : périmètre par catégorie, unité et système', () => {
+  const base = { confirmation: 'REPARTIR DE ZERO', sauvegardeFaite: true };
+  it('catégories au choix : seules celles cochées (ordre stable, sans doublon), numérotation de ces catégories seulement', () => {
+    const p = preparerReinitialisation({ ...base, collections: ['dis', 'dis', 'bts'] });
+    expect(p.collections).toEqual(['dis', 'bts']);
+    expect(p.sequences.sort()).toEqual(['bts', 'bts:prev', 'dis']);
+    expect(p.scopes).toBeNull();
+    expect(() => preparerReinitialisation({ ...base, collections: [] })).toThrow(/au moins une catégorie/);
+    expect(() => preparerReinitialisation({ ...base, collections: ['users'] })).toThrow(/inconnue/);
+  });
+  it('une seule unité : compteurs de cette unité seulement, référentiels refusés, unité inconnue refusée', () => {
+    const p = preparerReinitialisation({ ...base, unit: 'Oran', collections: ['dis', 'dss', 'equipements'] }, { units: ['Alger', 'Oran'] });
+    expect(p.unit).toBe('Oran');
+    expect(p.sequences).toEqual(['dis']);            // « dss » est commun à toutes les unités : son compteur n'est pas touché
+    expect(p.scopes).toEqual(['ORN']);
+    expect(() => preparerReinitialisation({ ...base, unit: 'Oran', collections: ['arborescence'] })).toThrow(/communs à toutes les unités/);
+    expect(() => preparerReinitialisation({ ...base, unit: 'Mars', collections: ['dis'] }, { units: ['Alger', 'Oran'] })).toThrow(/Unité inconnue/);
+  });
+  it('un seul système (arborescence de CFO) : jamais de remise à 1, jours fériés refusés', () => {
+    const p = preparerReinitialisation({ ...base, system: 'CFO', collections: ['arborescence'], numerotation: true });
+    expect(p.system).toBe('CFO');
+    expect(p.numerotation).toBe(false);
+    expect(p.sequences).toEqual([]);
+    expect(() => preparerReinitialisation({ ...base, system: 'CFO', collections: ['feries'] })).toThrow(/jours fériés/);
+    expect(() => preparerReinitialisation({ ...base, system: "CFO' OR 1=1", collections: ['dis'] })).toThrow(/invalide/);
+  });
+  it('ancien format inchangé : sans « collections », tout le métier (+ référentiels sur demande)', () => {
+    expect(preparerReinitialisation(base).collections).toEqual(COLLECTIONS_METIER);
+    expect(preparerReinitialisation({ ...base, referentiels: true }).collections).toContain('arborescence');
+  });
+  it('filtre : unité et système sur les éléments ; sur l\'arborescence, l\'en-tête CFO et CFO.xxx mais pas CFA ni CFOX', () => {
+    const p = preparerReinitialisation({ ...base, unit: 'Oran', system: 'CFO', collections: ['equipements'] });
+    expect(enregistrementConcerne('equipements', { id: 'a', unit: 'Oran', system: 'CFO' }, p)).toBe(true);
+    expect(enregistrementConcerne('equipements', { id: 'b', unit: 'Alger', system: 'CFO' }, p)).toBe(false);
+    expect(enregistrementConcerne('equipements', { id: 'c', unit: 'Oran', system: 'CFA' }, p)).toBe(false);
+    expect(enregistrementConcerne('equipements', { id: 'd', unit: 'Oran', system: 'CFO', deleted: true }, p)).toBe(false);
+    const q = preparerReinitialisation({ ...base, system: 'CFO', collections: ['arborescence'] });
+    const ids = ['CFO', 'CFO.SST', 'CFA', 'CFA.SST', 'CFOX', 'CFOX.A'];
+    expect(ids.filter((id) => enregistrementConcerne('arborescence', { id, unit: '', system: null }, q))).toEqual(['CFO', 'CFO.SST']);
+    const f = filtreSql('dis', p, 1);
+    expect(f.where).toBe('collection=$2 AND NOT deleted AND unit=$3 AND system=$4');
+    expect(f.params).toEqual(['dis', 'Oran', 'CFO']);
+    expect(filtreSql('arborescence', q, 1).params).toEqual(['arborescence', 'CFO', 'CFO.']);
+    expect(filtreSql('dis', preparerReinitialisation(base), 1)).toEqual({ where: 'collection=$2 AND NOT deleted', params: ['dis'] });
   });
 });

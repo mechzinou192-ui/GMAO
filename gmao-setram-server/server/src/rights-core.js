@@ -19,8 +19,9 @@ export const COLLECTIONS = {
   planning:     { volet: 3, readVolets: [3, 6] },
   // compteurs d'équipement (km, heures…) : relevés saisis par le préventif ou par le technicien à la clôture d'un OT
   compteurs_eq: { volet: 3, writeVolets: [2, 3], readVolets: [0, 2, 3, 6] },
-  pieces:       { volet: 4, shared: true, readVolets: [4, 6] },
-  dss:          { volet: 4, shared: true },
+  // articles lisibles depuis les OT et le préventif (pièces utilisées) ; DS créées depuis un OT
+  pieces:       { volet: 4, shared: true, readVolets: [2, 3, 4, 6] },
+  dss:          { volet: 4, shared: true, readVolets: [2, 4, 6], writeVolets: [2, 4] },
   bs:           { volet: 4, shared: true },
   brs:          { volet: 4, shared: true },
   decharges:    { volet: 4, shared: true },
@@ -29,6 +30,10 @@ export const COLLECTIONS = {
   mesures:      { volet: 0, shared: true, readVolets: [0, 6] },
   controles:    { volet: 0, shared: true, readVolets: [0, 6] },
   organismes:   { volet: 0, shared: true, readVolets: [0, 6] },
+  // rapports d'activité maintenance des UO (volet 7) : préparés par l'UO, revus et validés par la DG
+  rapports:     { volet: 7, readVolets: [7], writeVolets: [7] },
+  // profils créés par le super administrateur (organigramme) : lisibles par tous, modifiables par le super admin seul
+  profils:      { volet: 0, shared: true, readAll: true },
   systemes:     { volet: 0, shared: true, readAll: true },
   arborescence: { volet: 0, shared: true, readAll: true },
   feries:       { volet: 5, shared: true, readAll: true },
@@ -52,7 +57,7 @@ function systemOk(user, unit, system) {
   if (user.super_admin) return true;
   const g = unitGrant(user, unit);
   if (!g) return false;
-  return !system || g.systems.includes(system);
+  return !system || g.systems.includes('*') || g.systems.includes(system);   // « * » : tous les systèmes (administrateur UO)
 }
 
 function voletAny(user, volet) {

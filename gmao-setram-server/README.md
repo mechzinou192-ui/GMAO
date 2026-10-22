@@ -194,6 +194,9 @@ Le lien contient l'adresse du serveur : imprimer les étiquettes **depuis l'adre
 | `lib/equipes.js` | rattachement équipement / intervenant à un système |
 | `lib/couts.js` | coût d'un ordre de travail |
 | `lib/kpi.js` | MTTR, MTBF, disponibilité, TMP/TMC, récurrence, RH, stock, AMDEC |
+| `pages/Rapports.jsx` | Rapports d'activité des UO : dépôt, revue des experts DG, décision du responsable DG |
+| `pages/ValidationDG.jsx` | Écran de validation de l'expert DG (OT clôturés, équipements, plans, sous-systèmes) |
+| `lib/assistant.js` | Assistant GMAO : analyse de la question (mots-clés), recherche de pannes similaires, synthèses intervenant / équipement, stock, situation |
 | `lib/ds.js` | demandes de sortie multi-pièces (DS globale), retrait d'une pièce, rupture, pièces restant à demander |
 | `lib/unites.js` | unités d'exploitation et abréviations |
 

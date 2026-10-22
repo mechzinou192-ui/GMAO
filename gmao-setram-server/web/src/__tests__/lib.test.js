@@ -163,7 +163,7 @@ describe('rattachement aux systèmes', () => {
   it('par code, par nom, par mot-clé, ou rien', () => {
     expect(systemeDe('MR.ALG.BOG.01', '', eqs)).toBe('MR');
     expect(systemeDe('', 'transformateur t1', eqs)).toBe('CFO');
-    expect(systemeDe('X', 'Portillon d\'accès gare', eqs)).toBe('BILLETTIQUE');
+    expect(systemeDe('X', 'Portillon d\'accès gare', eqs)).toBe('BIL');
     expect(systemeDe('X', 'Aiguillage de la voie 2', eqs)).toBe('VOIE');
     expect(systemeDe('X', 'Machin inconnu', eqs)).toBe('');
   });

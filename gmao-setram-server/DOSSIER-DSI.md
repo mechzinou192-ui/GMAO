@@ -209,6 +209,8 @@ nginx -t && systemctl reload nginx
 | `RATE_LIMIT_COSTLY_MAX` | 30 | Import Excel et envois de photos par fenêtre et par utilisateur |
 | `RATE_LIMIT_AUTH_WINDOW_MIN` / `RATE_LIMIT_AUTH_MAX` | 15 / 30 | Tentatives de connexion par adresse IP |
 | `SHUTDOWN_TIMEOUT_SEC` | 10 | Délai laissé aux requêtes en cours lors d'un arrêt |
+| `IMPORT_MAX_LIGNES` / `IMPORT_MAX_MO` | 100 000 / 100 | Import Excel : lignes par feuille, taille d'un envoi (derrière nginx : `client_max_body_size` de `/api/import` ≥ cette valeur) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `GMAO_URL` | vide | E-mails de notification (OT à clôturer…) par le serveur de messagerie **interne** ; vide = notifications dans l'application seulement |
 | `DEMO` | — | **Ne jamais définir en exploitation** (mode démonstration : comptes publics) |
 
 Toutes les variables sont commentées dans **`.env.example`** (installation A) et `deploy/gmao.env.example` (installation B).

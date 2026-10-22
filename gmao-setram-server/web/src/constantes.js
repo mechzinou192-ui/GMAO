@@ -1,15 +1,19 @@
 // Constantes et données de départ partagées par plusieurs écrans.
 
 
+export const RAPPORTS=11;     // onglet « Rapports d'activité » (volet 7 des droits)
+export const VOLET_RAPPORTS=7;
+export const VALIDATION=10;   // onglet « Validation DG » (expert DG, super administrateur)
 export const MATERIAUX=9;  // onglet « Gestion et suivi des matériaux » (appareils de mesure, contrôles réglementaires, organismes)
 export const ACCUEIL=8;   // onglet « Accueil » (tableau de bord), indépendant des volets de droits 0 à 7
 
 export function seedEquipements(){
  const data={
-  CFO:{SST:["Transformateur HT/BT","Redresseur & Disjoncteur","Jeu de barres & Cellules HTA"],LAC:["Fil de contact & Câble porteur","Isolateur & Console"],ECL:["Armoire BT Station"]},
+  CFO:{SST:["Transformateur HT/BT","Redresseur & Disjoncteur","Jeu de barres & Cellules HTA"],ECL:["Armoire BT Station"]},
+  LAC:{CAT:["Fil de contact & Câble porteur","Isolateur & Console"]},
   CFA:{VDO:["Caméra dôme quai","Enregistreur NVR"],SON:["Haut-parleur quai","Poste d'interphonie"],HOR:["Horloge mère station"]},
   VOIE:{RVB:["Rail UIC60 PK4","Traverse béton"],AIG:["Moteur d'aiguille AIG-12","Aiguillage Voie 3"]},
-  BILLETTIQUE:{VAL:["Valideur quai Centrale","Valideur bord Rame 02"],DAT:["DAT station Émir"],PTL:["Portillon accès Gare"]},
+  BIL:{VAL:["Valideur quai Centrale","Valideur bord Rame 02"],DAT:["DAT station Émir"],PTL:["Portillon accès Gare"]},
   MR:{BOG:["Bogie Rame 02","Disque de frein Rame 04"],TRC:["Onduleur Rame 04"],PRT:["Porte passager Rame 01"],CLM:["Groupe HVAC Rame 03"]},
   ELM:{GRP:["Groupe électrogène Dépôt","TGBT Atelier Central"]},
   BO:{STA:["Abri quai Station Centrale"],DEP:["Bâtiment Atelier Central"],HVI:["Extincteur Atelier"]},
@@ -49,4 +53,4 @@ export function posteOptions(systemsList){
 export const KPI_VUES=[["Synthèse","Synthèse"],["Équipements","Équipements"],["Ressources humaines","Ressources humaines"],["Stock","Stock"],["Criticité (AMDEC)","Criticité (AMDEC)"],["Référentiel","Référentiel"]];
 export const KPI_BLOCS=[["syn:ing","Synthèse › Indicateurs d'ingénierie (MTTR, MTBF, disponibilité…)"],["syn:real","Synthèse › Indicateurs de réalisation (TCP, TCC, TMP, TMC)"],["syn:taux","Synthèse › Taux de panne, d'intervention, récurrence"],["syn:comp","Synthèse › Comparatif des unités"]];
 export const KPI_ALL=[...KPI_VUES,...KPI_BLOCS].map(x=>x[0]);
-export const VOLETS=["Arborescence technique et matériaux","Demandes d'Intervention (DI)","Ordres de Travail (OT)","Planning Préventif","Gestion de stock","Gestion du personnel","Indicateurs de performance"];
+export const VOLETS=["Arborescence technique et matériaux","Demandes d'Intervention (DI)","Ordres de Travail (OT)","Planning Préventif","Gestion de stock","Gestion du personnel","Indicateurs de performance","Rapports d'activité maintenance (UO / DG)"];

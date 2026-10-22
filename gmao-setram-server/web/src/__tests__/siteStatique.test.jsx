@@ -5,7 +5,7 @@ import { createDemoApi } from '../demo/apiDemo.js';
 const JPEG = () => new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0])], { type: 'image/jpeg' });
 const GIF = () => new Blob([new TextEncoder().encode('GIF89a-pas-une-photo-acceptee')], { type: 'image/jpeg' });
 const AN = new Date().getFullYear();
-const MDP = { 'demo.admin': 'Demo2026-Admin', 'demo.responsable': 'Demo2026-Resp', 'demo.technicien': 'Demo2026-Tech', 'demo.exploitation': 'Demo2026-Expl', 'demo.magasin': 'Demo2026-Mag', 'demo.direction': 'Demo2026-Dir' };
+const MDP = { 'demo.admin': 'Demo2026-Admin', 'demo.responsable': 'Demo2026-Resp', 'demo.charge': 'Demo2026-Charge', 'demo.expert': 'Demo2026-Expert', 'demo.resp.dg': 'Demo2026-RespDG', 'demo.technicien': 'Demo2026-Tech', 'demo.exploitation': 'Demo2026-Expl', 'demo.magasin': 'Demo2026-Mag', 'demo.direction': 'Demo2026-Dir' };
 const nouveau = () => createDemoApi({ stockage: null });
 const connecte = async (api, id) => { await api.login(id, MDP[id]); return api; };
 
@@ -32,8 +32,9 @@ describe('serveur de démonstration intégré au navigateur', () => {
 
   it('les droits sont ceux du vrai serveur : chacun ne voit que son périmètre', async () => {
     const tech = await connecte(nouveau(), 'demo.technicien');
-    const dis = (await tech.list('dis')).items;
-    expect(dis.length).toBeGreaterThan(5); expect(dis.every((i) => i.unit === 'Alger' && ['CFO', 'CFA', 'BILLETTIQUE'].includes(i.system))).toBe(true);
+    const ots = (await tech.list('bts')).items;                                     // profil Technicien : les OT seulement
+    expect(ots.length).toBeGreaterThan(5); expect(ots.every((i) => i.unit === 'Alger' && ['CFO', 'CFA', 'BIL'].includes(i.system))).toBe(true);
+    expect((await tech.list('dis')).items).toHaveLength(0);
     const dir = await connecte(nouveau(), 'demo.direction');
     expect(new Set((await dir.list('dis')).items.map((i) => i.unit)).size).toBeGreaterThanOrEqual(4);
     await expect(dir.save('dis', 'DI-X', { unit: 'Alger', system: 'CFO', data: { code: 'DI-X' } })).rejects.toMatchObject({ status: 403 });
@@ -121,7 +122,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
     const adm = await connecte(nouveau(), 'demo.admin');
     for (const appel of [() => adm.createUser({ id: 'x' }), () => adm.updateUser('demo.admin', {}), () => adm.deleteUser('demo.technicien'), () => adm.changePassword('a', 'b')])
       await expect(appel()).rejects.toMatchObject({ status: 403, message: 'Désactivé dans la version de démonstration.' });
-    expect((await adm.users()).users).toHaveLength(6); expect((await adm.users()).users.every((u) => !('password' in u))).toBe(true);
+    expect((await adm.users()).users).toHaveLength(9); expect((await adm.users()).users.every((u) => !('password' in u))).toBe(true);
     await adm.save('pieces', 'P-J', { unit: '', data: { nom: 'x' } });
     expect((await adm.audit()).entries[0]).toMatchObject({ action: 'create', record_id: 'P-J', user_id: 'demo.admin' });
     const r = await connecte(nouveau(), 'demo.responsable');
@@ -235,7 +236,8 @@ describe('application complète en mode site statique', () => {
     await waitFor(() => expect(document.body.textContent).toContain(prev.id));
     expect(document.body.textContent).not.toContain(corr.id);
     onglet(/Arborescence/);
-    await waitFor(() => expect(document.body.textContent).toContain('Ajouter un système'));
+    await waitFor(() => expect(document.body.textContent).toContain('+ Sous-système'));
+    expect(document.body.textContent).not.toContain('Ajouter un système');            // systèmes : super administrateur seul
     expect(document.body.textContent).not.toContain('Appareils de mesure');
     onglet(/Matériaux/);
     for (const t of ['Appareils de mesure', 'Contrôles réglementaires', 'Organismes']) expect(await screen.findByText(t)).toBeTruthy();
@@ -439,8 +441,10 @@ describe('application complète en mode site statique', () => {
     const bouton = await screen.findByText('Vider les données');
     fireEvent.click(bouton);
     expect(Object.values(apiSite._etat().records.equipements).some((r) => !r.deleted)).toBe(true);   // rien sans confirmation
-    fireEvent.click(screen.getByText(/et vérifié/).closest('label'));
-    fireEvent.change(screen.getByLabelText('Phrase de confirmation'), { target: { value: 'repartir de zero' } });
+    expect(screen.getByTestId('reinit-manque').textContent).toMatch(/cocher.*taper REPARTIR DE ZERO/s);   // ce qui manque est affiché
+    fireEvent.click(screen.getByText(/une sauvegarde de la base/).closest('label'));
+    fireEvent.change(screen.getByLabelText('Phrase de confirmation'), { target: { value: 'Repartir de zéro' } });
+    expect(screen.queryByTestId('reinit-manque')).toBeNull();
     fireEvent.click(bouton);
     expect(await screen.findByTestId('reinit-ok')).toBeTruthy();
     const e = apiSite._etat();
@@ -448,6 +452,211 @@ describe('application complète en mode site statique', () => {
     expect(Object.values(e.records.systemes).some((r) => !r.deleted)).toBe(true);
     expect((await apiSite.nextCodes('dis', { unit: 'Alger' }))[0]).toBe(`DI-ALG-${AN}-0001`);
     expect(e.audit.at(-1).action).toBe('reinitialisation');
+  });
+
+  it('administration : repartir de zéro pour une seule unité et une seule catégorie — le reste est conservé', async () => {
+    await seConnecter('Super administrateur');
+    onglet(/^\s*Administration/);
+    fireEvent.click(await screen.findByText('Repartir de zéro'));
+    const vivants = (c, f = () => true) => Object.values(apiSite._etat().records[c] || {}).filter((r) => !r.deleted && f(r));
+    const unites = [...new Set(vivants('dis').map((r) => r.unit))];
+    expect(unites.length).toBeGreaterThan(1);
+    const [cible, autre] = unites;
+    const avantAutre = vivants('dis', (r) => r.unit === autre).length;
+    const avantEquip = vivants('equipements').length;
+    fireEvent.change(await screen.findByLabelText('Unité'), { target: { value: cible } });
+    fireEvent.click(screen.getByText('Tout décocher'));
+    fireEvent.click(screen.getByLabelText("Demandes d'intervention"));
+    fireEvent.click(screen.getByText(/une sauvegarde de la base/).closest('label'));
+    fireEvent.change(screen.getByLabelText('Phrase de confirmation'), { target: { value: 'repartir de zero' } });
+    fireEvent.click(screen.getByText('Vider les données'));
+    expect(await screen.findByTestId('reinit-ok')).toBeTruthy();
+    expect(vivants('dis', (r) => r.unit === cible)).toHaveLength(0);
+    expect(vivants('dis', (r) => r.unit === autre)).toHaveLength(avantAutre);
+    expect(vivants('equipements')).toHaveLength(avantEquip);
+  });
+
+  it('administration : repartir de zéro pour l arborescence de CFO seulement — les autres systèmes sont conservés', async () => {
+    await seConnecter('Super administrateur');
+    onglet(/^\s*Administration/);
+    fireEvent.click(await screen.findByText('Repartir de zéro'));
+    const arbo = () => Object.values(apiSite._etat().records.arborescence || {}).filter((r) => !r.deleted);
+    const cfo = (r) => r.id === 'CFO' || r.id.startsWith('CFO.');
+    const autres = arbo().filter((r) => !cfo(r)).length;
+    expect(arbo().filter(cfo).length).toBeGreaterThan(0);
+    expect(autres).toBeGreaterThan(0);
+    const equipements = Object.values(apiSite._etat().records.equipements).filter((r) => !r.deleted).length;
+    fireEvent.change(await screen.findByLabelText('Système'), { target: { value: 'CFO' } });
+    fireEvent.click(screen.getByText('Tout décocher'));
+    fireEvent.click(screen.getByLabelText(/Sous-systèmes \(arborescence\)/));
+    fireEvent.click(screen.getByText(/une sauvegarde de la base/).closest('label'));
+    fireEvent.change(screen.getByLabelText('Phrase de confirmation'), { target: { value: 'repartir de zero' } });
+    fireEvent.click(screen.getByText('Vider les données'));
+    expect(await screen.findByTestId('reinit-ok')).toBeTruthy();
+    expect(arbo().filter(cfo)).toHaveLength(0);
+    expect(arbo().filter((r) => !cfo(r))).toHaveLength(autres);
+    expect(Object.values(apiSite._etat().records.equipements).filter((r) => !r.deleted)).toHaveLength(equipements);
+    expect(Object.values(apiSite._etat().records.systemes).some((r) => !r.deleted && r.id === 'CFO')).toBe(true);
+  });
+
+  it('assistant GMAO : question sur une panne, lien vers l’OT, synthèse d’un intervenant ; refusée au technicien', async () => {
+    await seConnecter('Responsable maintenance');
+    fireEvent.click(screen.getByTestId('assistant-bouton'));
+    const panneau = await screen.findByTestId('assistant');
+    fireEvent.change(within(panneau).getByLabelText("Question à l'assistant"), { target: { value: 'portillon bloqué' } });
+    fireEvent.click(within(panneau).getByText('Envoyer'));
+    expect(await within(panneau).findByText(/intervention.* similaire/)).toBeTruthy();
+    expect(within(panneau).getByText('Causes les plus fréquentes')).toBeTruthy();
+    const lien = within(panneau).getAllByRole('button').find((b) => /^OT-ALG-|^DI-ALG-/.test(b.textContent));
+    fireEvent.click(lien);
+    const code = lien.textContent.split(' — ')[0];
+    await waitFor(() => expect(document.body.textContent).toMatch(new RegExp('(Ordre de travail|OT|DI).*' + code)));
+    fireEvent.change(within(panneau).getByLabelText("Question à l'assistant"), { target: { value: 'synthèse de K. Belaïd' } });
+    fireEvent.click(within(panneau).getByText('Envoyer'));
+    expect((await within(panneau).findAllByText(/Points forts|Points d'attention/)).length).toBeGreaterThan(0);
+    expect(within(panneau).getByText(/pas une évaluation/)).toBeTruthy();
+    cleanup(); apiSite._reinitialiser();
+    await seConnecter('Technicien');
+    fireEvent.click(screen.getByTestId('assistant-bouton'));
+    const p2 = await screen.findByTestId('assistant');
+    fireEvent.click(within(p2).getByText('Synthèse de K. Belaïd'));
+    expect(await within(p2).findByText(/réservée aux profils/)).toBeTruthy();
+  });
+
+  it('profils : le technicien termine la saisie, le chargé est notifié et clôture, l’expert DG valide', async () => {
+    const recs = apiSite._etat().records;
+    const ot = Object.values(recs.bts).find((r) => r.unit === 'Alger' && r.system === 'CFO' && !r.data.plan && r.data.dateCloture);
+    ot.data = { ...ot.data, etat: 'En cours', dateCloture: undefined, validationDG: undefined, taches: ot.data.taches.map((t) => ({ ...t, res: 'OK' })) };
+    if (ot.data.di) recs.dis[ot.data.di].data.etat = 'Transmis';
+    // 1. technicien : pas de bouton de clôture, « Terminer la saisie »
+    await seConnecter('Technicien');
+    onglet(/Maintenance corrective/);
+    fireEvent.click(await screen.findByText('OT correctifs'));
+    fireEvent.click((await screen.findAllByText(ot.id))[0]);
+    expect(screen.queryByText("Clôturer l'OT")).toBeNull();
+    fireEvent.click(await screen.findByText('Terminer la saisie'));
+    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.etat).toBe('À clôturer'), { timeout: 4000 });
+    // le serveur refuse une clôture par le technicien, même en contournant l'écran
+    const tech = apiSite._etat().records.bts[ot.id];
+    await expect(apiSite.save('bts', ot.id, { unit: 'Alger', system: 'CFO', version: tech.version, data: { ...tech.data, etat: 'Clôturé' } })).rejects.toMatchObject({ status: 403, code: 'PROFIL' });
+    // 2. chargé système : notifié, ouvre l'OT depuis la cloche, clôture
+    cleanup(); await apiSite.logout();               // même état de démonstration, autre compte
+    await seConnecter('Chargé système CFO');
+    fireEvent.click(screen.getByLabelText('Alertes'));
+    const notif = await screen.findByTestId('notifications');
+    expect(notif.textContent).toContain(ot.id + ' — ' + ot.data.eq + ' à clôturer');
+    fireEvent.click(within(notif).getAllByRole('button')[0]);
+    expect(await screen.findByTestId('ot-a-cloturer')).toBeTruthy();
+    fireEvent.click(screen.getByText("Clôturer l'OT"));
+    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.etat).toBe('Clôturé'), { timeout: 4000 });
+    expect(apiSite._etat().records.bts[ot.id].data.validationDG.etat).toBe('À valider');
+    // 3. expert DG : écran de validation, « Valider »
+    cleanup(); await apiSite.logout();
+    await seConnecter('Expert DG CFO');
+    onglet(/Validation DG/);
+    const ligne = await screen.findByTestId('val-' + ot.id);
+    fireEvent.click(within(ligne).getByText('Valider'));
+    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.validationDG).toMatchObject({ etat: 'Validé', par: 'Démo — Expert DG CFO' }), { timeout: 4000 });
+  });
+
+  it('profils : l’expert DG fait reprendre un plan avec un motif (chargé notifié) ; exploitation sans OT', async () => {
+    const recs = apiSite._etat().records;
+    const plan = Object.values(recs.planning).find((r) => r.unit === 'Alger' && r.system === 'CFO');
+    plan.data = { ...plan.data, validationDG: { etat: 'À valider', depuis: '2026-10-20' } };
+    await seConnecter('Expert DG CFO');
+    onglet(/Validation DG/);
+    const ligne = await screen.findByTestId('val-' + plan.id);
+    fireEvent.click(within(ligne).getByText('À reprendre'));
+    fireEvent.change(within(ligne).getByLabelText('Motif pour ' + plan.id), { target: { value: 'FMP non jointe' } });
+    fireEvent.click(within(ligne).getByText('Envoyer'));
+    await waitFor(() => expect(apiSite._etat().records.planning[plan.id].data.validationDG).toMatchObject({ etat: 'À reprendre', motif: 'FMP non jointe' }), { timeout: 4000 });
+    expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.charge' && /FMP non jointe/.test(n.texte))).toBe(true);
+    cleanup(); apiSite._reinitialiser();
+    await seConnecter('Exploitation');
+    onglet(/Maintenance corrective/);
+    await waitFor(() => expect(document.body.textContent).toContain('Nouvelle DI'));
+    expect(screen.queryByText('Générer OT')).toBeNull();
+  });
+
+  it('rapports d’activité : l’expert relève les erreurs, le responsable DG renvoie, l’UO corrige et renvoie (tour 2)', async () => {
+    const rap = () => Object.values(apiSite._etat().records.rapports).find((r) => r.data.etat !== 'Clôturé' && r.unit === 'Alger');
+    const code = rap().id;
+    // expert DG : revue
+    await seConnecter('Expert DG CFO');
+    onglet(/Rapports d'activité/);
+    fireEvent.click(await screen.findByTestId('rapport-' + code));
+    const fiche = await screen.findByTestId('fiche-rapport');
+    fireEvent.change(within(fiche).getByLabelText("Nombre d'erreurs"), { target: { value: '2' } });
+    fireEvent.click(within(fiche).getByText('Terminer ma revue'));
+    expect(await within(fiche).findByText(/Décrivez les erreurs/)).toBeTruthy();
+    fireEvent.change(within(fiche).getByLabelText('Commentaire de revue'), { target: { value: 'Disponibilité CFO erronée' } });
+    fireEvent.click(within(fiche).getByText('Terminer ma revue'));
+    await waitFor(() => expect(rap().data.etat).toBe('À valider DG'), { timeout: 4000 });
+    // responsable DG : clôture impossible (erreurs) ; renvoi pour correction
+    cleanup(); await apiSite.logout();
+    await seConnecter('Responsable DG');
+    onglet(/Rapports d'activité/);
+    fireEvent.click(await screen.findByTestId('rapport-' + code));
+    const f2 = await screen.findByTestId('fiche-rapport');
+    expect(within(f2).getByText(/doit être renvoyé à l'UO/)).toBeTruthy();
+    fireEvent.change(within(f2).getByLabelText('Motif de renvoi'), { target: { value: 'Revoir la disponibilité CFO' } });
+    fireEvent.click(within(f2).getByText("Renvoyer à l'UO pour correction"));
+    await waitFor(() => expect(rap().data.etat).toBe('À corriger'), { timeout: 4000 });
+    // UO (administrateur UO) : notifiée, joint la correction et renvoie
+    cleanup(); await apiSite.logout();
+    await seConnecter('Responsable maintenance');
+    fireEvent.click(screen.getByLabelText('Alertes'));
+    expect((await screen.findByTestId('notifications')).textContent).toMatch(/à corriger/);
+    onglet(/Rapports d'activité/);
+    fireEvent.click(await screen.findByTestId('rapport-' + code));
+    const f3 = await screen.findByTestId('fiche-rapport');
+    expect(within(f3).getAllByText(/Revoir la disponibilité CFO/).length).toBeGreaterThan(0);
+    const xlsx = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04]), 'xl/workbook.xml'], 'Rapport_corrige.xlsx');
+    fireEvent.change(within(f3).getByLabelText('Joindre des fichiers au rapport'), { target: { files: [xlsx] } });
+    await waitFor(() => expect(rap().data.fichiers.length).toBe(1), { timeout: 4000 });
+    fireEvent.click(await within(await screen.findByTestId('fiche-rapport')).findByText('Correction terminée — renvoyer aux experts'));
+    await waitFor(() => expect(rap().data).toMatchObject({ etat: 'Envoyé', tour: 2 }), { timeout: 4000 });
+    expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.expert' && /tour 2/.test(n.texte))).toBe(true);
+  });
+
+  it('super administrateur : statut manuel d’une DI (tracé), système ajouté puis supprimé avec ses sous-systèmes', async () => {
+    const di = Object.values(apiSite._etat().records.dis).find((r) => r.unit === 'Alger' && r.data.etat === 'Traité');
+    await seConnecter('Super administrateur');
+    onglet(/Maintenance corrective/);
+    fireEvent.click((await screen.findAllByText(di.id))[0]);
+    fireEvent.click(await screen.findByTestId('statut-manuel'));
+    const form = await screen.findByTestId('statut-manuel-form');
+    fireEvent.change(within(form).getByLabelText('Nouveau statut'), { target: { value: 'Annulé' } });
+    fireEvent.change(within(form).getByLabelText('Motif du changement'), { target: { value: 'Doublon' } });
+    fireEvent.click(within(form).getByText('Appliquer'));
+    await waitFor(() => expect(apiSite._etat().records.dis[di.id].data).toMatchObject({ etat: 'Annulé', historiqueStatut: [expect.objectContaining({ de: 'Traité', a: 'Annulé', motif: 'Doublon', manuel: true })] }), { timeout: 4000 });
+    cleanup();
+    // système vide ajouté par le super admin, puis supprimé avec son sous-système
+    const t = new Date().toISOString(); const recs = apiSite._etat().records;
+    recs.systemes.TST = { id: 'TST', unit: '', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t, data: { code: 'TST', nom: 'Test', ordre: 99 } };
+    recs.arborescence.TST = { id: 'TST', unit: '', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t, data: { system: 'TST', header: true, ordre: 99 } };
+    recs.arborescence['TST.A'] = { id: 'TST.A', unit: '', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t, data: { system: 'TST', code: 'A', sub: 'Sous A', ordre: 0 } };
+    render(<App />); await screen.findByTestId('menu-lateral');
+    onglet(/Arborescence/);
+    fireEvent.click(await screen.findByLabelText('Modifier le système TST'));
+    fireEvent.click(await screen.findByText(/Supprimer le système TST et ses 1 sous-système/));
+    fireEvent.click(screen.getByText('Oui, supprimer'));
+    await waitFor(() => expect(recs.systemes.TST.deleted && recs.arborescence['TST.A'].deleted).toBe(true), { timeout: 4000 });
+  });
+
+  it('super administrateur : un profil créé (organigramme) est proposé pour les comptes', async () => {
+    await seConnecter('Super administrateur');
+    onglet(/^\s*Administration/);
+    fireEvent.click(await screen.findByText('Profils (organigramme)'));
+    fireEvent.click(await screen.findByText('+ Nouveau profil'));
+    fireEvent.change(screen.getByLabelText('Nom du profil'), { target: { value: 'Chef de district' } });
+    fireEvent.click(screen.getByText('Demandes d\'Intervention (DI)').closest('label'));
+    fireEvent.click(screen.getByText('Clôture les OT').closest('label'));
+    fireEvent.click(screen.getByText('Enregistrer le profil'));
+    await waitFor(() => expect(apiSite._etat().records.profils?.['Chef de district']?.data).toMatchObject({ volets: [1], cloture: true }), { timeout: 4000 });
+    fireEvent.click(screen.getByText("Comptes et droits d'accès"));
+    fireEvent.click(await screen.findByText('+ Nouvel utilisateur'));
+    expect([...screen.getByLabelText('Profil', { selector: 'select' }).options].map((o) => o.value)).toContain('Chef de district');
   });
 
   it('administration : comptes visibles mais verrouillés, journal consultable', async () => {

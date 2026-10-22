@@ -1,6 +1,6 @@
 // Application connectée : données synchronisées, actions métier, mise en page (menu, en-tête, onglets).
 import React,{useState,useEffect,useRef} from "react";
-import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES} from "./constantes.js";
+import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES,VALIDATION,RAPPORTS,VOLET_RAPPORTS} from "./constantes.js";
 import {XL_LOGO} from "./excel.js";
 import {ajouterReleve,dernier,etatPlanCompteur,isCompteurPlan} from "./lib/compteurs.js";
 import {addMonths,fmtD,frDate,todayStr} from "./lib/dates.js";
@@ -14,18 +14,24 @@ import {UNITS,UNIT_ABBR} from "./lib/unites.js";
 import {reserverNumeros} from "./numbering.js";
 import {Accueil} from "./pages/Accueil.jsx";
 import {AdminPage} from "./pages/Administration.jsx";
+import Assistant from "./pages/Assistant.jsx";
+import {ValidationDG} from "./pages/ValidationDG.jsx";
+import {api} from "./api.js";
+import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue} from "../../server/src/profils-core.js";
+import {RapportsPage} from "./pages/Rapports.jsx";
+import {posteCouvre} from "./lib/equipes.js";
 import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
 import {Splash} from "./pages/Connexion.jsx";
 import {DIDetail,DIForm} from "./pages/DemandesIntervention.jsx";
 import {MaintenanceCorrective} from "./pages/MaintenanceCorrective.jsx";
 import {IndicateursPage} from "./pages/Indicateurs.jsx";
-import {BTCreateForm,BTDetail,BTPage} from "./pages/OrdresTravail.jsx";
+import {BTCreateForm,BTDetail,BTPage,BandeauValidation} from "./pages/OrdresTravail.jsx";
 import {Equipe,InterForm,PrestaForm} from "./pages/Personnel.jsx";
 import {PlanForm,Planning} from "./pages/Preventif.jsx";
 import {AchatForm,ArticleForm,BRForm,DSForm,DechargeForm,Magasin} from "./pages/Stock.jsx";
 import {DS_CLOSES,DS_MODIFIABLES,construireLignes,etatSelonStock,lignesDS,lignesEnRupture,piecesRestantAdemander,retirerLigneDS as retirerLigneDS_} from "./lib/ds.js";
 import {REG,useSynced} from "./sync.js";
-import {Btn,Card,Modal,MotifForm,ZoneSuppression} from "./ui/base.jsx";
+import {Btn,Card,Modal,MotifForm,ZoneSuppression,avecStatut} from "./ui/base.jsx";
 import {I} from "./ui/icones.jsx";
 
 export function GmaoApp({session,onLogout}){
@@ -33,9 +39,19 @@ export function GmaoApp({session,onLogout}){
  const unitsOk=sa?UNITS:UNITS.filter(u=>session.droits[u]);
  const [unit,setUnit]=useState(unitsOk[0]||"");
  const grant=sa?{systems:[],volets:[]}:(session.droits[unit]||{systems:[],volets:[]});
- const sysOk=(code)=>sa||grant.systems.includes(code);
+ const sysOk=(code)=>sa||grant.systems.includes("*")||grant.systems.includes(code);   // « * » : tous les systèmes (administrateur UO)
  const kpiOk=(k)=>sa||!grant.kpi||grant.kpi.includes(k); // kpi absent = tout autorisé (comptes existants)
- const tabOk=(i)=>i===ACCUEIL?true:i===7?sa:(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
+ // profils créés par le super administrateur (organigramme) : connus avant de calculer les capacités
+ const [profilsPerso,setProfilsPerso]=useSynced("profils");
+ definirProfilsPersonnalises(profilsPerso);
+ // administrateur UO (ou profil équivalent) à qui le super administrateur a donné la main sur les comptes de son unité
+ const delegue=!sa&&!!catalogue()[nomProfil(session.role)]?.delegationComptes&&!!session.gestionComptes;
+ const voletRapports=sa||Object.values(session.droits||{}).some(g=>(g.volets||[]).includes(VOLET_RAPPORTS));
+ const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||peutValider(session)):i===RAPPORTS?voletRapports:(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
+ // capacités du profil (le serveur les revérifie à chaque enregistrement)
+ const profil=sa?"Super administrateur":nomProfil(session.role);
+ const capCloture=peutCloturer(session), capCreerOT=peutCreerOT(session)&&tabOk(2);
+ const lecture=enConsultation(session);   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
  const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===MATERIAUX?tabOk(0):tabOk(i);
@@ -64,6 +80,29 @@ export function GmaoApp({session,onLogout}){
  const [pieceModal,setPieceModal]=useState(null);
  const [equipModal,setEquipModal]=useState(null);
  const [equipDetail,setEquipDetail]=useState(null);
+ const [assistant,setAssistant]=useState(false);   // panneau « Assistant GMAO »
+ const [rapports,setRapports]=useSynced("rapports");
+ const [rapportOuvert,setRapportOuvert]=useState(null);
+ // notifications du serveur (OT à clôturer, clôtures, reprises demandées par la DG) : relevées toutes les 30 s
+ const [notifs,setNotifs]=useState({items:[],nonLues:0});
+ useEffect(()=>{
+  let vivant=true;
+  const lire=async()=>{ if(!api.notifications||document.hidden) return; try{ const r=await api.notifications(); if(vivant) setNotifs(r); }catch{ /* hors ligne : prochain cycle */ } };
+  lire(); const iv=setInterval(lire,30000);
+  return ()=>{vivant=false;clearInterval(iv);};
+ },[]);
+ const lireNotif=async(n)=>{
+  setPanneau(null);
+  try{ await api.marquerLues({ids:[n.id]}); }catch{ /* sans gravité */ }
+  setNotifs(s=>({items:s.items.map(x=>x.id===n.id?{...x,lu:true}:x),nonLues:Math.max(0,s.nonLues-(n.lu?0:1))}));
+  if(n.unit&&unitsOk.includes(n.unit)) setUnit(n.unit);
+  if(n.collection==="bts") ouvrirOT(n.recordId);
+  else if(n.collection==="equipements"){const e=equipements.find(x=>x.code===n.recordId); if(e) setEquipDetail(e);}
+  else if(n.collection==="planning") setTab(3);
+  else if(n.collection==="arborescence") setTab(0);
+  else if(n.collection==="rapports"){ setTab(RAPPORTS); setRapportOuvert(n.recordId); }
+ };
+ const toutLu=async()=>{ try{ await api.marquerLues({tout:true}); }catch{ /* sans gravité */ } setNotifs(s=>({items:s.items.map(x=>({...x,lu:true})),nonLues:0})); };
  const [sousEquipModal,setSousEquipModal]=useState(null);
  const [sousEquipDetail,setSousEquipDetail]=useState(null);
  const [equipements,setEquipements,sEq]=useSynced("equipements");
@@ -357,6 +396,11 @@ const [notice,setNotice]=useState(null);
   setBts(bs=>bs.map(b=>b.code===code?{...b,...data}:b));
   setBtDetail(null);
  }
+ // Technicien : « Terminer la saisie » -> OT « À clôturer » ; le serveur prévient le chargé et le responsable du système
+ function terminerSaisie(code,data){
+  setBts(bs=>bs.map(b=>b.code===code?{...b,...(data||{}),etat:"À clôturer",saisieTerminee:{par:user,le:new Date().toISOString().slice(0,16).replace("T"," ")}}:b));
+  setBtDetail(null);
+ }
  async function cloturerBT(code,data){
   const bloquantes=dsOuvertesDe(code);
   if(bloquantes.length){ setBts(b=>b.map(x=>x.code===code&&x.etat!=="Clôturé"?{...x,etat:"En attente pièce"}:x)); setSyncErr("Clôture impossible : DS non traitée(s) par le magasin ("+bloquantes.map(d=>d.code).join(", ")+"). L'OT reste en attente de pièce."); return; }
@@ -448,7 +492,8 @@ const [notice,setNotice]=useState(null);
  const blocage={
   equipement:(code)=>{const d=dis.filter(x=>x.eq===code).length,o=bts.filter(x=>x.eq===code).length,p=planning.filter(x=>x.eq===code).length,c=compteursEq.filter(x=>x.eq===code).length;
    return raisons([d&&"utilisé par "+nb(d,"DI"),o&&nb(o,"OT"),p&&nb(p,"plan")+" préventif(s)",c&&nb(c,"compteur"),(d||o)&&"l'historique de maintenance doit être conservé (supprimez d'abord les plans et compteurs, les DI / OT restent)"]);},
-  systeme:(code)=>{const e=equipements.filter(x=>x.system===code).length,ss=(treeStruct[code]||[]).length;return raisons([e&&nb(e,"équipement")+" rattaché(s)",ss&&nb(ss,"sous-système")+" à supprimer d'abord"]);},
+  // un système (et ses sous-systèmes) se supprime tant qu'aucun équipement n'y est rattaché, dans aucune unité
+  systeme:(code)=>{const e=equipements.filter(x=>x.system===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités) : déplacez-les, supprimez-les ou videz ce système (Administration › Repartir de zéro, un seul système)"]);},
   sousSysteme:(sys,code)=>{const e=equipements.filter(x=>x.system===sys&&x.subCode===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités)"]);},
    sousEquip:(eq,se)=>{const d=dis.filter(x=>x.eq===eq&&x.se===se).length,o=bts.filter(x=>x.eq===eq&&x.se===se).length;return raisons([d&&"utilisé par "+nb(d,"DI"),o&&nb(o,"OT"),(d||o)&&"l'historique de maintenance doit être conservé"]);},
  di:(d)=>bts.some(b=>b.di===d.code)?"un OT a été généré depuis cette DI : supprimez d'abord l'OT (s'il n'est pas clôturé).":d.etat!=="À Transmettre"?"seule une DI « À transmettre » peut être supprimée.":null,
@@ -491,6 +536,8 @@ const [notice,setNotice]=useState(null);
   {n:"Administration",c:"Administration",ic:I.gear},
   {n:"Accueil",c:"Accueil",ic:I.home},   // ACCUEIL = 8 : hors volets de droits (0 à 7)
   {n:"Gestion et suivi des matériaux",c:"Matériaux",ic:I.gauge},   // MATERIAUX = 9 : volet Arborescence
+  {n:"Validation DG",c:"Validation DG",ic:I.check||I.flag},           // VALIDATION = 10 : expert DG, super administrateur
+  {n:"Rapports d'activité maintenance",c:"Rapports d'activité",ic:I.file||I.chart},   // RAPPORTS = 11 : volet 7
  ];
 
  const inScope=(code)=>kpiUnitOf(code,equipements)===unit&&sysOk(kpiEqInfo(code,equipements).system);
@@ -502,8 +549,8 @@ const [notice,setNotice]=useState(null);
  const visCompteurs=sa?compteursEq:compteursEq.filter(c=>c.unit===unit&&sysOk(c.sys));
  const visDis=sa?dis:dis.filter(d=>inScope(d.eq));
  const visBts=sa?bts:bts.filter(b=>inScope(b.eq));
- const sysAll=sa||systemsList.every(([c])=>grant.systems.includes(c));
- const interOk=(p)=>sysAll||(p.externe?(p.systemes||[]).some(sysOk):grant.systems.some(c=>new RegExp("\\b"+c+"\\b","i").test(p.poste||"")));
+ const sysAll=sa||grant.systems.includes("*")||systemsList.every(([c])=>grant.systems.includes(c));
+ const interOk=(p)=>sysAll||(p.externe?(p.systemes||[]).some(sysOk):grant.systems.some(c=>posteCouvre(p.poste,c)));
  const visInter=inter.filter(interOk), visPresta=prestataires.filter(interOk);
  const critStock = pieces.filter(p=>p.stock<p.min);
  const ctAl=visPresta.map(contratInfo).filter(c=>c.alerte); const ctRouge=ctAl.filter(c=>c.niveau==="rouge").length, ctOrange=ctAl.length-ctRouge;
@@ -512,8 +559,8 @@ const [notice,setNotice]=useState(null);
  if(syncStates.includes("error")) return <Splash msg="Impossible de joindre le serveur GMAO." action={()=>window.location.reload()} actionLabel="Réessayer"/>;
  if(!syncStates.every(s=>s==="ready")) return <Splash msg="Chargement des données…"/>;
 
- const ordreMenu=[ACCUEIL,0,MATERIAUX,1,2,3,4,5,6,7];
- const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0);
+ const ordreMenu=[ACCUEIL,0,MATERIAUX,1,2,3,4,5,6,RAPPORTS,VALIDATION,7];
+ const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0)+notifs.nonLues;
  const alerteRouge=(tabOk(5)&&(ctRouge+habRouge)>0)||(tabOk(4)&&critStock.length>0);
  const initiales=(user||"?").replace(/^Démo — /,"").split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("");
  const alertesItems=[
@@ -530,11 +577,17 @@ const [notice,setNotice]=useState(null);
    <label className="gm-unit hidden md:flex" title="Unité opérationnelle">{I.pin}
     <select value={unit} onChange={e=>setUnit(e.target.value)} aria-label="Unité opérationnelle">{unitsOk.map(u=><option key={u}>{u}</option>)}</select>
    </label>
+   <button className={"gm-icon-btn"+(assistant?" is-on":"")} onClick={()=>setAssistant(a=>!a)} aria-label="Assistant GMAO" title="Assistant GMAO : posez une question" data-testid="assistant-bouton">{I.chat}</button>
    <div className="relative">
     <button className="gm-icon-btn relative" onClick={()=>{setPanneau(p=>p==="alertes"?null:"alertes");}} aria-label="Alertes" title="Alertes">{I.bell}
      {nbAlertes>0&&<span className={"gm-dot "+(alerteRouge?"is-red":"is-amber")}>{nbAlertes}</span>}</button>
     {panneau==="alertes"&&<><div className="fixed inset-0 z-40" onClick={()=>setPanneau(null)}/>
      <div className="gm-pop right-0 w-80">
+      {notifs.items.length>0&&<>
+       <div className="gm-pop-head flex justify-between items-center">Notifications{notifs.nonLues>0&&<button type="button" className="text-[11px] normal-case tracking-normal font-medium text-sky-600" onClick={toutLu}>Tout marquer comme lu</button>}</div>
+       <div className="max-h-72 overflow-y-auto" data-testid="notifications">{notifs.items.slice(0,15).map(n=><button key={n.id} className="gm-pop-item" onClick={()=>lireNotif(n)}>
+        <span className={"gm-pop-ic "+(n.lu?"":"is-amber")}>{I.bell}</span><span><b className={n.lu?"font-normal":""}>{n.texte}</b><small>{String(n.at).slice(0,16).replace("T"," ")}{n.unit?" · "+n.unit:""}</small></span></button>)}</div>
+      </>}
       <div className="gm-pop-head">Alertes à traiter</div>
       {alertesItems.length===0&&<div className="gm-pop-empty">Aucune alerte en cours.</div>}
       {alertesItems.map(a=><button key={a.k} className="gm-pop-item" onClick={()=>{setPanneau(null);setTab(a.go);}}>
@@ -544,16 +597,26 @@ const [notice,setNotice]=useState(null);
    <div className="relative">
     <button className="gm-user" onClick={()=>setPanneau(p=>p==="profil"?null:"profil")} aria-label="Profil utilisateur">
      <span className="gm-avatar">{initiales}</span>
-     <span className="gm-user-txt hidden lg:block"><b>{user}</b><small>{sa?"Super administrateur":session.role}</small></span>
+     <span className="gm-user-txt hidden lg:block"><b>{user}</b><small>{profil}</small></span>
      <span className="hidden lg:block gm-chev">{I.chev}</span>
     </button>
     {panneau==="profil"&&<><div className="fixed inset-0 z-40" onClick={()=>setPanneau(null)}/>
      <div className="gm-pop right-0 w-64">
-      <div className="gm-pop-user"><span className="gm-avatar">{initiales}</span><span><b>{user}</b><small>{sa?"Super administrateur":session.role}</small></span></div>
+      <div className="gm-pop-user"><span className="gm-avatar">{initiales}</span><span><b>{user}</b><small>{profil}{delegue?" · gestion des comptes":""}</small></span></div>
       <button className="gm-pop-item" onClick={()=>{setPanneau(null);onLogout();}}><span className="gm-pop-ic">{I.logout}</span><span><b>Se déconnecter</b></span></button>
      </div></>}
    </div>
   </header>
+  {assistant && <Assistant unite={unit} onFermer={()=>setAssistant(false)}
+   contexte={()=>({dis:dis.filter(d=>inScope(d.eq)),bts:bts.filter(b=>inScope(b.eq)),equipements:equipements.filter(e=>e.unit===unit&&sysOk(e.system)),
+    planning:visPlanning.filter(p=>p.unit===unit),pieces:tabOk(4)||tabOk(6)?pieces:[],intervenants:[...visInter,...visPresta],
+    peutPersonnel:sa||tabOk(5)||tabOk(6),aujourdhui:todayStr()})}
+   onOuvrir={(ref)=>{
+    if(ref.type==="ot") ouvrirOT(ref.code);
+    else if(ref.type==="di"){setTab(1);setDiDetail(ref.code);}
+    else if(ref.type==="eq"){const e=equipements.find(x=>x.code===ref.code); if(e) setEquipDetail(e);}
+    else if(ref.type==="piece"){const p=pieces.find(x=>x.code===ref.code); if(p) setPieceModal(p);}
+   }}/>}
 
   <div className="flex flex-1 min-h-0">
   {sidebar && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={()=>setSidebar(false)} data-testid="menu-fond"/>}
@@ -571,7 +634,7 @@ const [notice,setNotice]=useState(null);
       </span>{tabs[i].c}
      </button>))}
    </nav>
-   <div className="gm-rail-foot mt-auto">v1.16.2</div>
+   <div className="gm-rail-foot mt-auto">v1.19.0</div>
   </aside>}
 
   <div className="flex-1 min-w-0 flex flex-col">
@@ -594,9 +657,9 @@ const [notice,setNotice]=useState(null);
    </div>}
 
    {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
-     onGo={allerA} onNewDI={()=>setDiModal({})} onNewOT={()=>setBtModal({di:null})} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
-   {tab===1 && <MaintenanceCorrective voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={(di)=>setBtModal({di})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
-   {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={()=>setBtModal({di:null})} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+     onGo={allerA} onNewDI={lecture?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
+   {tab===1 && <MaintenanceCorrective voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={lecture?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
      onAddEquip={(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
@@ -605,8 +668,8 @@ const [notice,setNotice]=useState(null);
      onAddSousEquip={(equip)=>setSousEquipModal({mode:"add",equip})}
      onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
      onRemoveSousEquip={removeSousEquip}
-     onAddSystem={()=>setSystemModal({mode:"add",code:"",nom:""})}
-     onEditSystem={(code,nom)=>setSystemModal({mode:"edit",code,nom})}
+     onAddSystem={sa?()=>setSystemModal({mode:"add",code:"",nom:""}):undefined}
+     onEditSystem={sa?(code,nom)=>setSystemModal({mode:"edit",code,nom}):undefined}
      onAddSubSystem={(systemCode)=>setSubSystemModal({mode:"add",systemCode,code:"",nom:""})}
      onEditSubSystem={(systemCode,code,nom)=>setSubSystemModal({mode:"edit",systemCode,code,nom})}
      mesureList={mesureList} ctrlList={ctrlList} onAddCtrl={()=>setCtrlModal({mode:"add"})} onEditCtrl={(c)=>setCtrlModal({mode:"edit",item:c})} organismes={organismes} onAddOrg={()=>setOrgModal({mode:"add"})} onEditOrg={(o)=>setOrgModal({mode:"edit",item:o})}
@@ -614,9 +677,20 @@ const [notice,setNotice]=useState(null);
      onEditMesure={(item)=>setMesureModal({mode:"edit",item})}
      onSupprimerMesure={(item)=>setMesureModal({mode:"edit",item,supprimer:true})} onSupprimerCtrl={(item)=>setCtrlModal({mode:"edit",item,supprimer:true})} onSupprimerOrg={(item)=>setOrgModal({mode:"edit",item,supprimer:true})}/>}
    {!voir(tab) && <Card><div className="text-sm text-slate-400">Aucun volet n'est accessible pour votre compte sur cette unité. Contactez le super administrateur.</div></Card>}
-   {tab===7 && sa && <AdminPage systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
+   {tab===RAPPORTS && <RapportsPage rapports={rapports} role={roleRapports(session)} userId={session.id} userNom={user} sa={sa}
+     unitesUO={sa?UNITS:unitsOk.filter(u=>(session.droits[u]?.volets||[]).includes(VOLET_RAPPORTS)&&roleRapports(session)==="uo")}
+     ouvert={rapportOuvert} setOuvert={setRapportOuvert}
+     onSave={(r)=>setRapports(l=>l.map(x=>x.code===r.code?r:x))}
+     onCreer={async(f)=>{const nums=await numeros("rapports",{unit:f.unit}); if(!nums) return null; const code=nums[0];
+      setRapports(l=>[{code,unit:f.unit,titre:f.titre,periode:f.periode,fichiers:[],etat:"Brouillon"},...l]); return code;}}/>}
+   {tab===VALIDATION && <ValidationDG user={user} bts={bts} equipements={equipements} planning={planning} treeStruct={treeStruct}
+     uniteDe={(c)=>kpiUnitOf(c,equipements)} systemeDe={(c)=>kpiEqInfo(c,equipements).system}
+     onSaveOT={(o)=>setBts(l=>l.map(x=>x.code===o.code?o:x))} onSaveEquip={(o)=>setEquipements(l=>l.map(x=>x.code===o.code?o:x))}
+     onSavePlan={(o)=>setPlanning(l=>l.map(x=>x.code===o.code?o:x))} onSaveSous={(sys,o)=>setTreeStruct(t=>({...t,[sys]:(t[sys]||[]).map(x=>x.code===o.code?o:x)}))}
+     onOuvrirOT={ouvrirOT} onOuvrirEquip={setEquipDetail}/>}
+   {tab===7 && (sa||delegue) && <AdminPage superAdmin={sa} unitesAdmin={unitsOk} profilsPerso={profilsPerso} setProfilsPerso={setProfilsPerso} systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
    {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
-   {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
+   {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
    {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
   </main>
@@ -633,7 +707,7 @@ const [notice,setNotice]=useState(null);
 
   {diDetail && (()=>{const d=dis.find(x=>x.code===diDetail); if(!d) return null; const btLie=bts.find(b=>b.di===d.code);
    return <Modal wide title={"Demande d'Intervention — "+d.code} onClose={()=>setDiDetail(null)}>
-    <DIDetail di={d} bt={btLie} onGenererBT={()=>{setDiDetail(null);setBtModal({di:d});}} onOpenBT={()=>{setDiDetail(null);ouvrirOT(btLie.code);}}/>
+    <DIDetail di={d} bt={btLie} onStatut={sa?(e,m)=>setDis(l=>l.map(x=>x.code===d.code?avecStatut(x,e,user,m):x)):undefined} onGenererBT={capCreerOT?()=>{setDiDetail(null);setBtModal({di:d});}:undefined} onOpenBT={()=>{setDiDetail(null);ouvrirOT(btLie.code);}}/>
     <ZoneSuppression quoi={"la DI "+d.code} bloque={blocage.di(d)} onSupprimer={()=>supprimer.di(d.code)}/>
    </Modal>;})()}
 
@@ -643,10 +717,11 @@ const [notice,setNotice]=useState(null);
   {btDetail && (()=>{const b=bts.find(x=>x.code===btDetail); if(!b) return null;
    const plb=b.plan?planning.find(p=>p.code===b.plan):null; const cptB=plb&&isCompteurPlan(plb)?cptDe(plb)||null:null;
    return <Modal wide title={"Ordre de Travail — "+b.code} onClose={()=>setBtDetail(null)}>
-    <BTDetail key={b.code} bt={b} dsOuvertes={dsOuvertesDe(b.code)} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)}
+    <BTDetail key={b.code} bt={b} dsOuvertes={dsOuvertesDe(b.code)} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)} onTerminer={(data)=>unSeul(terminerSaisie)(b.code,data)} peutCloturer={capCloture}
+     onStatut={sa?(e,m)=>setBts(l=>l.map(x=>x.code===b.code?avecStatut(x,e,user,m):x)):undefined}
      dsDeLOT={dss.filter(d=>d.bt===b.code)}
      onCreateDS={(items)=>{const reste=piecesRestantAdemander(items,dss.filter(d=>d.bt===b.code));setBtDetail(null);setDsModal({prefill:{eq:b.eq,nom:b.nom,lignes:(reste.length?reste:items).map(x=>({piece:x.code,qte:x.qte})),bt:b.code}});}}/>
-    <ZoneSuppression quoi={"l'OT "+b.code+(b.di?" (la DI "+b.di+" repassera « À transmettre »)":"")} bloque={blocage.ot(b)} onSupprimer={()=>supprimer.ot(b)}/>
+    {capCreerOT && <ZoneSuppression quoi={"l'OT "+b.code+(b.di?" (la DI "+b.di+" repassera « À transmettre »)":"")} bloque={blocage.ot(b)} onSupprimer={()=>supprimer.ot(b)}/>}
    </Modal>;})()}
 
   {equipModal && <Modal title={equipModal.mode==="edit"?"Modifier l'équipement — "+equipModal.equip.code:"Créer un équipement — "+equipModal.system+"."+UNIT_ABBR[equipModal.unit]+"."+equipModal.subCode} onClose={()=>setEquipModal(null)}>
@@ -657,6 +732,7 @@ const [notice,setNotice]=useState(null);
   {equipDetail && (()=>{const ed=equipements.find(x=>x.code===equipDetail.code)||equipDetail; const sousL=ed.sousEquip||[];
    return <Modal title={"Fiche équipement — "+ed.code} onClose={()=>setEquipDetail(null)}>
    <div className="text-sm space-y-3">
+    <BandeauValidation v={ed.validationDG}/>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
      <div><span className="text-slate-500">Code :</span> {ed.code}</div>
      <div><span className="text-slate-500">Nom :</span> {ed.nom}</div>
@@ -720,7 +796,7 @@ const [notice,setNotice]=useState(null);
 
   {systemModal && <Modal title={systemModal.mode==="edit"?"Modifier le système":"Ajouter un système"} onClose={()=>setSystemModal(null)}>
    <SystemForm modal={systemModal} onSubmit={saveSystem}/>
-   {systemModal.mode==="edit" && <ZoneSuppression quoi={"le système "+systemModal.code} bloque={blocage.systeme(systemModal.code)} onSupprimer={()=>supprimer.systeme(systemModal.code)}/>}
+   {systemModal.mode==="edit" && <ZoneSuppression quoi={"le système "+systemModal.code+((treeStruct[systemModal.code]||[]).length?" et ses "+treeStruct[systemModal.code].length+" sous-système(s)":"")} bloque={blocage.systeme(systemModal.code)} onSupprimer={()=>supprimer.systeme(systemModal.code)}/>}
   </Modal>}
 
   {subSystemModal && <Modal title={subSystemModal.mode==="edit"?"Modifier le sous-système":"Ajouter un sous-système"} onClose={()=>setSubSystemModal(null)}>

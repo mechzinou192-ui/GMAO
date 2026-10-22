@@ -9,6 +9,8 @@ import { config } from './config.js';
 import { migrate, pool, q } from './db.js';
 import { authRouter, authRequired, superAdminRequired, mustNotChangePw, csrfGuard, hashPassword } from './auth.js';
 import { usersRouter } from './users.js';
+import { notificationsRouter } from './notifications.js';
+import { profilsCharges } from './profils.js';
 import { dataRouter } from './records.js';
 import { importRouter } from './importer.js';
 import { reinitRouter } from './reinitialisation.js';
@@ -65,12 +67,15 @@ export function buildApp(opts = {}) {
   app.use(['/api/import', '/api/files', '/api/admin'], L.couteuses);
 
   app.use('/api', csrfGuard);
+  // profils créés par le super administrateur : chargés avant toute vérification de droits
+  app.use('/api', (req, res, next) => { profilsCharges().then(() => next(), next); });
   // Démonstration publique : on ne peut ni créer / modifier des comptes ni changer un mot de passe (comptes partagés)
   app.use(['/api/users', '/api/auth/change-password'], (req, res, next) =>
     (config.demo && req.method !== 'GET' ? res.status(403).json({ error: 'Désactivé dans la version de démonstration.' }) : next()));
   app.get('/api/config', authRequired, (req, res) => res.json({ units: config.units, import: { maxLignes: config.importMaxLignes, maxMo: config.importMaxMo } }));
   app.use('/api/auth', authRouter);
-  app.use('/api/users', authRequired, superAdminRequired, usersRouter);
+  app.use('/api/users', authRequired, mustNotChangePw, usersRouter);          // super admin, ou admin UO qui en a la main (voir users.js)
+  app.use('/api/notifications', authRequired, mustNotChangePw, notificationsRouter);
   app.use('/api/data', authRequired, mustNotChangePw, dataRouter);
   app.use('/api/import', authRequired, superAdminRequired, mustNotChangePw, importRouter);
   app.use('/api/admin', authRequired, superAdminRequired, mustNotChangePw, reinitRouter);

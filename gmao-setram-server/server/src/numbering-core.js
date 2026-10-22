@@ -14,6 +14,7 @@ export const SEQUENCES = {
   'bts:prev':   { collection: 'bts',        prefix: 'OT-PREV', perUnit: true,  yearly: true,  pad: 4 },
   planning:     { collection: 'planning',   prefix: 'PREV',    perUnit: true,  yearly: false, pad: 4 },
   dss:          { collection: 'dss',        prefix: 'DS',      perUnit: false, yearly: true,  pad: 4 },
+  rapports:     { collection: 'rapports',   prefix: 'RAP',     perUnit: true,  yearly: true,  pad: 3 },
   bs:           { collection: 'bs',         prefix: 'BS',      perUnit: false, yearly: true,  pad: 4 },
   brs:          { collection: 'brs',        prefix: 'BR',      perUnit: false, yearly: true,  pad: 4 },
   decharges:    { collection: 'decharges',  prefix: 'DCH',     perUnit: false, yearly: true,  pad: 4 },

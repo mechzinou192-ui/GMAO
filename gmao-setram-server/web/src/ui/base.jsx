@@ -10,7 +10,7 @@ export const state = (c)=>({
   "À Faire":"bg-amber-600 text-amber-50","En attente pièce":"bg-rose-600 text-rose-50","Clôturé":"bg-emerald-600 text-emerald-50",
   "Planifié":"bg-sky-600 text-sky-50","À déclencher":"bg-amber-600 text-amber-50","Sans relevé":"bg-slate-500 text-slate-100","En cours":"bg-amber-600 text-amber-50","Réalisé":"bg-emerald-600 text-emerald-50","En retard":"bg-rose-600 text-rose-50",
   "Généré":"bg-slate-600 text-slate-100","Terminé":"bg-slate-500 text-slate-100","Envoyé Fournisseur":"bg-sky-600 text-sky-50","En cours d'expédition":"bg-amber-600 text-amber-50","Reçu":"bg-emerald-600 text-emerald-50",
-  "Transmis au Magasinier":"bg-amber-600 text-amber-50","BS généré":"bg-sky-600 text-sky-50","À traiter":"bg-amber-600 text-amber-50","Annulé":"bg-slate-500 text-slate-100",
+  "Transmis au Magasinier":"bg-amber-600 text-amber-50","À clôturer":"bg-sky-600 text-sky-50","Brouillon":"bg-slate-500 text-slate-100","Envoyé":"bg-sky-600 text-sky-50","À valider DG":"bg-amber-600 text-amber-50","À corriger":"bg-rose-600 text-rose-50","À valider":"bg-amber-600 text-amber-50","Validé":"bg-emerald-600 text-emerald-50","À reprendre":"bg-rose-600 text-rose-50","BS généré":"bg-sky-600 text-sky-50","À traiter":"bg-amber-600 text-amber-50","Annulé":"bg-slate-500 text-slate-100",
 }[c]||"bg-slate-600");
 export const Badge=({t})=><span className={"badge px-2 py-0.5 rounded-full text-xs font-medium "+state(t)}>{t}</span>;
 export const Card=({children,cls})=><div className={"card bg-slate-800/60 border border-slate-700 rounded-xl p-4 "+(cls||"")}>{children}</div>;
@@ -133,5 +133,29 @@ export function ZoneSuppression({quoi,bloque,onSupprimer,ouverte=false}){
        <div className="flex gap-2 mt-2"><button type="button" onClick={onSupprimer} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-rose-700 hover:bg-rose-600 text-white">Oui, supprimer</button>
         <button type="button" onClick={()=>setDemande(false)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600">Annuler</button></div>
       </div>}
+ </div>;
+}
+
+// Changement manuel de statut, réservé au super administrateur : motif facultatif, tracé dans l'élément
+// (historiqueStatut) et dans le journal d'audit. Aucun effet automatique (stock, DI liée, préventif…).
+export const ETATS_MANUELS={
+ di:["À Transmettre","Transmis","Traité","Annulé"],
+ ot:["En cours","En attente pièce","À clôturer","Clôturé","Annulé"],
+ ds:["Transmis au Magasinier","En attente pièce","BS généré","Traité","Annulé"],
+ bs:["À traiter","Traité","Annulé"],
+};
+export const avecStatut=(x,etat,par,motif)=>({...x,etat,historiqueStatut:[...(x.historiqueStatut||[]),{de:x.etat,a:etat,par,le:new Date().toISOString().slice(0,16).replace("T"," "),manuel:true,...(motif?{motif}:{})}]});
+export function StatutManuel({etats,valeur,onAppliquer,quoi=""}){
+ const [etat,setEtat]=React.useState(valeur); const [motif,setMotif]=React.useState(""); const [ouvert,setOuvert]=React.useState(false);
+ if(!ouvert) return <button type="button" className="text-xs text-amber-400 underline" onClick={()=>{setEtat(valeur);setOuvert(true);}} data-testid="statut-manuel">Changer le statut (super admin)</button>;
+ return <div className="rounded-lg border border-amber-600 bg-amber-900/20 p-2 mt-2 text-xs space-y-1" data-testid="statut-manuel-form">
+  <div className="text-amber-300 font-medium">Changement manuel du statut{quoi?" — "+quoi:""}</div>
+  <div className="flex flex-wrap gap-2 items-center">
+   <select aria-label="Nouveau statut" value={etat} onChange={e=>setEtat(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-2 py-1">{etats.map(x=><option key={x}>{x}</option>)}</select>
+   <input aria-label="Motif du changement" value={motif} onChange={e=>setMotif(e.target.value)} placeholder="Motif (recommandé)" className="flex-1 min-w-[160px] bg-slate-900 border border-slate-700 rounded px-2 py-1"/>
+   <button type="button" className="px-2 py-1 rounded bg-amber-600 text-white disabled:opacity-40" disabled={etat===valeur} onClick={()=>{onAppliquer(etat,motif.trim());setOuvert(false);}}>Appliquer</button>
+   <button type="button" className="px-2 py-1 rounded bg-slate-700" onClick={()=>setOuvert(false)}>Annuler</button>
+  </div>
+  <div className="text-slate-400">Aucun effet automatique (stock, DI liée, préventif, notifications). Le changement est tracé dans l'élément et le journal d'audit.</div>
  </div>;
 }

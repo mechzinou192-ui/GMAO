@@ -37,16 +37,24 @@ Sur téléphone, le menu s'ouvre avec le bouton **☰** en haut à gauche ; l'un
 
 ## 3. Qui fait quoi
 
-| Profil | Modules habituels | Tâches principales |
+| Profil | Ce qu'il voit | Ce qu'il fait |
 |---|---|---|
-| **Exploitation** (conducteur, régulation, chef de station) | Demandes (DI) | Déclarer les anomalies |
-| **Technicien** | Ordres de travail, Préventif (selon droits) | Réaliser les OT, renseigner le compte-rendu, saisir les relevés de compteur |
-| **Chargé / Responsable maintenance** | DI, OT, Préventif, Personnel, Indicateurs | Transformer les DI en OT, planifier le préventif, affecter les intervenants, suivre les indicateurs |
-| **Magasinier** | Gestion de stock | Traiter les demandes de sortie, réceptionner, suivre les seuils |
-| **Direction** | Indicateurs | Suivre la performance (MTBF, MTTR, disponibilité…) |
-| **Administrateur** | Administration | Comptes, droits, import de données |
+| **Exploitation** | Demandes (DI) | Déclare les anomalies (une DI reste modifiable tant qu'elle est « À transmettre ») |
+| **Gestionnaire de stock** | Gestion de stock | Articles, demandes et bons de sortie, retours, achats, décharges |
+| **Technicien** | Ordres de travail de son périmètre | Remplit l'OT puis clique **« Terminer la saisie »** : il ne crée pas et ne clôture pas d'OT |
+| **Chargé système** | Son (ses) système(s) et leurs intervenants : DI, OT, préventif, personnel, indicateurs | Génère les OT, contrôle la saisie, **clôture** ; prévenu quand un OT est « à clôturer » |
+| **Responsable système** | Comme le chargé | Comme le chargé ; prévenu aussi quand le chargé clôture |
+| **Administrateur UO** | Toute son unité, tous les systèmes | Tous les droits métier de l'unité ; pas d'import ; gère les comptes de son unité **si le super administrateur lui en donne la main** |
+| **Expert DG** | Son (ses) système(s), **toutes les unités** | Consulte ; **valide** ou fait **reprendre** les OT clôturés et les référentiels (écran *Validation DG*) |
+| **Responsable DG** | Toutes les données (consultation) | Valide et clôture les rapports d'activité des UO, ou les renvoie pour correction |
+| **Directeur UO** | Toutes les données de son unité | Consultation (aucune modification) |
+| **Directeur DG** | Toutes les données de toutes les unités | Consultation (aucune modification) |
+| **Directeur** | Indicateurs | Suit la performance |
+| **Super administrateur** (DG) | Tout | Comptes, profils (et création de profils), délégations, systèmes, statuts manuels, import, remise à zéro |
 
-Les droits sont donnés **par unité, par système** (CFO, CFA, VOIE, BILLETTIQUE, MR, ELM, BO, ED) **et par module** : un technicien CFO d'Alger ne voit ni les équipements MR, ni les données d'Oran.
+Les droits sont donnés **par unité et par système** (CFO, LAC, CFA, VOIE, BIL, MR, ELM, BO, ED) ; le profil fixe les modules. Le serveur vérifie le profil à chaque enregistrement : un technicien ne peut pas clôturer un OT, même en contournant l'écran.
+
+**Circuit d'un OT** : DI (exploitation) → OT généré par le chargé → saisie du technicien → **« Terminer la saisie »** (l'OT passe « À clôturer », le chargé et le responsable reçoivent une notification dans la cloche et par e-mail si leur adresse est renseignée) → contrôle et **clôture** par le chargé ou le responsable (si c'est le chargé, le responsable est prévenu) → **validation DG** par l'expert (« Validé » ou « À reprendre » avec un motif : l'OT revient alors « À clôturer »).
 
 ---
 
@@ -180,13 +188,53 @@ Chaque écran a un bouton **Exporter Excel**.
 
 ## 11. Administration (super administrateur)
 
-- **Comptes et droits d'accès** : pour chaque unité, cochez les **systèmes** et les **modules** autorisés, et éventuellement les indicateurs visibles. Désactiver un compte coupe sa session immédiatement.
+- **Comptes et droits d'accès** : choisissez d'abord le **profil** (il fixe les modules), puis les unités et les systèmes. Pour un administrateur UO, la case **« Lui donner la main sur les comptes de son unité »** l'autorise à gérer les comptes de son unité (profils d'unité seulement) ; décochez-la pour la lui retirer, l'effet est immédiat. Renseignez l'**e-mail** pour les notifications.
+- **Droits détaillés** : pour chaque unité, cochez les **systèmes** et les **modules** autorisés, et éventuellement les indicateurs visibles. Désactiver un compte coupe sa session immédiatement.
 - **Import de données (Excel)** : téléchargez le modèle Excel, remplissez-le, chargez-le : chaque ligne est contrôlée et les erreurs sont listées avant tout envoi. Limites : 100 000 lignes par feuille, fichier de 50 Mo ; au-delà, découpez par unité ou par système et importez les fichiers l'un après l'autre. L'import n'est possible que sans erreur, et il est **tout ou rien** : rien n'est enregistré si le serveur refuse une ligne. Le réimporter ne crée pas de doublon.
   - **Équipements et sous-équipements en une seule fois** : dans la feuille *Équipements*, donnez un **Repère** court (T1, R02…) aux équipements qui ont des composants ; dans la feuille *Sous-équipements*, indiquez ce repère comme *Équipement parent*. Les codes GMAO sont créés automatiquement pour les deux. Pour un équipement déjà dans la GMAO, indiquez directement son code.
   - **Planning préventif avec les FMP** : remplissez la feuille *Planning préventif* (Code GMAO, Type de visite, lien vers la FMP, outillage…), puis, à l'étape **« Fiches FMP »** de l'écran d'import, ajoutez les fichiers FMP ou un dossier. **FMP rangées par système** : choisissez le dossier qui contient tous les dossiers de système (les sous-dossiers sont lus), ou ajoutez chaque dossier l'un après l'autre. Une fiche portant le même nom dans deux systèmes est retrouvée grâce au chemin du lien. Les tâches de chaque visite sont lues dans la FMP ; les intervenants sont répartis automatiquement entre les techniciens du système (hors congés) et restent modifiables dans chaque plan. Le lien de la FMP est conservé et affiché dans le plan, l'OT et le bon imprimé.
-- **Repartir de zéro** (mise en service) : vide toutes les données (équipements, DI, OT, plans, compteurs, magasin, personnel, matériaux ; systèmes et arborescence seulement si vous cochez l'option) pour importer ensuite les vôtres. Les comptes et le journal d'audit sont conservés. **Faites d'abord une sauvegarde** (DSI) ; cochez la case, recopiez « REPARTIR DE ZERO », puis « Vider les données ». Rien n'est effacé physiquement : la DSI peut annuler l'opération. Ordre conseillé ensuite : systèmes / arborescence → équipements et sous-équipements → articles → intervenants → planning préventif.
+- **Repartir de zéro** (mise en service, ou reprise partielle) : vide les données que **vous choisissez**. Cochez les **catégories** à vider (équipements, DI, OT, plans, compteurs, magasin, personnel, matériaux ; systèmes, arborescence et jours fériés seulement si vous les cochez), puis, si besoin, limitez à **une seule unité** (ex. Oran) et/ou **un seul système** (ex. CFO). Exemples : vider tout Oran sans toucher aux autres unités ; vider seulement l'arborescence de CFO (son en-tête et ses sous-systèmes) en gardant CFA, VOIE, etc. Une unité exclut les systèmes / arborescence / jours fériés (communs à toutes les unités) ; un système exclut les jours fériés et la remise à 1 de la numérotation. Les éléments sans unité ou sans système ne sont pas touchés par un filtre. Les comptes et le journal d'audit sont conservés. **Faites d'abord une sauvegarde** (DSI) ; vérifiez le résumé « Sera vidé », cochez la case, recopiez « REPARTIR DE ZERO », puis « Vider les données ». Rien n'est effacé physiquement : la DSI peut annuler l'opération. Ordre conseillé ensuite : systèmes / arborescence → équipements et sous-équipements → articles → intervenants → planning préventif.
 
 ---
+
+## Rapports d'activité maintenance (UO → DG)
+
+Menu **Rapports d'activité** (volet « Rapports d'activité maintenance »).
+
+1. **Administrateur UO** : « Nouveau rapport » (mois), puis **« + Joindre Excel / Word / PDF »** et **« Envoyer à la DG »**.
+2. **Experts DG** : une notification arrive ; ouvrez le rapport, téléchargez les fichiers, saisissez le **nombre d'erreurs** et votre **commentaire**, puis **« Terminer ma revue »** (commentaire obligatoire s'il y a des erreurs).
+3. **Responsable DG** : notifié quand toutes les revues sont terminées. **« Valider et clôturer »** s'il n'y a ni erreur ni commentaire ; sinon **« Renvoyer à l'UO pour correction »** avec vos consignes.
+4. **UO** : notifiée ; joint la version corrigée et clique **« Correction terminée — renvoyer aux experts »** : un nouveau tour de revue commence (étapes 2 et 3), jusqu'à la clôture.
+
+Les rapports « à traiter par vous » apparaissent en gras en tête de liste. L'historique de chaque rapport garde toutes les étapes.
+
+## Validation DG (experts DG)
+
+Menu **Validation DG** : la liste des OT clôturés, équipements, plans préventifs et sous-systèmes **« À valider »** de vos systèmes, toutes unités. Pour chaque ligne : **Valider**, ou **À reprendre** avec un motif (obligatoire). « À reprendre » renvoie l'élément à l'unité et prévient le chargé et le responsable du système ; un OT revient « À clôturer ». Toute modification faite ensuite par l'unité remet l'élément « À valider ». « Tout valider » traite une rubrique entière après confirmation.
+
+## Notifications
+
+La **cloche** en haut à droite affiche vos notifications (OT à clôturer, OT clôturé par le chargé, reprise demandée par la DG) en plus des alertes. Un clic ouvre l'OT et marque la notification comme lue. Si votre adresse e-mail est renseignée dans votre compte et que la DSI a activé la messagerie, vous recevez aussi un e-mail court (numéro d'OT et équipement, sans détail technique).
+
+## Assistant GMAO
+
+Le bouton en forme de bulle, en haut à droite, ouvre l'**assistant**. Posez votre question en français :
+
+| Vous tapez | Vous obtenez |
+|---|---|
+| « portillon bloqué », « surchauffe transformateur » | Les interventions similaires déjà faites, les causes et actions les plus fréquentes, les pièces utilisées, la durée moyenne, qui connaît ce type de panne |
+| « synthèse de K. Belaïd » (ou son matricule) | Ses OT correctifs et préventifs, ses heures, ses systèmes, ses points forts et points d'attention *(responsables uniquement)* |
+| « historique CFO.ALG.SST.01 » ou le nom de l'équipement | Pannes récurrentes, causes, temps moyen entre pannes, préventif, dernières DI |
+| « stock fusible », « articles sous le seuil » | L'état du magasin |
+| « situation des OT », « pannes les plus fréquentes » | Le point du jour |
+
+Cliquez sur un numéro de DI ou d'OT dans la réponse pour l'ouvrir. L'assistant ne voit que **votre unité** et **vos droits**. Il n'utilise aucune intelligence artificielle extérieure : tout est calculé sur ce qui a été saisi dans la GMAO, rien ne sort de l'application. Une réponse vaut ce que valent les saisies : des causes et actions bien renseignées dans les OT donnent de meilleures réponses.
+
+## Super administrateur : statuts, systèmes, profils
+
+- **Changer le statut** d'une DI, d'un OT, d'une DS ou d'un BS : lien **« Changer le statut (super admin) »** dans la fiche (ou la ligne du magasin), choix du statut, motif, **Appliquer**. Rien d'autre ne bouge (le stock n'est pas modifié pour un BS) ; le changement est tracé.
+- **Systèmes** : seul le super administrateur ajoute, renomme ou supprime un système (✎ à côté du système). Un système se supprime avec ses sous-systèmes tant qu'aucun équipement n'y est rattaché.
+- **Profils (organigramme)** : *Administration › Profils* → « + Nouveau profil », nom, modules, capacités, rôle dans les rapports. Le profil apparaît ensuite dans la liste des profils des comptes. Un profil utilisé par des comptes ne peut pas être supprimé.
 
 ## Supprimer une fiche
 

@@ -14,6 +14,7 @@ export function publicUser(u) {
     id: u.id, nom: u.nom, role: u.role, actif: u.actif,
     superAdmin: u.super_admin, mustChangePw: u.must_change_pw,
     droits: u.droits || {}, lastLogin: u.last_login,
+    email: u.email || '', gestionComptes: !!u.gestion_comptes,
   };
 }
 

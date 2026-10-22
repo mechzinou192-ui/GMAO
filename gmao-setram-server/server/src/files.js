@@ -5,12 +5,18 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import { q, audit } from './db.js';
 import { canRead, canWrite } from './rights.js';
+import { roleRapports } from './profils-core.js';
+import { detectDocumentOctets } from './fichiers-core.js';
 
 export const filesRouter = Router();     // monté derrière authRequired + mustNotChangePw
 
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_DOC_BYTES = 25 * 1024 * 1024;                  // rapports d'activité (Excel, Word, PDF)
+export const MAX_FILE_BYTES = MAX_DOC_BYTES;                     // limite de lecture du corps (la limite par type est vérifiée ensuite)
 export const MAX_FILES_PER_RECORD = 12;
-const ATTACHABLE = new Set(['dis', 'bts']);
+const MAX_DOCS_PAR_RAPPORT = 30;
+const ATTACHABLE = new Set(['dis', 'bts', 'rapports']);
+const DOCUMENTS = new Set(['rapports']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 // Le type du fichier est déterminé par son CONTENU (signature), jamais par ce qu'annonce le navigateur.
@@ -23,15 +29,30 @@ export function detectImage(buf) {
   return null;
 }
 
+// Documents des rapports : Excel (.xlsx), Word (.docx) ou PDF, reconnus par leur CONTENU. Les fichiers à macros
+// (vbaProject.bin) et les anciens formats binaires (.xls / .doc) sont refusés.
+export const detectDocument = (buf) => (Buffer.isBuffer(buf) ? detectDocumentOctets(new Uint8Array(buf.buffer, buf.byteOffset, buf.length)) : null);
+const EXT = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx' };
+
+// Rapport d'activité : seuls l'UO (rôle « uo ») et le super administrateur déposent ou retirent des fichiers,
+// et seulement tant que le rapport est en brouillon ou à corriger.
+function depotRapportRefuse(user, rec) {
+  const role = roleRapports(user);
+  if (role !== 'uo' && role !== 'admin') return 'Seule l\'UO joint les fichiers de son rapport.';
+  if (role === 'uo' && !['Brouillon', 'À corriger'].includes(rec.data?.etat)) return 'Rapport entre les mains de la DG : fichiers non modifiables.';
+  return null;
+}
+
 export const cleanName = (n) => {
   const base = String(n ?? '').split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f<>:"|?*]/g, '').trim().slice(0, 80);
   return base || 'photo';
 };
 
-const fileOnDisk = (f) => path.join(config.filesDir, `${f.id}.${f.mime === 'image/png' ? 'png' : f.mime === 'image/webp' ? 'webp' : 'jpg'}`);
+const fileOnDisk = (f) => path.join(config.filesDir, `${f.id}.${EXT[f.mime] || 'bin'}`);
 
 async function recordOf(collection, recordId) {
-  const { rows } = await q('SELECT unit, system FROM records WHERE collection=$1 AND id=$2 AND NOT deleted', [collection, recordId]);
+  const { rows } = await q('SELECT unit, system, data FROM records WHERE collection=$1 AND id=$2 AND NOT deleted', [collection, recordId]);
   return rows[0] || null;
 }
 
@@ -45,6 +66,7 @@ async function load(req, res, need) {
   if (!f || !rec) { res.status(404).json({ error: 'Fichier introuvable.' }); return null; }
   const ok = need === 'write' ? canWrite(req.user, f.collection, rec.unit, rec.system) : canRead(req.user, f.collection, rec.unit, rec.system);
   if (!ok) { res.status(403).json({ error: "Vous n'avez pas accès à ce fichier." }); return null; }
+  if (need === 'write' && DOCUMENTS.has(f.collection)) { const refus = depotRapportRefuse(req.user, rec); if (refus) { res.status(403).json({ error: refus }); return null; } }
   return { f, rec };
 }
 
@@ -57,12 +79,17 @@ filesRouter.post('/', async (req, res) => {
   const rec = await recordOf(collection, recordId);
   if (!rec) return res.status(404).json({ error: "Enregistrement introuvable (a-t-il bien été enregistré ?)." });
   if (!canWrite(req.user, collection, rec.unit, rec.system)) return res.status(403).json({ error: "Vous n'avez pas le droit d'ajouter une pièce jointe ici." });
+  const doc = DOCUMENTS.has(collection);
+  if (doc) { const refus = depotRapportRefuse(req.user, rec); if (refus) return res.status(403).json({ error: refus }); }
   const body = req.body;
   if (!Buffer.isBuffer(body) || body.length === 0) return res.status(400).json({ error: 'Aucun fichier reçu.' });
-  const kind = detectImage(body);
-  if (!kind) return res.status(415).json({ error: 'Format non accepté : photos JPEG, PNG ou WebP uniquement.' });
+  if (!doc && body.length > MAX_IMAGE_BYTES) return res.status(413).json({ error: 'Fichier ou envoi trop volumineux.' });
+  const kind = doc ? detectDocument(body) : detectImage(body);
+  if (kind?.refus) return res.status(415).json({ error: kind.refus });
+  if (!kind) return res.status(415).json({ error: doc ? 'Format non accepté : Excel (.xlsx), Word (.docx) ou PDF.' : 'Format non accepté : photos JPEG, PNG ou WebP uniquement.' });
+  const max = doc ? MAX_DOCS_PAR_RAPPORT : MAX_FILES_PER_RECORD;
   const n = (await q('SELECT count(*)::int AS n FROM files WHERE collection=$1 AND record_id=$2 AND NOT deleted', [collection, recordId])).rows[0].n;
-  if (n >= MAX_FILES_PER_RECORD) return res.status(409).json({ error: `Maximum ${MAX_FILES_PER_RECORD} pièces jointes par élément.` });
+  if (n >= max) return res.status(409).json({ error: `Maximum ${max} pièces jointes par élément.` });
 
   const id = crypto.randomUUID();
   const f = { id, collection, record_id: recordId, name: cleanName(req.query.name), mime: kind.mime, size: body.length, uploaded_by: req.user.id };
@@ -97,7 +124,8 @@ filesRouter.get('/:id', async (req, res) => {
   res.set({
     'Content-Type': ctx.f.mime,
     'Content-Length': String(ctx.f.size),
-    'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(ctx.f.name)}`,
+    // documents : toujours téléchargés (jamais ouverts dans la page) ; photos : affichées
+    'Content-Disposition': `${ctx.f.mime.startsWith('image/') ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(ctx.f.name)}`,
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Cache-Control': 'private, max-age=3600',

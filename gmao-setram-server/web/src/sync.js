@@ -24,6 +24,8 @@ const BASE = {
   planning:     { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   pieces:       { id: byCode },
+  rapports:     { id: byCode, newestFirst: true, meta: (r) => ({ unit: r.unit, system: null }) },
+  profils:      { id: (p) => p.nom },
   dss:          { id: byCode, newestFirst: true },
   bs:           { id: byCode, newestFirst: true },
   brs:          { id: byCode, newestFirst: true },
@@ -149,7 +151,16 @@ export function useSynced(name, opts = {}) {
               const res = await api.save(name, id, {
                 ...m, data: c.wrap ? c.wrap(item) : item, version: versions.current.get(id) });
               versions.current.set(id, res.version);
-              if (c.rows) store.current.set(id, item);
+              // le serveur peut compléter la saisie (ex. validation DG remise « À valider ») : on reprend sa version,
+              // sauf si l'élément a encore été modifié localement entre-temps
+              const envoye = c.wrap ? c.wrap(item) : item;
+              const differe = res.data && JSON.stringify(res.data) !== JSON.stringify(envoye) && !queue.current.has(id);
+              if (c.rows) store.current.set(id, differe ? res.data : item);
+              if (differe && c.rows) apply(c.rows.fromRows([...store.current.values()]));
+              else if (differe && !c.single) {
+                const srv = c.unwrap ? c.unwrap(res.data) : res.data;
+                apply(ref.current.map((x) => (String(c.id(x)) === id ? srv : x)));
+              }
             }
           } catch (e) {
             if (e.network) {

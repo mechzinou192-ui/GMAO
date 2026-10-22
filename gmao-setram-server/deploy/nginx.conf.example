@@ -24,7 +24,7 @@ server {
     ssl_session_tickets off;
 
     # Photos : 10 Mo maximum par envoi (l'application refuse au-delà) ; marge pour l'en-tête
-    client_max_body_size 11m;
+    client_max_body_size 26m;    # photos (10 Mo) et documents des rapports d'activité (25 Mo)
     gzip on; gzip_types text/css application/javascript application/json image/svg+xml;
 
     # Ne jamais exposer la version de nginx

@@ -68,6 +68,9 @@ const apiReel = {
   // repartir de zéro (super administrateur) : { confirmation, sauvegardeFaite, referentiels, numerotation }
   reinitialiser: (body) => call('POST', '/admin/reinitialiser', body),
 
+  // notifications de la cloche : { items, nonLues } ; marquerLues({ ids } | { tout: true })
+  notifications: () => call('GET', '/notifications'),
+  marquerLues: (body) => call('POST', '/notifications/lues', body),
   users: () => call('GET', '/users'),
   createUser: (u) => call('POST', '/users', u),
   updateUser: (id, u) => call('PUT', `/users/${encodeURIComponent(id)}`, u),

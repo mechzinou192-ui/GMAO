@@ -24,16 +24,17 @@ export function genererDemo(now = new Date(), graine = 2026) {
   const ajoutH = (off, h, m, plusH) => { const t = off * 24 * 60 + h * 60 + m + Math.round(plusH * 60); const o = Math.floor(t / 1440), r = t - o * 1440; return horo(o, Math.floor(r / 60), r % 60); };
   const annee = (off) => Number(jourDe(off).slice(0, 4));
 
-  const col = { equipements: [], intervenants: [], prestataires: [], organismes: [], mesures: [], controles: [], pieces: [], dis: [], bts: [], planning: [], compteurs_eq: [] };
+  const col = { equipements: [], intervenants: [], prestataires: [], organismes: [], mesures: [], controles: [], pieces: [], dis: [], bts: [], planning: [], compteurs_eq: [], rapports: [] };
   const compteurs = new Map();                          // 'nom|scope|annee' -> dernier numéro
   const suivant = (nom, scope, an) => { const k = `${nom}|${scope}|${an}`; const n = (compteurs.get(k) || 0) + 1; compteurs.set(k, n); return n; };
 
   /* ───── Équipements ───── */
   const CAT = {
-    CFO: { SST: ['Transformateur HT/BT', 'Redresseur & Disjoncteur', 'Jeu de barres & Cellules HTA'], LAC: ['Fil de contact & Câble porteur', 'Isolateur & Console'], ECL: ['Armoire BT Station'] },
+    CFO: { SST: ['Transformateur HT/BT', 'Redresseur & Disjoncteur', 'Jeu de barres & Cellules HTA'], ECL: ['Armoire BT Station'] },
+    LAC: { CAT: ['Fil de contact & Câble porteur', 'Isolateur & Console'] },
     CFA: { VDO: ['Caméra dôme quai', 'Enregistreur NVR'], SON: ['Haut-parleur quai', "Poste d'interphonie"], HOR: ['Horloge mère station'] },
     VOIE: { RVB: ['Rail UIC60 PK4', 'Traverse béton'], AIG: ["Moteur d'aiguille AIG-12", 'Aiguillage Voie 3'] },
-    BILLETTIQUE: { VAL: ['Valideur quai Centrale', 'Valideur bord Rame 02'], DAT: ['DAT station Émir'], PTL: ['Portillon accès Gare', 'Portillon accès Gare (2)'] },
+    BIL: { VAL: ['Valideur quai Centrale', 'Valideur bord Rame 02'], DAT: ['DAT station Émir'], PTL: ['Portillon accès Gare', 'Portillon accès Gare (2)'] },
     MR: { BOG: ['Bogie Rame 02', 'Disque de frein Rame 04'], TRC: ['Onduleur Rame 04'], PRT: ['Porte passager Rame 01'], CLM: ['Groupe HVAC Rame 03'] },
     ELM: { GRP: ['Groupe électrogène Dépôt', 'TGBT Atelier Central'] },
     BO: { STA: ['Abri quai Station Centrale'], DEP: ['Bâtiment Atelier Central'], HVI: ['Extincteur Atelier'] },
@@ -41,12 +42,12 @@ export function genererDemo(now = new Date(), graine = 2026) {
   };
   const PAR_UNITE = {
     Alger: null,                                                             // tout le catalogue
-    Oran: { CFO: { SST: 2, LAC: 1 }, CFA: { VDO: 2, SON: 1 }, MR: { BOG: 2, PRT: 1, CLM: 1 }, BILLETTIQUE: { VAL: 2, PTL: 1 } },
-    Constantine: { CFO: { SST: 1 }, BILLETTIQUE: { VAL: 2, DAT: 1 }, MR: { BOG: 1, PRT: 1 } },
-    'Sidi Bel Abbès': { CFO: { SST: 1 }, CFA: { VDO: 1 }, BILLETTIQUE: { VAL: 1 }, VOIE: { AIG: 1 } },
-    Ouargla: { CFO: { SST: 1 }, BILLETTIQUE: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
-    Sétif: { CFO: { SST: 1 }, BILLETTIQUE: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
-    Mostaganem: { CFO: { SST: 1 }, BILLETTIQUE: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
+    Oran: { CFO: { SST: 2 }, LAC: { CAT: 1 }, CFA: { VDO: 2, SON: 1 }, MR: { BOG: 2, PRT: 1, CLM: 1 }, BIL: { VAL: 2, PTL: 1 } },
+    Constantine: { CFO: { SST: 1 }, BIL: { VAL: 2, DAT: 1 }, MR: { BOG: 1, PRT: 1 } },
+    'Sidi Bel Abbès': { CFO: { SST: 1 }, CFA: { VDO: 1 }, BIL: { VAL: 1 }, VOIE: { AIG: 1 } },
+    Ouargla: { CFO: { SST: 1 }, BIL: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
+    Sétif: { CFO: { SST: 1 }, BIL: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
+    Mostaganem: { CFO: { SST: 1 }, BIL: { VAL: 1, PTL: 1 }, CFA: { SON: 1 } },
   };
   const LIEUX = { Alger: ['Dépôt Alger — Atelier B', 'Station Centrale', 'Poste HT Alger', 'Quai Station Émir'], Oran: ['Dépôt Oran', 'Station Place du 1er Novembre', 'Poste HT Oran'], Constantine: ['Dépôt Constantine', 'Station Gare'], 'Sidi Bel Abbès': ['Dépôt Sidi Bel Abbès', 'Station Centre'], Ouargla: ['Dépôt Ouargla', 'Station Centre'], Sétif: ['Dépôt Sétif', 'Station Gare'], Mostaganem: ['Dépôt Mostaganem', 'Station Port'] };
   const MARQUES = ['ABB', 'Siemens', 'Schneider Electric', 'Alstom', 'Bosch', 'Hikvision', 'Legrand', 'Thales'];
@@ -74,8 +75,8 @@ export function genererDemo(now = new Date(), graine = 2026) {
 
   /* ───── Personnel ───── */
   const INTER = [
-    ['MT-1001', 'K. Belaïd', 'Technicien CFO', 'Technicien', 1100], ['MT-1002', 'S. Amrani', 'Technicien CFA', 'Technicien', 1050],
-    ['MT-1003', 'R. Haddad', 'Technicien MR', 'Technicien', 1200], ['MT-1004', 'Y. Merabet', 'Technicien BILLETTIQUE', 'Technicien', 1000],
+    ['MT-1001', 'K. Belaïd', 'Technicien CFO / LAC', 'Technicien', 1100], ['MT-1002', 'S. Amrani', 'Technicien CFA', 'Technicien', 1050],
+    ['MT-1003', 'R. Haddad', 'Technicien MR', 'Technicien', 1200], ['MT-1004', 'Y. Merabet', 'Technicien Billettique', 'Technicien', 1000],
     ['MT-1005', 'N. Bouzid', 'Chargé de Maintenance', 'Chargé de Maintenance', 1500], ['MT-1006', 'A. Chérif', 'Responsable Maintenance', 'Responsable', 1800],
     ['MT-1007', 'F. Saadi', 'Magasinier', 'Magasinier', 900], ['MT-1008', 'M. Khelifi', 'Technicien ELM', 'Technicien', 1000],
     ['MT-1009', 'L. Taleb', 'Technicien VOIE', 'Technicien', 1000], ['MT-1010', 'H. Zerrouki', 'Agent Exploitation', 'Exploitation', 950],
@@ -90,7 +91,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
   const PRESTA = [
     ['EXT-01', 'SOTEMA Services', 'Prestataire — Matériel roulant', ['MR'], 2200, 'M-2024/14', -400, 95, 'À préparer'],
     ['EXT-02', 'ElecPro Algérie', 'Prestataire — Courants forts', ['CFO', 'ELM'], 2000, 'M-2025/03', -200, 430, 'Validé'],
-    ['EXT-03', 'Billet-Tech', 'Prestataire — Billettique', ['BILLETTIQUE'], 1900, 'M-2023/21', -700, -20, 'En préparation'],
+    ['EXT-03', 'Billet-Tech', 'Prestataire — Billettique', ['BIL'], 1900, 'M-2023/21', -700, -20, 'En préparation'],
   ];
   for (const [mat, nom, poste, systemes, taux, contrat, deb, fin, cdc] of PRESTA) {
     col.prestataires.push({ id: mat, unit: '', system: null, data: { nom, mat, poste, role: 'Prestataire', externe: true, systemes, taux, contrat, dateDebut: jourDe(deb), dateFin: jourDe(fin), cdc,
@@ -134,20 +135,21 @@ export function genererDemo(now = new Date(), graine = 2026) {
   const DESIGN = {
     CFO: [['Surchauffe anormale', 'Ventilation obstruée', 'Nettoyage et contrôle de la ventilation'], ['Déclenchement intempestif du disjoncteur', 'Seuil de protection déréglé', 'Réglage des protections'], ['Odeur de brûlé en cellule', 'Connexion desserrée', 'Resserrage et contrôle thermographique']],
     CFA: [['Image absente sur la caméra', 'Alimentation défaillante', "Remplacement de l'alimentation"], ['Haut-parleur inaudible', 'Amplificateur en défaut', "Remplacement de l'amplificateur"], ['Horloge désynchronisée', 'Perte de liaison réseau', 'Reconfiguration du synchronisme']],
+    LAC: [["Usure anormale du fil de contact", "Désaxement déréglé", "Réglage du désaxement et mesure d'usure"], ['Isolateur fissuré', 'Choc mécanique', "Remplacement de l'isolateur"]],
     VOIE: [["Aiguille qui ne verrouille pas", "Fin de course déréglé", 'Réglage du détecteur']],
-    BILLETTIQUE: [['Valideur ne lit pas les titres', 'Lecteur encrassé', 'Nettoyage et recalibrage du lecteur'], ['Portillon bloqué', 'Capteur de passage défaillant', 'Remplacement du capteur'], ['DAT hors service', 'Monnayeur bloqué', 'Débourrage et réglage du monnayeur']],
+    BIL: [['Valideur ne lit pas les titres', 'Lecteur encrassé', 'Nettoyage et recalibrage du lecteur'], ['Portillon bloqué', 'Capteur de passage défaillant', 'Remplacement du capteur'], ['DAT hors service', 'Monnayeur bloqué', 'Débourrage et réglage du monnayeur']],
     MR: [['Porte qui ne se ferme pas', 'Joint déformé', 'Remplacement du joint'], ['Bruit au freinage', 'Plaquettes usées', 'Remplacement des plaquettes'], ['Climatisation inopérante', 'Fuite de fluide', 'Réparation et recharge']],
     ELM: [['Groupe électrogène ne démarre pas', 'Batterie déchargée', 'Remplacement de la batterie']],
     BO: [['Fuite en toiture', 'Étanchéité dégradée', "Reprise de l'étanchéité"]],
     ED: [['Pont roulant à-coups au levage', 'Frein à régler', 'Réglage du frein']],
   };
   const tachesCorr = ['Sécuriser la zone / consigner', 'Diagnostiquer la panne', 'Réparer ou remplacer', 'Essai de fonctionnement', 'Remise en service'];
-  const techPar = { CFO: 'MT-1001', CFA: 'MT-1002', MR: 'MT-1003', BILLETTIQUE: 'MT-1004', ELM: 'MT-1008', BO: 'MT-1008', VOIE: 'MT-1009', ED: 'MT-1008' };
+  const techPar = { CFO: 'MT-1001', LAC: 'MT-1001', CFA: 'MT-1002', MR: 'MT-1003', BIL: 'MT-1004', ELM: 'MT-1008', BO: 'MT-1008', VOIE: 'MT-1009', ED: 'MT-1008' };
   const interDe = (mat) => INTER.find((x) => x[0] === mat);
   const NB_DI = { Alger: 46, Oran: 14, Constantine: 7, 'Sidi Bel Abbès': 4, Ouargla: 3, Sétif: 3, Mostaganem: 3 };
   const demandeurs = ['Agent exploitation', 'Chef de station', 'Régulation', 'Conducteur'];
   // quelques équipements en panne récurrente (même motif) pour illustrer l'indicateur de récurrence
-  const recurrents = new Set(['CFO.ALG.SST.01', 'BILLETTIQUE.ALG.PTL.01']);
+  const recurrents = new Set(['CFO.ALG.SST.01', 'BIL.ALG.PTL.01']);
 
   for (const unit of Object.keys(ABBR)) {
     const abr = ABBR[unit]; const eqs = eqParUnite[unit]; if (!eqs.length) continue;
@@ -198,7 +200,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
   /* ───── Préventif : plans + OT générés ───── */
   const PLANS = {
     Alger: [['CFO.ALG.SST.01', 'Mensuel', 'Contrôle thermographique'], ['CFO.ALG.SST.02', 'Trimestriel', 'Contrôle du jeu de barres'], ['CFA.ALG.VDO.01', 'Trimestriel', 'Nettoyage et contrôle caméra'],
-      ['MR.ALG.BOG.01', 'Mensuel', 'Inspection du bogie'], ['BILLETTIQUE.ALG.PTL.01', 'Hebdomadaire', 'Contrôle du portillon'], ['ED.ALG.PNT.01', 'Semestriel', 'Contrôle du pont roulant']],
+      ['MR.ALG.BOG.01', 'Mensuel', 'Inspection du bogie'], ['BIL.ALG.PTL.01', 'Hebdomadaire', 'Contrôle du portillon'], ['ED.ALG.PNT.01', 'Semestriel', 'Contrôle du pont roulant']],
     Oran: [['CFO.ORN.SST.01', 'Mensuel', 'Contrôle thermographique'], ['MR.ORN.BOG.01', 'Mensuel', 'Inspection du bogie']],
     Constantine: [['MR.CST.BOG.01', 'Mensuel', 'Inspection du bogie']],
   };
@@ -266,6 +268,22 @@ export function genererDemo(now = new Date(), graine = 2026) {
       assignes: [tech[1]], taches, outillage: [{ code: 'O-002', qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: 'Non', intitule } });
   }
 
+  /* ───── Rapports d'activité (Alger) : le mois précédent clôturé, le mois en cours en revue chez l'expert DG ───── */
+  {
+    const an = annee(0), moisPrec = new Date(now.getFullYear(), now.getMonth() - 2, 15), moisCour = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+    const lib = (d) => d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const per = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const c1 = `RAP-ALG-${an}-${pad(suivant('rapports', 'ALG', an), 3)}`, c2 = `RAP-ALG-${an}-${pad(suivant('rapports', 'ALG', an), 3)}`;
+    const h = (j, action, par, detail) => ({ le: horo(j, 10, 0), par, action, ...(detail ? { detail } : {}) });
+    col.rapports.push({ id: c1, unit: 'Alger', system: null, data: { code: c1, unit: 'Alger', titre: `Rapport d'activité maintenance — ${lib(moisPrec)}`, periode: per(moisPrec), fichiers: [],
+      etat: 'Clôturé', tour: 1, attendus: ['demo.expert'], revues: { 1: { 'demo.expert': { nom: 'Démo — Expert DG CFO', erreurs: 0, commentaire: '', terminee: true, le: horo(-25, 11, 0) } } },
+      decision: { etat: 'Clôturé', par: 'Démo — Responsable DG', le: horo(-24, 9, 0) },
+      historique: [h(-28, 'Création', 'Démo — Responsable maintenance'), h(-27, 'Envoyé à la DG', 'Démo — Responsable maintenance'), h(-25, 'Revue terminée (Démo — Expert DG CFO)', 'Démo — Expert DG CFO', '0 erreur(s)'), h(-24, 'Clôturé par le responsable DG', 'Démo — Responsable DG')] } });
+    col.rapports.push({ id: c2, unit: 'Alger', system: null, data: { code: c2, unit: 'Alger', titre: `Rapport d'activité maintenance — ${lib(moisCour)}`, periode: per(moisCour), fichiers: [],
+      etat: 'Envoyé', tour: 1, attendus: ['demo.expert'], revues: {},
+      historique: [h(-3, 'Création', 'Démo — Responsable maintenance'), h(-2, 'Envoyé à la DG', 'Démo — Responsable maintenance')] } });
+  }
+
   // compteurs du serveur : la numérotation continue après les données de démonstration
   const lignesCompteurs = [...compteurs.entries()].map(([k, last]) => { const [name, scope, an] = k.split('|'); return { name, scope, year: Number(an), last }; })
     .map((c) => (c.name === 'pieces:P' || c.name === 'pieces:O' || c.name === 'pieces:C' ? c : c));
@@ -276,14 +294,24 @@ export function genererDemo(now = new Date(), graine = 2026) {
   const users = [
     { id: 'demo.admin', nom: 'Démo — Super administrateur', role: 'Super Admin', password: 'Demo2026-Admin', superAdmin: true, droits: {},
       description: 'Accès complet : administration, import Excel, tous les écrans.' },
-    { id: 'demo.responsable', nom: 'Démo — Responsable maintenance', role: 'Responsable', password: 'Demo2026-Resp', superAdmin: false, droits: tous([0, 1, 2, 3, 4, 5, 6], ['Alger', 'Oran', 'Constantine']),
-      description: 'Pilote la maintenance : DI, OT, préventif, magasin, indicateurs (Alger, Oran, Constantine).' },
-    { id: 'demo.technicien', nom: 'Démo — Technicien', role: 'Technicien', password: 'Demo2026-Tech', superAdmin: false, droits: { Alger: { systems: ['CFO', 'CFA', 'BILLETTIQUE'], volets: [0, 1, 2, 3] } },
-      description: 'Voit et traite les DI / OT de son périmètre (courants forts et faibles, billettique — Alger).' },
+    { id: 'demo.responsable', nom: 'Démo — Responsable maintenance', role: 'Administrateur UO', password: 'Demo2026-Resp', superAdmin: false,
+      droits: Object.fromEntries(['Alger', 'Oran', 'Constantine'].map((u) => [u, { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7] }])),
+      description: 'Administrateur UO : tous les droits métier (DI, OT, préventif, magasin, personnel, indicateurs) sur Alger, Oran, Constantine ; clôture les OT ; envoie le rapport d\'activité à la DG.' },
+    { id: 'demo.charge', nom: 'Démo — Chargé système CFO', role: 'Chargé système', password: 'Demo2026-Charge', superAdmin: false,
+      droits: { Alger: { systems: ['CFO', 'LAC'], volets: [0, 1, 2, 3, 5, 6] } },
+      description: 'Chargé système (CFO et LAC, Alger) : génère les OT, contrôle la saisie des techniciens et clôture ; prévenu quand un OT est « à clôturer ».' },
+    { id: 'demo.technicien', nom: 'Démo — Technicien', role: 'Technicien', password: 'Demo2026-Tech', superAdmin: false, droits: { Alger: { systems: ['CFO', 'CFA', 'BIL'], volets: [2] } },
+      description: 'Remplit les OT de son périmètre (courants forts et faibles, billettique — Alger) puis « Termine la saisie » : la clôture revient au chargé / responsable.' },
     { id: 'demo.exploitation', nom: 'Démo — Exploitation', role: 'Exploitation', password: 'Demo2026-Expl', superAdmin: false, droits: tous([1], ['Alger', 'Oran']),
       description: "Déclare des anomalies (DI) — l'usage typique sur le terrain, au téléphone ou via un QR code." },
-    { id: 'demo.magasin', nom: 'Démo — Magasinier', role: 'Magasinier', password: 'Demo2026-Mag', superAdmin: false, droits: tous([4], ['Alger']),
-      description: 'Gère le magasin : stocks, entrées, sorties, décharges.' },
+    { id: 'demo.magasin', nom: 'Démo — Magasinier', role: 'Gestionnaire de stock', password: 'Demo2026-Mag', superAdmin: false, droits: tous([4], ['Alger']),
+      description: 'Gestionnaire de stock : articles, entrées, sorties (DS / BS), retours, décharges.' },
+    { id: 'demo.expert', nom: 'Démo — Expert DG CFO', role: 'Expert DG', password: 'Demo2026-Expert', superAdmin: false,
+      droits: Object.fromEntries(Object.keys(ABBR).map((u) => [u, { systems: ['CFO', 'LAC'], volets: [0, 1, 2, 3, 6, 7] }])),
+      description: 'Expert DG (CFO et LAC, toutes unités) : valide les OT clôturés et les référentiels ; revoit les rapports d\'activité des UO (erreurs, commentaire).' },
+    { id: 'demo.resp.dg', nom: 'Démo — Responsable DG', role: 'Responsable DG', password: 'Demo2026-RespDG', superAdmin: false,
+      droits: Object.fromEntries(Object.keys(ABBR).map((u) => [u, { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7] }])),
+      description: 'Responsable DG : valide et clôture les rapports d\'activité des UO, ou les renvoie pour correction ; consulte toutes les données.' },
     { id: 'demo.direction', nom: 'Démo — Direction', role: 'Directeur', password: 'Demo2026-Dir', superAdmin: false, droits: tous([6], Object.keys(ABBR)),
       description: 'Consulte les tableaux de bord (KPI) de toutes les unités.' },
   ];

@@ -19,14 +19,14 @@ export const systemes = {
 export const arborescence = {
   toRows: (v) => Object.entries(v || {}).flatMap(([sys, subs], i) => [
     { id: sys, data: { system: sys, header: true, ordre: i } },
-    ...(subs || []).map((s, j) => ({ id: `${sys}.${s.code}`, data: { system: sys, code: s.code, sub: s.sub, ordre: j } })),
+    ...(subs || []).map((s, j) => ({ id: `${sys}.${s.code}`, data: { system: sys, code: s.code, sub: s.sub, ordre: j, ...(s.validationDG ? { validationDG: s.validationDG } : {}) } })),
   ]),
   fromRows: (ds) => {
     const out = {};
     const heads = ds.filter((d) => d.header).sort((a, b) => num(a.ordre, b.ordre) || txt(a.system, b.system));
     heads.forEach((h) => { out[h.system] = []; });
     ds.filter((d) => !d.header).sort((a, b) => num(a.ordre, b.ordre) || txt(a.code, b.code)).forEach((d) => {
-      (out[d.system] ||= []).push({ code: d.code, sub: d.sub });
+      (out[d.system] ||= []).push({ code: d.code, sub: d.sub, ...(d.validationDG ? { validationDG: d.validationDG } : {}) });   // validation DG conservée
     });
     return out;
   },

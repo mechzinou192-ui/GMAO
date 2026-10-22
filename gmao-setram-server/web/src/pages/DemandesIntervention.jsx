@@ -2,7 +2,7 @@
 import React,{useState,useMemo} from "react";
 import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
-import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel} from "../ui/base.jsx";
+import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
 /* ===== Page 1 : Demandes d'Intervention (créées par l'Exploitation) ===== */
@@ -20,7 +20,7 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
   <Card>
    <div className="flex justify-between items-center mb-1 flex-wrap gap-2">
     <div><h2 className="font-semibold text-slate-100">Demandes d'Intervention (DI)</h2><div className="text-xs text-slate-500">Créées par le service Exploitation — cliquez sur une ligne pour ouvrir la DI</div></div>
-    <div className="flex gap-2"><ExportBtn onClick={exportDI}/><Btn onClick={onNewDI}><span className="flex items-center gap-1">{I.plus} Nouvelle DI</span></Btn></div>
+    <div className="flex gap-2"><ExportBtn onClick={exportDI}/>{onNewDI&&<Btn onClick={onNewDI}><span className="flex items-center gap-1">{I.plus} Nouvelle DI</span></Btn>}</div>
    </div>
    <div className="md:hidden mt-3 space-y-2" data-testid="di-cartes">
     {dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return <div key={d.code} onClick={()=>onOpenDI(d)} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 cursor-pointer active:bg-slate-700/40">
@@ -29,7 +29,7 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
      <div className="text-sm text-slate-300 mt-1 break-words">{d.designation}</div>
      <div className="text-xs text-slate-400 mt-1">{typeLabel(d)}{d.dateEvt?" · "+d.dateEvt:""}{d.perturb?<span className="text-rose-400"> · Perturbation</span>:null}</div>
      {bt && <div className="text-xs text-slate-400">OT lié : {bt.code}</div>}
-     {d.etat==="À Transmettre" && <div className="mt-2"><Btn cls="bg-sky-600 hover:bg-sky-500 text-white w-full" onClick={(e)=>{e.stopPropagation();onGenererBT(d);}}>Générer OT</Btn></div>}
+     {onGenererBT && d.etat==="À Transmettre" && <div className="mt-2"><Btn cls="bg-sky-600 hover:bg-sky-500 text-white w-full" onClick={(e)=>{e.stopPropagation();onGenererBT(d);}}>Générer OT</Btn></div>}
     </div>;})}
     {dis.length===0 && <div className="text-center text-slate-500 py-4 text-xs">Aucune DI.</div>}
    </div>
@@ -43,14 +43,14 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
      <td>{d.perturb?<span className="text-rose-400">Oui</span>:"Non"}</td>
      <td className="text-xs text-slate-400">{bt?bt.code:"—"}</td>
      <td><Badge t={d.etat}/></td>
-     <td>{d.etat==="À Transmettre" && <Btn cls="bg-sky-600 hover:bg-sky-500 text-xs" onClick={(e)=>{e.stopPropagation();onGenererBT(d);}}>Générer OT</Btn>}</td>
+     <td>{onGenererBT && d.etat==="À Transmettre" && <Btn cls="bg-sky-600 hover:bg-sky-500 text-xs" onClick={(e)=>{e.stopPropagation();onGenererBT(d);}}>Générer OT</Btn>}</td>
     </tr>;})}</tbody>
    </table></div>
   </Card>
  </div>);
 }
 
-export function DIDetail({di,bt,onGenererBT,onOpenBT}){
+export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut}){
  return (<div className="space-y-3">
   <div className="flex items-center gap-2"><Badge t={di.etat}/>{di.perturb && <span className="text-xs text-rose-400">Perturbation exploitation</span>}</div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -70,7 +70,8 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT}){
        : <div className="text-sm text-slate-400">Aucun OT généré pour cette DI.</div>}
   </div>
   <PiecesJointes collection="dis" recordId={di.code}/>
-  {di.etat==="À Transmettre" && <div className="flex justify-end"><Btn onClick={onGenererBT}>Générer l'OT</Btn></div>}
+  {onGenererBT && di.etat==="À Transmettre" && <div className="flex justify-end"><Btn onClick={onGenererBT}>Générer l'OT</Btn></div>}
+  {onStatut && <StatutManuel etats={ETATS_MANUELS.di} valeur={di.etat} quoi={di.code} onAppliquer={onStatut}/>}
  </div>);
 }
 
