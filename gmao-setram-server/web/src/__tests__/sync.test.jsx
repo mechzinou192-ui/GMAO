@@ -64,6 +64,7 @@ describe('useSynced', () => {
 
   it('référentiel (systèmes) : défauts si serveur vierge, le super admin crée une ligne par système', async () => {
     api.list.mockResolvedValueOnce({ items: [], serverTime: 't' })
+            .mockResolvedValueOnce({ items: [], serverTime: 't' })          // historique (suppressions comprises) : vide
             .mockResolvedValue({ items: [{ id: 'CFO', data: { code: 'CFO', nom: 'Courants Forts', ordre: 0 }, version: 1, createdAt: 'x' }], serverTime: 't' });
     api.bulkImport.mockResolvedValue({ imported: 1 });
     const { result } = renderHook(() => useSynced('systemes', { defaults: [['CFO', 'Courants Forts']], sa: true }));

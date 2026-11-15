@@ -110,7 +110,7 @@ describe('équipements', () => {
     const lec = await lire({ 'Équipements': [EQ_H,
       ['Paris', 'CFO', 'SST', 'X'],
       ['Alger', 'XYZ', 'SST', 'X'],
-      ['Alger', 'CFO', 'ZZZ', 'X'],
+      ['Alger', 'CFO', 'Z Z Z Z Z Z Z Z Z Z Z', 'X'],
       ['Alger', 'CFO', 'SST', ''],
       ['Alger', 'CFO', 'SST', 'Prix faux', '', 'beaucoup'],
       ['Alger', 'CFO', 'SST', 'Code faux', '', '', '', '', 'MR.ALG.BOG.01'],
@@ -121,11 +121,30 @@ describe('équipements', () => {
     expect(p.erreurs).toHaveLength(7);
     expect(m[0]).toMatch(/^Équipements\|2\|colonne « Unité » : « Paris » n'est pas une valeur autorisée/);
     expect(m[1]).toMatch(/\|3\|colonne « Système » : « XYZ » inconnu/);
-    expect(m[2]).toMatch(/\|4\|colonne « Sous-système » : « ZZZ » inconnu pour le système CFO \(choix : SST, LAC\)/);
+    expect(m[2]).toMatch(/\|4\|colonne « Sous-système » : « Z Z Z Z Z Z Z Z Z Z Z » : indiquez un code court/);
     expect(m[3]).toMatch(/\|5\|colonne « Désignation » : valeur obligatoire manquante/);
     expect(m[4]).toMatch(/\|6\|colonne « Prix \(DA\) » : « beaucoup » n'est pas un nombre/);
     expect(m[5]).toMatch(/\|7\|colonne « Code » : « MR.ALG.BOG.01 » ne correspond pas/);
     expect(m[6]).toMatch(/\|8\|colonne « Prix \(DA\) » : « -5 » doit être supérieur/);
+  });
+
+  it('sous-système absent de l\'arborescence : créé à partir du fichier', async () => {
+    const H = ['Unité *', 'Système *', 'Sous-système *', 'Nom du sous-système', 'Désignation *'];
+    const lec = await lire({ 'Équipements': [H,
+      ['Alger', 'CFO', 'TRF', 'Poste de transformation', 'Transfo 1'],
+      ['Alger', 'CFO', 'trf', '', 'Transfo 2'],
+      ['Alger', 'MR', 'PNT', '', 'Pont'],
+      ['Oran', 'CFO', 'SST', '', 'Redresseur'],
+    ] });
+    const p = preparerImport(lec, ctx({ treeStruct: { CFO: [{ code: 'SST', sub: 'Sous-Station' }] } }));
+    expect(p.erreurs).toEqual([]);
+    expect(p.collections.equipements.map((r) => r.id)).toEqual(['CFO.ALG.TRF.01', 'CFO.ALG.TRF.02', 'MR.ALG.PNT.01', 'CFO.ORN.SST.01']);
+    const arbo = Object.fromEntries(p.collections.arborescence.map((r) => [r.id, r.data]));
+    expect(Object.keys(arbo).sort()).toEqual(['CFO.TRF', 'MR', 'MR.PNT']);   // TRF créé une seule fois ; en-tête MR ajouté
+    expect(arbo['CFO.TRF']).toMatchObject({ system: 'CFO', code: 'TRF', sub: 'Poste de transformation' });
+    expect(arbo['MR.PNT']).toMatchObject({ system: 'MR', code: 'PNT', sub: 'PNT' });
+    expect(arbo.MR).toMatchObject({ system: 'MR', header: true });
+    expect(p.avertissements.filter((a) => /nouveau sous-système/.test(a.message))).toHaveLength(2);
   });
 
   it('colonne obligatoire absente : message clair', async () => {

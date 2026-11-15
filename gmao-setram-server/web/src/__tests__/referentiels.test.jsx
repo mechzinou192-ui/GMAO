@@ -116,12 +116,23 @@ describe('useSynced — référentiel stocké une ligne par élément', () => {
 
   it('serveur vierge : le super administrateur crée les lignes par défaut (une par élément)', async () => {
     api.list.mockResolvedValueOnce({ items: [], serverTime: 't' })
+      .mockResolvedValueOnce({ items: [], serverTime: 't' })                // historique (suppressions comprises) : vide
       .mockResolvedValueOnce({ items: systemes.toRows([['X', 'défaut']]).map((r) => rec(r.id, r.data)), serverTime: 't2' });
     api.bulkImport.mockResolvedValue({ imported: 1 });
     const { result } = renderHook(() => useSynced('systemes', { defaults: [['X', 'défaut']], sa: true }));
     await waitFor(() => expect(result.current[2]).toBe('ready'));
     expect(api.bulkImport).toHaveBeenCalledWith('systemes', [{ id: 'X', data: { code: 'X', nom: 'défaut', ordre: 0 } }]);
     expect(result.current[0]).toEqual([['X', 'défaut']]);
+  });
+
+  it('liste vidée par « Repartir de zéro » : les valeurs par défaut ne sont PAS réinjectées', async () => {
+    api.list.mockResolvedValueOnce({ items: [], serverTime: 't' })
+      .mockResolvedValueOnce({ items: [{ ...rec('CFO.SST', { system: 'CFO', code: 'SST', sub: 'x' }), deleted: true }], serverTime: 't' });
+    const { result } = renderHook(() => useSynced('arborescence', { defaults: { CFO: [{ code: 'SST', sub: 'x' }] }, sa: true }));
+    await waitFor(() => expect(result.current[2]).toBe('ready'));
+    expect(api.list).toHaveBeenLastCalledWith('arborescence', '1970-01-01T00:00:00.000Z');
+    expect(api.bulkImport).not.toHaveBeenCalled();
+    expect(result.current[0]).toEqual({});
   });
 
   it('serveur vierge et utilisateur non administrateur : valeurs par défaut, rien n\'est écrit', async () => {
