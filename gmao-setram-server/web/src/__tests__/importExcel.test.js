@@ -109,7 +109,7 @@ describe('équipements', () => {
   it('signale chaque erreur avec feuille, ligne et colonne, et n\'écrit rien d\'utile', async () => {
     const lec = await lire({ 'Équipements': [EQ_H,
       ['Paris', 'CFO', 'SST', 'X'],
-      ['Alger', 'XYZ', 'SST', 'X'],
+      ['Alger', 'SYSTEME BEAUCOUP TROP LONG', 'SST', 'X'],
       ['Alger', 'CFO', 'Z Z Z Z Z Z Z Z Z Z Z', 'X'],
       ['Alger', 'CFO', 'SST', ''],
       ['Alger', 'CFO', 'SST', 'Prix faux', '', 'beaucoup'],
@@ -120,7 +120,7 @@ describe('équipements', () => {
     const m = p.erreurs.map((e) => `${e.feuille}|${e.ligne}|${e.message}`);
     expect(p.erreurs).toHaveLength(7);
     expect(m[0]).toMatch(/^Équipements\|2\|colonne « Unité » : « Paris » n'est pas une valeur autorisée/);
-    expect(m[1]).toMatch(/\|3\|colonne « Système » : « XYZ » inconnu/);
+    expect(m[1]).toMatch(/\|3\|colonne « Système » : « SYSTEME BEAUCOUP TROP LONG » : indiquez un code court/);
     expect(m[2]).toMatch(/\|4\|colonne « Sous-système » : « Z Z Z Z Z Z Z Z Z Z Z » : indiquez un code court/);
     expect(m[3]).toMatch(/\|5\|colonne « Désignation » : valeur obligatoire manquante/);
     expect(m[4]).toMatch(/\|6\|colonne « Prix \(DA\) » : « beaucoup » n'est pas un nombre/);
@@ -145,6 +145,20 @@ describe('équipements', () => {
     expect(arbo['MR.PNT']).toMatchObject({ system: 'MR', code: 'PNT', sub: 'PNT' });
     expect(arbo.MR).toMatchObject({ system: 'MR', header: true });
     expect(p.avertissements.filter((a) => /nouveau sous-système/.test(a.message))).toHaveLength(2);
+  });
+
+  it('après « Repartir de zéro » (aucun système) : systèmes et sous-systèmes créés à partir du fichier', async () => {
+    const H = ['Repère', 'Unité *', 'Système *', 'Nom du système', 'Sous-système *', 'Nom du sous-système', 'Désignation *'];
+    const lec = await lire({
+      'Équipements': [H, ['R001', 'Alger', 'CFO', 'Courants Forts', 'SST', 'Sous-station', 'Redresseur 1'], ['R002', 'Alger', 'cfo', '', 'SST', '', 'Redresseur 2']],
+      'Sous-équipements': [['Équipement parent *', 'Désignation *'], ['R001', 'Pont de diodes'], ['R002', 'Ventilateur']],
+    });
+    const p = preparerImport(lec, ctx({ systemsList: [], treeStruct: {} }));
+    expect(p.erreurs).toEqual([]);
+    expect(p.collections.systemes.map((r) => r.data)).toEqual([{ code: 'CFO', nom: 'Courants Forts', ordre: 0 }]);
+    expect(p.collections.arborescence.map((r) => r.id).sort()).toEqual(['CFO', 'CFO.SST']);
+    expect(p.collections.equipements.map((r) => r.id)).toEqual(['CFO.ALG.SST.01', 'CFO.ALG.SST.02']);
+    expect(p.collections.equipements[0].data.sousEquip[0]).toMatchObject({ code: 'CFO.ALG.SST.01.01', nom: 'Pont de diodes' });
   });
 
   it('colonne obligatoire absente : message clair', async () => {

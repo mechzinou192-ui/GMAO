@@ -63,12 +63,12 @@ describe('Import Excel — interface', () => {
 
   it('fichier avec erreurs : erreurs précises, aucun bouton d\'import, rien d\'envoyé', async () => {
     render(<ImportDonnees refs={refs} />);
-    charger(await fichier({ 'Équipements': [EQ, ['Paris', 'CFO', 'SST', 'A'], ['Alger', 'XXX', 'SST', 'B'], ['Alger', 'CFO', 'SST', 'Bon']] }));
+    charger(await fichier({ 'Équipements': [EQ, ['Paris', 'CFO', 'SST', 'A'], ['Alger', 'SYSTEME TROP LONG XXX', 'SST', 'B'], ['Alger', 'CFO', 'SST', 'Bon']] }));
     const erreurs = await screen.findByTestId('erreurs-import');
     expect(erreurs.textContent).toContain('2 erreurs à corriger');
     expect(erreurs.textContent).toContain('ligne 2');
     expect(erreurs.textContent).toContain('« Paris » n\'est pas une valeur autorisée');
-    expect(erreurs.textContent).toContain('« XXX » inconnu');
+    expect(erreurs.textContent).toContain('« SYSTEME TROP LONG XXX » : indiquez un code court');
     expect(screen.queryByText(/4\. Importer/)).toBeNull();
     expect(api.importExcel).not.toHaveBeenCalled();
   });
