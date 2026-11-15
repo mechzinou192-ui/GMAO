@@ -18,7 +18,7 @@ function telecharger(buffer, nom) {
 }
 const jour = () => new Date().toISOString().slice(0, 10);
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
-const NOMS = { planning: 'plans préventifs', equipements: 'équipements', pieces: 'articles du magasin', intervenants: 'intervenants', prestataires: 'prestataires', organismes: 'organismes', mesures: 'appareils de mesure', controles: 'contrôles réglementaires' };
+const NOMS = { arborescence: 'sous-systèmes', planning: 'plans préventifs', equipements: 'équipements', pieces: 'articles du magasin', intervenants: 'intervenants', prestataires: 'prestataires', organismes: 'organismes', mesures: 'appareils de mesure', controles: 'contrôles réglementaires' };
 
 // ref : { units, unitAbbr, roles, cdcEtats, orgDom, systemsList, treeStruct, equipements, pieces, intervenants, prestataires, organismes, mesures, controles }
 export default function ImportDonnees({ refs }) {

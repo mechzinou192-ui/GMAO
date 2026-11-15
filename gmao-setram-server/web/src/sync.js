@@ -118,9 +118,17 @@ export function useSynced(name, opts = {}) {
       let next = build(res.items);
       const empty = asValueOf(c) ? next === null : res.items.length === 0;
       if (empty && c.defaults) {
-        // serveur vierge : le super administrateur initialise les référentiels par défaut
-        if (c.sa && allowSeed) { await seedServer(); return load(false); }
-        next = c.defaults;
+        // Liste vide : serveur VIERGE (jamais rien enregistré) ou liste VIDÉE par « Repartir de zéro » ?
+        // On relit en incluant les suppressions : s'il en existe, la liste a été vidée volontairement
+        // et on ne réinjecte PAS les valeurs par défaut (sinon CFO › SST, ECL… réapparaissent après la remise à zéro).
+        const historique = await api.list(name, '1970-01-01T00:00:00.000Z');
+        if (!historique.items.length) {
+          // serveur vierge : le super administrateur initialise les référentiels par défaut
+          if (c.sa && allowSeed) { await seedServer(); return load(false); }
+          next = c.defaults;
+        } else {
+          next = c.rows ? c.rows.fromRows([]) : c.single ? c.defaults : [];
+        }
       }
       apply(next === null ? (asValueOf(c) ? c.defaults : []) : next);
       setStatus('ready');

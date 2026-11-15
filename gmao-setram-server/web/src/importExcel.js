@@ -111,6 +111,7 @@ export const FEUILLES = [
       C('unite', 'Unité', 'Alger', { req: true, t: 'unite' }),
       C('systeme', 'Système', 'CFO', { req: true }),
       C('sous', 'Sous-système', 'SST', { req: true }),
+      C('nomSous', 'Nom du sous-système', 'Sous-Station Électrique', { alias: ['libelle sous-systeme', 'libelle du sous-systeme', 'nom sous-systeme'] }),
       C('nom', 'Désignation', 'Transformateur HT/BT', { req: true }),
       C('emplacement', 'Emplacement', 'Dépôt Alger — Atelier B'),
       C('prix', 'Prix (DA)', '1250000', { t: 'num' }),
@@ -490,6 +491,13 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
   ctx.equipements.forEach((e) => bumpPrefix(e.code));
 
   const parRepere = new Map();     // repère (feuille Équipements) -> code GMAO, attribué ou existant
+  // Sous-systèmes : c'est le fichier qui décide. Un sous-système absent de l'arborescence est CRÉÉ par l'import
+  // (dans la même transaction que les équipements), au lieu de bloquer la ligne.
+  const nouveauxSous = [];         // { system, code, sub }
+  const trouverSous = (systeme, val) => {
+    const egal = (x) => norm(x.code) === norm(val) || norm(x.sub) === norm(val);
+    return (ctx.treeStruct[systeme] || []).find(egal) || nouveauxSous.find((x) => x.system === systeme && egal(x));
+  };
   if (present('equipements')) {
     const def = defOf('equipements'), s = stats('equipements');
     const lignes = lire(def, lecture.feuilles.equipements); s.lignes = lecture.feuilles.equipements.lignes.length;
@@ -500,8 +508,16 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     for (const { ligne, v } of lignes) {
       const systeme = trouverSysteme(v.systeme);
       if (!systeme) { err(def.nom, ligne, 'Système', `« ${v.systeme} » inconnu (voir la feuille Référentiels)`); continue; }
-      const sub = (ctx.treeStruct[systeme] || []).find((x) => norm(x.code) === norm(v.sous) || norm(x.sub) === norm(v.sous));
-      if (!sub) { err(def.nom, ligne, 'Sous-système', `« ${v.sous} » inconnu pour le système ${systeme} (choix : ${(ctx.treeStruct[systeme] || []).map((x) => x.code).join(', ') || 'aucun'})`); continue; }
+      let sub = trouverSous(systeme, v.sous);
+      if (!sub) {
+        const codeSous = String(v.sous).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!codeSous || codeSous.length > 10) {
+          err(def.nom, ligne, 'Sous-système', `« ${v.sous} » : indiquez un code court (lettres et chiffres, 10 maximum, ex. SST) ; le nom complet va dans la colonne « Nom du sous-système »`); continue;
+        }
+        sub = { system: systeme, code: codeSous, sub: v.nomSous || v.sous };
+        nouveauxSous.push(sub);
+        warn(def.nom, ligne, `nouveau sous-système ${systeme} › ${codeSous} (${sub.sub}) : il sera créé dans l'arborescence`);
+      }
       const abr = ctx.unitAbbr[v.unite];
       const prefixe = `${systeme}.${abr}.${sub.code}`;
       let rec; let code = v.code ? v.code.toUpperCase() : '';
@@ -541,6 +557,16 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
       }
     }
   }
+
+  // sous-systèmes créés par le fichier -> arborescence (en-tête du système ajouté s'il n'existe pas encore)
+  nouveauxSous.forEach((x, i) => {
+    if (!ctx.treeStruct[x.system]) {
+      const ordreSys = ctx.systemsList.findIndex(([c]) => c === x.system);
+      ecrire('arborescence', x.system, { id: x.system, unit: '', system: null, data: { system: x.system, header: true, ordre: ordreSys < 0 ? 99 : ordreSys } });
+    }
+    const id = `${x.system}.${x.code}`;
+    ecrire('arborescence', id, { id, unit: '', system: null, data: { system: x.system, code: x.code, sub: x.sub, ordre: (ctx.treeStruct[x.system] || []).length + i } });
+  });
 
   /* ============ SOUS-ÉQUIPEMENTS ============ */
   if (present('sous')) {
