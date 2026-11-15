@@ -110,6 +110,7 @@ export const FEUILLES = [
       C('repere', 'Repère', 'T1', { alias: ['repere (facultatif)', 'reference interne', 'ref interne'] }),
       C('unite', 'Unité', 'Alger', { req: true, t: 'unite' }),
       C('systeme', 'Système', 'CFO', { req: true }),
+      C('nomSys', 'Nom du système', 'Courants Forts', { alias: ['libelle systeme', 'libelle du systeme', 'nom systeme'] }),
       C('sous', 'Sous-système', 'SST', { req: true }),
       C('nomSous', 'Nom du sous-système', 'Sous-Station Électrique', { alias: ['libelle sous-systeme', 'libelle du sous-systeme', 'nom sous-systeme'] }),
       C('nom', 'Désignation', 'Transformateur HT/BT', { req: true }),
@@ -494,6 +495,7 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
   // Sous-systèmes : c'est le fichier qui décide. Un sous-système absent de l'arborescence est CRÉÉ par l'import
   // (dans la même transaction que les équipements), au lieu de bloquer la ligne.
   const nouveauxSous = [];         // { system, code, sub }
+  const nouveauxSys = [];          // codes des systèmes créés par le fichier
   const trouverSous = (systeme, val) => {
     const egal = (x) => norm(x.code) === norm(val) || norm(x.sub) === norm(val);
     return (ctx.treeStruct[systeme] || []).find(egal) || nouveauxSous.find((x) => x.system === systeme && egal(x));
@@ -506,8 +508,21 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     for (const { v } of lignes) if (v.code) bumpPrefix(v.code.toUpperCase());
     const parNom = indexer(ctx.equipements, (e) => `${e.unit}|${e.system}|${e.subCode}|${norm(e.nom)}`);
     for (const { ligne, v } of lignes) {
-      const systeme = trouverSysteme(v.systeme);
-      if (!systeme) { err(def.nom, ligne, 'Système', `« ${v.systeme} » inconnu (voir la feuille Référentiels)`); continue; }
+      let systeme = trouverSysteme(v.systeme);
+      if (!systeme) {
+        // système absent (ex. après « Repartir de zéro ») : créé à partir du fichier, comme les sous-systèmes
+        const codeSys = String(v.systeme).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+        if (!codeSys || codeSys.length > 12) {
+          err(def.nom, ligne, 'Système', `« ${v.systeme} » : indiquez un code court (lettres et chiffres, 12 maximum, ex. CFO) ; le nom complet va dans la colonne « Nom du système »`); continue;
+        }
+        const nomSys = v.nomSys || codeSys;
+        const ordre = ctx.systemsList.length + nouveauxSys.length;
+        nouveauxSys.push(codeSys);
+        sysCodes.set(norm(codeSys), codeSys); sysNoms.set(norm(nomSys), codeSys);
+        ecrire('systemes', codeSys, { id: codeSys, unit: '', system: null, data: { code: codeSys, nom: nomSys, ordre } });
+        warn(def.nom, ligne, `nouveau système ${codeSys} (${nomSys}) : il sera créé`);
+        systeme = codeSys;
+      }
       let sub = trouverSous(systeme, v.sous);
       if (!sub) {
         const codeSous = String(v.sous).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -561,7 +576,7 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
   // sous-systèmes créés par le fichier -> arborescence (en-tête du système ajouté s'il n'existe pas encore)
   nouveauxSous.forEach((x, i) => {
     if (!ctx.treeStruct[x.system]) {
-      const ordreSys = ctx.systemsList.findIndex(([c]) => c === x.system);
+      const ordreSys = [...ctx.systemsList.map(([c]) => c), ...nouveauxSys].indexOf(x.system);
       ecrire('arborescence', x.system, { id: x.system, unit: '', system: null, data: { system: x.system, header: true, ordre: ordreSys < 0 ? 99 : ordreSys } });
     }
     const id = `${x.system}.${x.code}`;
