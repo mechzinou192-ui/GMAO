@@ -41,7 +41,10 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
     lignes:eqs.map(e=>[nomSys(e.system),nomSub(e.system,e.subCode),e.code,e.nom,e.emplacement||"",(e.constructeur||{}).nom||"",[(e.constructeur||{}).contact,(e.constructeur||{}).tel,(e.constructeur||{}).email].filter(Boolean).join("\n"),fmtFourn(e.fournisseurs),e.prix||0,(e.sousEquip||[]).length])},
    {nom:"Sous-équipements",titre:"Arborescence Technique — Sous-équipements (Unité "+unit+")",
     colonnes:[{h:"Code équipement"},{h:"Équipement"},{h:"Code sous-équipement"},{h:"Désignation"},{h:"Fournisseur(s)"}],
-    lignes:eqs.flatMap(e=>(e.sousEquip||[]).map(se=>[e.code,e.nom,se.code,se.nom,fmtFourn(se.fournisseurs)]))}]});
+    lignes:eqs.flatMap(e=>(e.sousEquip||[]).map(se=>[e.code,e.nom,se.code,se.nom,fmtFourn(se.fournisseurs)]))},
+   ...(eqs.some(e=>(e.sousEquip||[]).some(se=>(se.sousSousEquip||[]).length))?[{nom:"Sous-sous-équipements",titre:"Arborescence Technique — Sous-sous-équipements (Unité "+unit+")",
+    colonnes:[{h:"Code équipement"},{h:"Code sous-équipement"},{h:"Sous-équipement"},{h:"Code sous-sous-équipement"},{h:"Désignation"},{h:"Fournisseur(s)"}],
+    lignes:eqs.flatMap(e=>(e.sousEquip||[]).flatMap(se=>(se.sousSousEquip||[]).map(ss=>[e.code,se.code,se.nom,ss.code,ss.nom,fmtFourn(ss.fournisseurs)])))}]:[])]});
  };
  return (<div className="space-y-4">
   {mode!=="arbo" && <SubTabs value={tab} onChange={setTab} items={[["mesure","Appareils de mesure"],["ctrl","Contrôles réglementaires"],["org","Organismes"]]}/>}
@@ -95,9 +98,11 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
              {onSupprimerEquip && <button className="text-slate-600 hover:text-rose-400 px-1" title="Supprimer cet équipement (créé par erreur)" aria-label={"Supprimer "+e.code} onClick={()=>onSupprimerEquip(e)}>{I.x}</button>}
             </div>
             {eqOpen && <div className="pl-4 border-l border-slate-800 ml-2">
-             <ul>{sousList.map(se=><li key={se.code} onClick={()=>onOpenSousEquip(e,se)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e,sous:se});}} className="text-xs text-slate-500 py-0.5 flex justify-between items-center group cursor-pointer hover:text-sky-400">
+             <ul>{sousList.map(se=><li key={se.code} className="text-xs text-slate-500 py-0.5"><div onClick={()=>onOpenSousEquip(e,se)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e,sous:se});}} className="flex justify-between items-center group cursor-pointer hover:text-sky-400">
               <span>◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</span>
               <button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>
+              </div>
+              {(se.sousSousEquip||[]).length>0 && <ul className="pl-4 border-l border-slate-800 ml-2">{se.sousSousEquip.map(ss=><li key={ss.code} className="py-0.5 text-slate-500">▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}</li>)}</ul>}
              </li>)}
              {sousList.length===0 && <li className="text-xs text-slate-700 py-0.5">Aucun sous-équipement.</li>}
              </ul>
