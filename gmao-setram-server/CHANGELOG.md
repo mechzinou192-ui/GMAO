@@ -5,6 +5,7 @@
   colonne **Repère** ajoutée à la feuille *Sous-équipements* pour importer les trois niveaux en une seule fois.
   Codes automatiques `CFO.ALG.SST.01.01.01`, sans doublon au rechargement, mode « mettre à jour » pris en charge.
 - Création **manuelle** : dans la fiche d'un sous-équipement, bouton « + Sous-sous-équipement » (créer, modifier, supprimer ; code automatique `….01.01.01`).
+- **DI sur un sous-sous-équipement** : le formulaire de DI propose un sélecteur « Sous-sous-équipement concerné » (champ `ss` de la DI) ; bouton « Créer une DI » dans la fiche du sous-sous-équipement ; suppression bloquée tant qu'une DI l'utilise.
 - Arborescence, fiche du sous-équipement et export Excel : affichent les sous-sous-équipements.
 
 ## 1.19.0 — rapports d'activité UO / DG, profils DG, profils personnalisables, statuts manuels
