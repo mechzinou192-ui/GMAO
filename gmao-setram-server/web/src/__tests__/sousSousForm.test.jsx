@@ -29,3 +29,33 @@ describe('formulaire sous-sous-équipement', () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ code: 'CFO.ALG.SST.01.01.01', nom: 'Rotor bobiné' });
   });
 });
+
+import { DIForm } from '../pages/DemandesIntervention.jsx';
+
+describe('DI sur un sous-sous-équipement', () => {
+  const eq = { code: 'CFO.ALG.SST.01', nom: 'Transformateur', emplacement: 'Local 1', system: 'CFO', subCode: 'SST', unit: 'Alger', sousEquip: [se] };
+
+  it('la DI préremplie depuis un sous-sous-équipement garde se et ss', () => {
+    const onSubmit = vi.fn();
+    render(<DIForm prefill={{ eq: eq.code, nom: 'x', se: se.code, ss: 'CFO.ALG.SST.01.01.03' }} equipements={[eq]} demandeur="Karim" onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByText('Créer la DI'));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, se: se.code, ss: 'CFO.ALG.SST.01.01.03' });
+  });
+
+  it('on peut choisir le sous-sous-équipement dans le formulaire ; changer de sous-équipement le remet à zéro', () => {
+    const onSubmit = vi.fn();
+    render(<DIForm prefill={{ eq: eq.code, nom: eq.nom, se: se.code }} equipements={[eq]} demandeur="Karim" onSubmit={onSubmit} />);
+    const choix = screen.getByDisplayValue('— Sous-équipement entier —');
+    fireEvent.change(choix, { target: { value: 'CFO.ALG.SST.01.01.01' } });
+    fireEvent.click(screen.getByText('Créer la DI'));
+    const di = onSubmit.mock.calls[0][0];
+    expect(di).toMatchObject({ se: se.code, ss: 'CFO.ALG.SST.01.01.01' });
+    expect(di.nom).toContain('CFO.ALG.SST.01.01.01 Rotor');
+  });
+
+  it('sans sous-sous-équipement, aucun sélecteur supplémentaire', () => {
+    const eq2 = { ...eq, sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Moteur', fournisseurs: [] }] };
+    render(<DIForm prefill={{ eq: eq2.code, nom: eq2.nom, se: 'CFO.ALG.SST.01.01' }} equipements={[eq2]} demandeur="Karim" onSubmit={() => {}} />);
+    expect(screen.queryByText('Sous-sous-équipement concerné (optionnel)')).toBeNull();
+  });
+});
