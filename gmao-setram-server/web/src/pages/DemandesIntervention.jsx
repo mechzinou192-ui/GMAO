@@ -78,15 +78,15 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut}){
 export function DIForm({prefill,equipements,demandeur,onSubmit}){
  const dateCreation=useMemo(()=>new Date().toISOString().slice(0,16).replace("T"," "),[]);
  const pre=prefill?.eq?equipements.find(e=>e.code===prefill.eq):null;
- const [f,setF]=useState({eq:pre?pre.code:"",nom:pre?(prefill.se?prefill.nom:pre.nom):"",se:prefill?.se||"",emplacement:pre?pre.emplacement:"",designation:"",dateEvt:new Date().toISOString().slice(0,16).replace("T"," ")});
+ const [f,setF]=useState({eq:pre?pre.code:"",nom:pre?(prefill.se?prefill.nom:pre.nom):"",se:prefill?.se||"",ss:prefill?.ss||"",emplacement:pre?pre.emplacement:"",designation:"",dateEvt:new Date().toISOString().slice(0,16).replace("T"," ")});
  const [fromFiche,setFromFiche]=useState(!!(pre&&pre.emplacement));
  const [perturb,setPerturb]=useState("Non");
  const [typeM,setTypeM]=useState("Corrective");
  const [sousType,setSousType]=useState("Curative");
  const [err,setErr]=useState("");
  function pick(eq){
-  if(!eq){setF({...f,eq:"",nom:"",se:"",emplacement:""});setFromFiche(false);return;}
-  setF({...f,eq:eq.code,nom:eq.nom,se:"",emplacement:eq.emplacement||""});
+  if(!eq){setF({...f,eq:"",nom:"",se:"",ss:"",emplacement:""});setFromFiche(false);return;}
+  setF({...f,eq:eq.code,nom:eq.nom,se:"",ss:"",emplacement:eq.emplacement||""});
   setFromFiche(!!eq.emplacement);
  }
  const sel="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
@@ -94,7 +94,8 @@ export function DIForm({prefill,equipements,demandeur,onSubmit}){
   {pre && <div className="text-xs text-sky-400 mb-2">Équipement préchargé depuis l'arborescence</div>}
   <Field label="Demandeur (automatique)"><Inp value={demandeur} disabled className="opacity-60"/></Field>
   <Field label="Équipement"><EquipSelect equipements={equipements} value={f.eq} onPick={pick}/></Field>
-  {(()=>{const cur=equipements.find(e=>e.code===f.eq); const sl=(cur&&cur.sousEquip)||[]; return sl.length>0&&<Field label="Sous-équipement concerné (optionnel)"><select value={f.se||""} onChange={e=>{const x=sl.find(y=>y.code===e.target.value); setF({...f,se:e.target.value,nom:cur.nom+(x?" — "+x.code+" "+x.nom:"")});}} className={sel}><option value="">— Équipement entier —</option>{sl.map(x=><option key={x.code} value={x.code}>{x.code} — {x.nom}</option>)}</select></Field>;})()}
+  {(()=>{const cur=equipements.find(e=>e.code===f.eq); const sl=(cur&&cur.sousEquip)||[]; return sl.length>0&&<Field label="Sous-équipement concerné (optionnel)"><select value={f.se||""} onChange={e=>{const x=sl.find(y=>y.code===e.target.value); setF({...f,se:e.target.value,ss:"",nom:cur.nom+(x?" — "+x.code+" "+x.nom:"")});}} className={sel}><option value="">— Équipement entier —</option>{sl.map(x=><option key={x.code} value={x.code}>{x.code} — {x.nom}</option>)}</select></Field>;})()}
+  {(()=>{const cur=equipements.find(e=>e.code===f.eq); const x=cur&&(cur.sousEquip||[]).find(y=>y.code===f.se); const ssl=(x&&x.sousSousEquip)||[]; return ssl.length>0&&<Field label="Sous-sous-équipement concerné (optionnel)"><select value={f.ss||""} onChange={e=>{const y=ssl.find(z=>z.code===e.target.value); setF({...f,ss:e.target.value,nom:cur.nom+" — "+x.code+" "+x.nom+(y?" — "+y.code+" "+y.nom:"")});}} className={sel}><option value="">— Sous-équipement entier —</option>{ssl.map(y=><option key={y.code} value={y.code}>{y.code} — {y.nom}</option>)}</select></Field>;})()}
   <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement de l'équipement"}>
    <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={f.eq?"Non renseigné dans la fiche équipement — à saisir":"Choisissez d'abord l'équipement"}/>
   </Field>
