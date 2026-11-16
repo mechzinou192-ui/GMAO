@@ -486,7 +486,7 @@ const [notice,setNotice]=useState(null);
 
  async function addDI(f){
   const nums=await numeros("dis",{unit:kpiUnitOf(f.eq,equipements)}); if(!nums) return;
-  setDis(ds=>[{code:nums[0],eq:f.eq,nom:f.nom,se:f.se||"",designation:f.designation,emplacement:f.emplacement,dateEvt:f.dateEvt,dateCreation:f.dateCreation,perturb:f.perturb==="Oui",demandeur:f.demandeur,typeMaintenance:f.typeMaintenance,sousType:f.typeMaintenance==="Corrective"?f.sousType:"",etat:"À Transmettre"},...ds]);
+  setDis(ds=>[{code:nums[0],eq:f.eq,nom:f.nom,se:f.se||"",ss:f.ss||"",designation:f.designation,emplacement:f.emplacement,dateEvt:f.dateEvt,dateCreation:f.dateCreation,perturb:f.perturb==="Oui",demandeur:f.demandeur,typeMaintenance:f.typeMaintenance,sousType:f.typeMaintenance==="Corrective"?f.sousType:"",etat:"À Transmettre"},...ds]);
   setDiModal(null);
  }
 
@@ -515,6 +515,7 @@ const [notice,setNotice]=useState(null);
   // un système (et ses sous-systèmes) se supprime tant qu'aucun équipement n'y est rattaché, dans aucune unité
   systeme:(code)=>{const e=equipements.filter(x=>x.system===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités) : déplacez-les, supprimez-les ou videz ce système (Administration › Repartir de zéro, un seul système)"]);},
   sousSysteme:(sys,code)=>{const e=equipements.filter(x=>x.system===sys&&x.subCode===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités)"]);},
+   sousSous:(eq,ss)=>{const d=dis.filter(x=>x.eq===eq&&x.ss===ss).length;return raisons([d&&"utilisé par "+nb(d,"DI"),d&&"l'historique de maintenance doit être conservé"]);},
    sousEquip:(eq,se)=>{const d=dis.filter(x=>x.eq===eq&&x.se===se).length,o=bts.filter(x=>x.eq===eq&&x.se===se).length;return raisons([d&&"utilisé par "+nb(d,"DI"),o&&nb(o,"OT"),(d||o)&&"l'historique de maintenance doit être conservé"]);},
  di:(d)=>bts.some(b=>b.di===d.code)?"un OT a été généré depuis cette DI : supprimez d'abord l'OT (s'il n'est pas clôturé).":d.etat!=="À Transmettre"?"seule une DI « À transmettre » peut être supprimée.":null,
   ot:(b)=>b.etat==="Clôturé"?"un OT clôturé fait partie de l'historique (indicateurs MTBF / MTTR, coûts).":dss.some(x=>x.bt===b.code&&x.etat!=="Annulé")?"des demandes de sortie (DS) sont rattachées à cet OT : annulez-les d'abord.":null,
@@ -797,7 +798,8 @@ const [notice,setNotice]=useState(null);
    const m={...sousSousModal,equip:parent,se};
    return <Modal title={m.mode==="edit"?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
     <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>
-    {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
+    {m.mode==="edit" && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
+    {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} bloque={blocage.sousSous(parent.code,m.ss.code)} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
    </Modal>;})()}
 
   {sousEquipDetail && (()=>{
