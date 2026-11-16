@@ -1,5 +1,16 @@
 # Journal des modifications
 
+## Non publié — arborescence par flèches, chemin complet des DI, niveaux de DI par profil
+- **Arborescence** : une flèche ▸ par niveau — système → sous-système → équipement → sous-équipement → sous-sous-équipement.
+  Chaque niveau ne s'ouvre qu'avec sa flèche (les sous-sous-équipements ne sont plus affichés d'office) ; clic sur un sous-sous-équipement = sa fiche.
+- **Clic droit sur n'importe quel nœud** (système, sous-système, équipement, sous-équipement, sous-sous-équipement) = « Créer une DI » à ce niveau.
+  Codes des DI de haut niveau : `CFO.ALG` (système), `CFO.ALG.SST` (sous-système).
+- **DI : chemin complet** du système jusqu'au nœud visé, dans la liste (colonne « Nœud »), la fiche DI et l'export Excel.
+- **Formulaire de DI en cascade** : système → sous-système → équipement → sous-équipement → sous-sous-équipement (accès direct à l'équipement conservé).
+- **Profils (super administrateur)** : nouveau réglage « Création des DI — niveaux autorisés », pour les profils personnalisés
+  **et** les profils de base (ex. Exploitation limité au sous-sous-équipement). L'interface masque les niveaux interdits et
+  **le serveur refuse** toute DI créée à un niveau non autorisé. Sans réglage : tous les niveaux (comportement inchangé).
+
 ## Non publié — import des sous-sous-équipements
 - Import Excel : nouvelle feuille facultative **Sous-sous-équipements** (parent = repère ou code GMAO d'un sous-équipement) ;
   colonne **Repère** ajoutée à la feuille *Sous-équipements* pour importer les trois niveaux en une seule fois.

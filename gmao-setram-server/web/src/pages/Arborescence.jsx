@@ -5,13 +5,20 @@ import {MAX_ETIQUETTES,imprimerEtiquettes} from "../etiquettes.js";
 import {exporterXlsx} from "../excel.js";
 import {expStatus} from "../lib/echeances.js";
 import {UNIT_ABBR} from "../lib/unites.js";
+import {codeSysteme,codeSousSysteme} from "../lib/arbre.js";
+import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 import {Btn,Card,ExportBtn,Field,Inp,SubTabs,fmtFourn} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
-export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,onSupprimerCtrl,onSupprimerOrg,mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
+export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,onSupprimerCtrl,onSupprimerOrg,mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,onOpenSousSous,niveauxDI=CLES_NIVEAUX_DI,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
  const [openSys,setOpenSys]=useState(null);
  const [openSub,setOpenSub]=useState(null);
  const [openEq,setOpenEq]=useState(null);
+ const [openSe,setOpenSe]=useState(null);
+ const diOk=(niv)=>!!onCreateDI&&niveauxDI.includes(niv);
+ // menu contextuel (clic droit) d'un nœud : DI au niveau du nœud si le profil le permet
+ const menu=(ev,c)=>{ev.preventDefault();ev.stopPropagation();setCtx({x:ev.clientX,y:ev.clientY,...c});};
+ const fleche=(ouvert)=><span className="inline-block w-4 text-center text-slate-500">{ouvert?"▾":"▸"}</span>;
  const [tab,setTab]=useState(mode==="arbo"?"arbo":"mesure");
  const [ctx,setCtx]=useState(null);
  const etiquettes=()=>{
@@ -58,20 +65,19 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
   </div>
 
   {tab==="arbo" && <Card>
-   <div className="text-xs text-slate-500 mb-2">Code = SYSTÈME.UNITÉ.SOUS-SYSTÈME.N° — ex : CFA.{UNIT_ABBR[unit]}.SLT.01 — clic gauche sur un équipement = fiche (voir/modifier), clic droit = créer une DI, ✕ = supprimer (si créé par erreur)</div>
+   <div className="text-xs text-slate-500 mb-2">Code = SYSTÈME.UNITÉ.SOUS-SYSTÈME.N° — ex : CFA.{UNIT_ABBR[unit]}.SLT.01 — clic gauche sur un équipement = fiche (voir/modifier), clic droit sur un nœud (système, sous-système, équipement, sous-équipement, sous-sous-équipement) = créer une DI à ce niveau, ▸ = ouvrir le niveau suivant, ✕ = supprimer (si créé par erreur)</div>
    <div className="space-y-1">
     {systemsList.filter(([c])=>c!=="MESURE"&&c!=="CTRL").map(([code,nom])=>{
      const subs=treeStruct[code]||[];
      const isOpen=openSys===code;
      return (<div key={code}>
-      <div className="w-full flex justify-between items-center py-2 px-2 hover:bg-slate-700/40 rounded-lg">
-       <button onClick={()=>setOpenSys(isOpen?null:code)} className="flex-1 text-left">
-        <span className="font-medium text-slate-100">{code} <span className="text-xs text-slate-400 font-normal">— {nom}</span></span>
+      <div className="w-full flex justify-between items-center py-2 px-2 hover:bg-slate-700/40 rounded-lg" onContextMenu={ev=>menu(ev,{niveau:"systeme",sys:code,code:codeSysteme(code,unit),nom})}>
+       <button onClick={()=>{setOpenSys(isOpen?null:code);setOpenSub(null);setOpenEq(null);setOpenSe(null);}} className="flex-1 text-left" aria-expanded={isOpen}>
+        {fleche(isOpen)}<span className="font-medium text-slate-100">{code} <span className="text-xs text-slate-400 font-normal">— {nom}</span></span>
        </button>
        <span className="text-xs text-slate-500 mr-2">{subs.length} sous-systèmes</span>
        {onEditSystem && <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSystem(code,nom)} title="Modifier ou supprimer le système (super administrateur)" aria-label={"Modifier le système "+code}>✎</button>}
        <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>onAddSubSystem(code)}>+ Sous-système</Btn>
-       <button onClick={()=>setOpenSys(isOpen?null:code)} className="ml-2 text-xs text-slate-500">{isOpen?"▲":"▼"}</button>
       </div>
       {isOpen && <div className="pl-4 border-l border-slate-700 ml-2 space-y-1">
        {subs.length===0 && <div className="text-xs text-slate-600 py-1">Aucun sous-système. Utilisez "+ Sous-système" ci-dessus.</div>}
@@ -79,31 +85,34 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
         const subKey=code+"-"+si; const subOpen=openSub===subKey;
         const eqs=equipements.filter(e=>e.system===code && e.subCode===s.code && e.unit===unit);
         return (<div key={subKey}>
-         <div className="w-full flex justify-between items-center py-1.5 px-2 hover:bg-slate-700/30 rounded text-sm">
-          <button onClick={()=>setOpenSub(subOpen?null:subKey)} className="flex-1 text-left">
-           <span className="text-slate-200">{s.sub} <span className="text-xs text-slate-500">({code}.{UNIT_ABBR[unit]}.{s.code})</span></span>
+         <div className="w-full flex justify-between items-center py-1.5 px-2 hover:bg-slate-700/30 rounded text-sm" onContextMenu={ev=>menu(ev,{niveau:"sousSysteme",sys:code,sub:s.code,code:codeSousSysteme(code,unit,s.code),nom:nom+" — "+s.sub})}>
+          <button onClick={()=>{setOpenSub(subOpen?null:subKey);setOpenEq(null);setOpenSe(null);}} className="flex-1 text-left" aria-expanded={subOpen}>
+           {fleche(subOpen)}<span className="text-slate-200">{s.sub} <span className="text-xs text-slate-500">({code}.{UNIT_ABBR[unit]}.{s.code})</span></span>
           </button>
           <span className="text-xs text-slate-500 mr-2">{eqs.length} équip.</span>
           <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSubSystem(code,s.code,s.sub)} title="Modifier le nom du sous-système">✎</button>
-          <button onClick={()=>setOpenSub(subOpen?null:subKey)} className="text-xs text-slate-500">{subOpen?"▲":"▼"}</button>
          </div>
          {subOpen && <div className="pl-4 border-l border-slate-800 ml-2">
           <ul>{eqs.map(e=>{
            const eqOpen=openEq===e.code; const sousList=e.sousEquip||[];
            return <li key={e.code} className="py-0.5">
-            <div className="flex items-center text-xs text-slate-400">
-             <span onClick={()=>onOpenEquip(e)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e});}} className="flex-1 py-1 cursor-pointer hover:text-sky-400">• <span className="text-slate-300">{e.code}</span> — {e.nom}</span>
+            <div className="flex items-center text-xs text-slate-400" onContextMenu={ev=>menu(ev,{niveau:"equipement",equip:e})}>
+             <button className="text-slate-500 hover:text-sky-400" title="Sous-équipements" aria-label={"Ouvrir "+e.code} aria-expanded={eqOpen} onClick={()=>{setOpenEq(eqOpen?null:e.code);setOpenSe(null);}}>{fleche(eqOpen)}</button>
+             <span onClick={()=>onOpenEquip(e)} className="flex-1 py-1 cursor-pointer hover:text-sky-400"><span className="text-slate-300">{e.code}</span> — {e.nom}</span>
              {sousList.length>0 && <span className="text-slate-600 mr-1">{sousList.length} sous-équip.</span>}
-             <button className="text-slate-500 hover:text-sky-400 px-1" title="Sous-équipements" onClick={()=>setOpenEq(eqOpen?null:e.code)}>{eqOpen?"▲":"▼"}</button>
              {onSupprimerEquip && <button className="text-slate-600 hover:text-rose-400 px-1" title="Supprimer cet équipement (créé par erreur)" aria-label={"Supprimer "+e.code} onClick={()=>onSupprimerEquip(e)}>{I.x}</button>}
             </div>
             {eqOpen && <div className="pl-4 border-l border-slate-800 ml-2">
-             <ul>{sousList.map(se=><li key={se.code} className="text-xs text-slate-500 py-0.5"><div onClick={()=>onOpenSousEquip(e,se)} onContextMenu={ev=>{ev.preventDefault();setCtx({x:ev.clientX,y:ev.clientY,equip:e,sous:se});}} className="flex justify-between items-center group cursor-pointer hover:text-sky-400">
-              <span>◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</span>
+             <ul>{sousList.map(se=>{const seKey=e.code+"|"+se.code; const seOpen=openSe===seKey; const ssList=se.sousSousEquip||[];
+              return <li key={se.code} className="text-xs text-slate-500 py-0.5"><div onContextMenu={ev=>menu(ev,{niveau:"sousEquipement",equip:e,sous:se})} className="flex justify-between items-center group">
+              <button className="text-slate-500 hover:text-sky-400" title="Sous-sous-équipements" aria-label={"Ouvrir "+se.code} aria-expanded={seOpen} onClick={()=>setOpenSe(seOpen?null:seKey)}>{fleche(seOpen)}</button>
+              <span className="flex-1 cursor-pointer hover:text-sky-400" onClick={()=>onOpenSousEquip(e,se)}><span className="text-slate-400">{se.code}</span> — {se.nom}</span>
+              {ssList.length>0 && <span className="text-slate-600 mr-1">{ssList.length} sous-sous-équip.</span>}
               <button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>
               </div>
-              {(se.sousSousEquip||[]).length>0 && <ul className="pl-4 border-l border-slate-800 ml-2">{se.sousSousEquip.map(ss=><li key={ss.code} className="py-0.5 text-slate-500">▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}</li>)}</ul>}
-             </li>)}
+              {seOpen && <ul className="pl-4 border-l border-slate-800 ml-2">{ssList.map(ss=><li key={ss.code} onContextMenu={ev=>menu(ev,{niveau:"sousSousEquipement",equip:e,sous:se,ss})} onClick={()=>onOpenSousSous&&onOpenSousSous(e,se,ss)} className={"py-0.5 pl-4 text-slate-500"+(onOpenSousSous?" cursor-pointer hover:text-sky-400":"")}><span className="text-slate-400">{ss.code}</span> — {ss.nom}</li>)}
+               {ssList.length===0 && <li className="py-0.5 pl-4 text-slate-700">Aucun sous-sous-équipement (à ajouter depuis la fiche du sous-équipement).</li>}</ul>}
+             </li>;})}
              {sousList.length===0 && <li className="text-xs text-slate-700 py-0.5">Aucun sous-équipement.</li>}
              </ul>
              <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddSousEquip(e)}>+ Ajouter un sous-équipement</Btn>
@@ -163,15 +172,27 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
    </table></div>
   </Card>}
 
-  {ctx && <>
-   <div className="fixed inset-0 z-40" onClick={()=>setCtx(null)}></div>
+  {ctx && (()=>{
+   const n=ctx.niveau||"equipement";
+   const prefill=n==="systeme"?{eq:ctx.code,nom:ctx.nom,niveau:n}
+    :n==="sousSysteme"?{eq:ctx.code,nom:ctx.nom,niveau:n}
+    :n==="equipement"?{eq:ctx.equip.code,nom:ctx.equip.nom,niveau:n}
+    :n==="sousEquipement"?{eq:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom,se:ctx.sous.code,niveau:n}
+    :{eq:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom+" — "+ctx.ss.code+" "+ctx.ss.nom,se:ctx.sous.code,ss:ctx.ss.code,niveau:n};
+   const cible=n==="sousSousEquipement"?ctx.ss.code:n==="sousEquipement"?ctx.sous.code:n==="equipement"?ctx.equip.code:ctx.code;
+   const item="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100";
+   return <>
+   <div className="fixed inset-0 z-40" onClick={()=>setCtx(null)} onContextMenu={ev=>{ev.preventDefault();setCtx(null);}}></div>
    <div className="fixed z-50 bg-slate-800 border border-slate-600 rounded-lg shadow-xl text-xs overflow-hidden" style={{left:ctx.x,top:ctx.y}}>
-    <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100" onClick={()=>{onCreateDI(ctx.sous?{code:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom}:ctx.equip);setCtx(null);}}>Créer une DI pour {ctx.sous?ctx.sous.code+" — "+ctx.sous.nom:ctx.equip.code}</button>
-    {ctx.sous && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100 border-t border-slate-700" onClick={()=>{onOpenSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Voir la fiche {ctx.sous.code}</button>}
-    {ctx.sous ? onSupprimerSousEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Supprimer {ctx.sous.code}…</button>
-     : onSupprimerEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerEquip(ctx.equip);setCtx(null);}}>Supprimer {ctx.equip.code}…</button>}
+    <div className="px-3 py-1.5 text-slate-500 border-b border-slate-700">{libelleNiveau(n)} {cible}</div>
+    {diOk(n)?<button className={item} onClick={()=>{onCreateDI(prefill);setCtx(null);}}>Créer une DI pour {cible}</button>
+     :<div className="px-3 py-2 text-slate-500">DI non autorisée à ce niveau pour votre profil</div>}
+    {n==="sousEquipement" && <button className={item+" border-t border-slate-700"} onClick={()=>{onOpenSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Voir la fiche {ctx.sous.code}</button>}
+    {n==="sousSousEquipement" && onOpenSousSous && <button className={item+" border-t border-slate-700"} onClick={()=>{onOpenSousSous(ctx.equip,ctx.sous,ctx.ss);setCtx(null);}}>Voir la fiche {ctx.ss.code}</button>}
+    {n==="sousEquipement" && onSupprimerSousEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Supprimer {ctx.sous.code}…</button>}
+    {n==="equipement" && onSupprimerEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerEquip(ctx.equip);setCtx(null);}}>Supprimer {ctx.equip.code}…</button>}
    </div>
-  </>}
+  </>;})()}
  </div>);
 }
 

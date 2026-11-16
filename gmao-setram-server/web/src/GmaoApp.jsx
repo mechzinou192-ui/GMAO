@@ -17,7 +17,8 @@ import {AdminPage} from "./pages/Administration.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
-import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue} from "../../server/src/profils-core.js";
+import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises} from "../../server/src/profils-core.js";
+import {cheminDI} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
 import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SousSousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
@@ -51,7 +52,9 @@ export function GmaoApp({session,onLogout}){
  // capacités du profil (le serveur les revérifie à chaque enregistrement)
  const profil=sa?"Super administrateur":nomProfil(session.role);
  const capCloture=peutCloturer(session), capCreerOT=peutCreerOT(session)&&tabOk(2);
- const lecture=enConsultation(session);   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
+ const lecture=enConsultation(session);
+ const niveauxDI=lecture?[]:niveauxDIAutorises(session);   // niveaux de l'arborescence où ce profil peut créer une DI
+ const diAu=(niv)=>niveauxDI.includes(niv);   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
  const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===MATERIAUX?tabOk(0):tabOk(i);
@@ -486,7 +489,7 @@ const [notice,setNotice]=useState(null);
 
  async function addDI(f){
   const nums=await numeros("dis",{unit:kpiUnitOf(f.eq,equipements)}); if(!nums) return;
-  setDis(ds=>[{code:nums[0],eq:f.eq,nom:f.nom,se:f.se||"",ss:f.ss||"",designation:f.designation,emplacement:f.emplacement,dateEvt:f.dateEvt,dateCreation:f.dateCreation,perturb:f.perturb==="Oui",demandeur:f.demandeur,typeMaintenance:f.typeMaintenance,sousType:f.typeMaintenance==="Corrective"?f.sousType:"",etat:"À Transmettre"},...ds]);
+  setDis(ds=>[{code:nums[0],eq:f.eq,nom:f.nom,se:f.se||"",ss:f.ss||"",designation:f.designation,emplacement:f.emplacement,dateEvt:f.dateEvt,dateCreation:f.dateCreation,perturb:f.perturb==="Oui",demandeur:f.demandeur,typeMaintenance:f.typeMaintenance,sousType:f.typeMaintenance==="Corrective"?f.sousType:"",niveau:f.niveau||"equipement",etat:"À Transmettre"},...ds]);
   setDiModal(null);
  }
 
@@ -679,13 +682,14 @@ const [notice,setNotice]=useState(null);
 
    {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
      onGo={allerA} onNewDI={lecture?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
-   {tab===1 && <MaintenanceCorrective voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={lecture?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={lecture?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
      onAddEquip={(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
      onSupprimerEquip={(e)=>setEquipModal({mode:"edit",equip:e,supprimer:true})} onSupprimerSousEquip={(equip,se)=>setSousEquipDetail({equip,se,supprimer:true})}
-     onCreateDI={(equip)=>setDiModal({prefill:{eq:equip.code,nom:equip.nom}})}
+     onCreateDI={lecture||!tabOk(1)?undefined:(prefill)=>setDiModal({prefill})} niveauxDI={niveauxDI}
+     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:"edit",equip,se,ss})}
      onAddSousEquip={(equip)=>setSousEquipModal({mode:"add",equip})}
      onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
      onRemoveSousEquip={removeSousEquip}
@@ -719,7 +723,7 @@ const [notice,setNotice]=useState(null);
   </div>
 
   {diModal && <Modal title="Nouvelle Demande d'Intervention (DI) — Service Exploitation" onClose={()=>setDiModal(null)}>
-   <DIForm prefill={diModal.prefill} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} demandeur={user} onSubmit={unSeul(addDI)}/>
+   <DIForm prefill={diModal.prefill} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} systemsList={visSystems} treeStruct={treeStruct} unit={unit} niveaux={niveauxDI} demandeur={user} onSubmit={unSeul(addDI)}/>
   </Modal>}
 
   {btModal && <Modal title={btModal.di? "Générer un OT depuis "+btModal.di.code+" — Service Maintenance" : "Nouvel OT (Préventif) — Service Maintenance"} onClose={()=>setBtModal(null)}>
@@ -728,7 +732,7 @@ const [notice,setNotice]=useState(null);
 
   {diDetail && (()=>{const d=dis.find(x=>x.code===diDetail); if(!d) return null; const btLie=bts.find(b=>b.di===d.code);
    return <Modal wide title={"Demande d'Intervention — "+d.code} onClose={()=>setDiDetail(null)}>
-    <DIDetail di={d} bt={btLie} onStatut={sa?(e,m)=>setDis(l=>l.map(x=>x.code===d.code?avecStatut(x,e,user,m):x)):undefined} onGenererBT={capCreerOT?()=>{setDiDetail(null);setBtModal({di:d});}:undefined} onOpenBT={()=>{setDiDetail(null);ouvrirOT(btLie.code);}}/>
+    <DIDetail di={d} bt={btLie} chemin={cheminDI(d,{equipements,systemsList,treeStruct})} onStatut={sa?(e,m)=>setDis(l=>l.map(x=>x.code===d.code?avecStatut(x,e,user,m):x)):undefined} onGenererBT={capCreerOT?()=>{setDiDetail(null);setBtModal({di:d});}:undefined} onOpenBT={()=>{setDiDetail(null);ouvrirOT(btLie.code);}}/>
     <ZoneSuppression quoi={"la DI "+d.code} bloque={blocage.di(d)} onSupprimer={()=>supprimer.di(d.code)}/>
    </Modal>;})()}
 
@@ -783,7 +787,7 @@ const [notice,setNotice]=useState(null);
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setEquipDetail(null)}>Fermer</Btn>
      <Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{setEquipModal({mode:"edit",equip:ed,supprimer:true});setEquipDetail(null);}}>Supprimer</Btn>
      <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setEquipModal({mode:"edit",equip:ed});setEquipDetail(null);}}>Modifier</Btn>
-     <Btn onClick={()=>{setDiModal({prefill:{eq:ed.code,nom:ed.nom}});setEquipDetail(null);}}>Créer une DI</Btn>
+     {diAu("equipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:ed.code,nom:ed.nom,niveau:"equipement"}});setEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
    </div>
   </Modal>;})()}
@@ -798,7 +802,7 @@ const [notice,setNotice]=useState(null);
    const m={...sousSousModal,equip:parent,se};
    return <Modal title={m.mode==="edit"?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
     <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>
-    {m.mode==="edit" && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
+    {m.mode==="edit" && diAu("sousSousEquipement") && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code,niveau:"sousSousEquipement"}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
     {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} bloque={blocage.sousSous(parent.code,m.ss.code)} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
    </Modal>;})()}
 
@@ -825,7 +829,7 @@ const [notice,setNotice]=useState(null);
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
      <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>
-     <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code}});setSousEquipDetail(null);}}>Créer une DI</Btn>
+     {diAu("sousEquipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code,niveau:"sousEquipement"}});setSousEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
     <ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>
    </div>

@@ -2,14 +2,25 @@
 import React,{useState,useMemo} from "react";
 import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
-import {Badge,Btn,Card,EquipSelect,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
+import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
+import {cheminTexte,codeSysteme,codeSousSysteme} from "../lib/arbre.js";
+import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
+
+// Chemin du nœud (système → … → nœud visé), affiché code par code
+export function Chemin({chemin,compact=false}){
+ if(!chemin||!chemin.length) return null;
+ if(compact) return <div className="text-[11px] text-slate-500 break-all" title={cheminTexte(chemin,true)}>{cheminTexte(chemin)}</div>;
+ return <ol className="text-sm space-y-0.5" data-testid="chemin-di">{chemin.map((n,i)=><li key={n.niveau} style={{paddingLeft:i*14}}>
+  <span className="text-slate-500 text-xs">{i>0?"└ ":""}{libelleNiveau(n.niveau)} :</span> <span className={i===chemin.length-1?"text-sky-400 font-medium":"text-slate-300"}>{n.code}</span>{n.nom?<span className="text-slate-400"> — {n.nom}</span>:null}
+ </li>)}</ol>;
+}
 
 /* ===== Page 1 : Demandes d'Intervention (créées par l'Exploitation) ===== */
-export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
+export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT,chemin=()=>[]}){
  const exportDI=()=>exporterXlsx({fichier:"Demandes_Intervention_DI",feuilles:[{nom:"DI",titre:"Demandes d'Intervention (DI)",
-  colonnes:[{h:"Code DI"},{h:"Code équipement"},{h:"Équipement"},{h:"Demandeur"},{h:"Désignation",max:50},{h:"Type de maintenance"},{h:"Emplacement"},{h:"Date événement",t:"datetime"},{h:"Date création",t:"datetime"},{h:"Perturbation"},{h:"OT lié"},{h:"État"}],
-  lignes:dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return [d.code,d.eq,d.nom,d.demandeur,d.designation,typeLabel(d),d.emplacement,d.dateEvt,d.dateCreation,ouiNon(d.perturb),bt?bt.code:"",d.etat];})}]});
+  colonnes:[{h:"Code DI"},{h:"Code du nœud"},{h:"Chemin (système → nœud)",max:60},{h:"Désignation du nœud"},{h:"Demandeur"},{h:"Désignation",max:50},{h:"Type de maintenance"},{h:"Emplacement"},{h:"Date événement",t:"datetime"},{h:"Date création",t:"datetime"},{h:"Perturbation"},{h:"OT lié"},{h:"État"}],
+  lignes:dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return [d.code,d.ss||d.se||d.eq,cheminTexte(chemin(d)),d.nom,d.demandeur,d.designation,typeLabel(d),d.emplacement,d.dateEvt,d.dateCreation,ouiNon(d.perturb),bt?bt.code:"",d.etat];})}]});
  return (<div className="space-y-5">
   <KPI items={[
    ["DI ouvertes",dis.filter(d=>d.etat!=="Traité").length,"text-sky-400"],
@@ -25,7 +36,7 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
    <div className="md:hidden mt-3 space-y-2" data-testid="di-cartes">
     {dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return <div key={d.code} onClick={()=>onOpenDI(d)} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 cursor-pointer active:bg-slate-700/40">
      <div className="flex items-start justify-between gap-2"><span className="text-sky-400 font-medium">{d.code}</span><Badge t={d.etat}/></div>
-     <div className="text-sm mt-1">{d.eq}</div><div className="text-xs text-slate-400">{d.nom}</div>
+     <div className="text-sm mt-1">{d.ss||d.se||d.eq}</div><div className="text-xs text-slate-400">{d.nom}</div><Chemin compact chemin={chemin(d)}/>
      <div className="text-sm text-slate-300 mt-1 break-words">{d.designation}</div>
      <div className="text-xs text-slate-400 mt-1">{typeLabel(d)}{d.dateEvt?" · "+d.dateEvt:""}{d.perturb?<span className="text-rose-400"> · Perturbation</span>:null}</div>
      {bt && <div className="text-xs text-slate-400">OT lié : {bt.code}</div>}
@@ -34,9 +45,9 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
     {dis.length===0 && <div className="text-center text-slate-500 py-4 text-xs">Aucune DI.</div>}
    </div>
    <div className="hidden md:block overflow-x-auto mt-2"><table className="w-full text-sm">
-    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code DI</th><th>Équipement</th><th>Demandeur</th><th>Désignation</th><th>Type</th><th>Emplacement</th><th>Date événement</th><th>Perturb.</th><th>OT lié</th><th>État</th><th></th></tr></thead>
+    <thead><tr className="text-slate-400 text-left"><th className="py-1">Code DI</th><th>Nœud (système → …)</th><th>Demandeur</th><th>Désignation</th><th>Type</th><th>Emplacement</th><th>Date événement</th><th>Perturb.</th><th>OT lié</th><th>État</th><th></th></tr></thead>
     <tbody>{dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return <tr key={d.code} onClick={()=>onOpenDI(d)} className="border-t border-slate-700 align-top cursor-pointer hover:bg-slate-700/40">
-     <td className="py-1.5 text-sky-400">{d.code}</td><td>{d.eq}<br/><span className="text-xs text-slate-400">{d.nom}</span></td>
+     <td className="py-1.5 text-sky-400">{d.code}</td><td>{d.ss||d.se||d.eq}<br/><span className="text-xs text-slate-400">{d.nom}</span><Chemin compact chemin={chemin(d)}/></td>
      <td className="text-xs text-slate-400">{d.demandeur||"—"}</td>
      <td className="text-xs text-slate-400 max-w-xs">{d.designation}</td><td className="text-xs text-slate-400">{typeLabel(d)}</td><td className="text-xs text-slate-400">{d.emplacement}</td>
      <td className="text-xs text-slate-400">{d.dateEvt}</td>
@@ -50,12 +61,12 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT}){
  </div>);
 }
 
-export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut}){
+export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut,chemin=[]}){
  return (<div className="space-y-3">
   <div className="flex items-center gap-2"><Badge t={di.etat}/>{di.perturb && <span className="text-xs text-rose-400">Perturbation exploitation</span>}</div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
    <Info l="Code DI">{di.code}</Info>
-   <Info l="Équipement">{di.eq} — {di.nom}</Info>
+   <Info l="Nœud visé">{di.ss||di.se||di.eq} — {di.nom}</Info>
    <Info l="Demandeur">{di.demandeur||"—"}</Info>
    <Info l="Type de maintenance">{typeLabel(di)}</Info>
    <Info l="Emplacement">{di.emplacement||"—"}</Info>
@@ -63,6 +74,7 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut}){
    <Info l="Date de création">{di.dateCreation}</Info>
    <Info l="Perturbation exploitation">{di.perturb?"Oui":"Non"}</Info>
   </div>
+  {chemin.length>0 && <div className="border border-slate-700 rounded-lg p-3"><div className="text-xs text-slate-500 mb-1">Arborescence — du système au nœud de la DI</div><Chemin chemin={chemin}/></div>}
   <Info l="Désignation (constat)">{di.designation}</Info>
   <div className="border-t border-slate-700 pt-3">
    <div className="text-xs text-slate-500 mb-1">Ordre de Travail lié</div>
@@ -75,29 +87,69 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut}){
  </div>);
 }
 
-export function DIForm({prefill,equipements,demandeur,onSubmit}){
+/*
+ * Choix du nœud en cascade : système → sous-système → équipement → sous-équipement → sous-sous-équipement.
+ * La DI porte sur le nœud le plus bas choisi ; « niveaux » = niveaux où le profil peut créer une DI
+ * (réglés par le super administrateur dans Administration › Profils ; le serveur revérifie).
+ */
+export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeStruct={},unit,niveaux=CLES_NIVEAUX_DI}){
  const dateCreation=useMemo(()=>new Date().toISOString().slice(0,16).replace("T"," "),[]);
  const pre=prefill?.eq?equipements.find(e=>e.code===prefill.eq):null;
- const [f,setF]=useState({eq:pre?pre.code:"",nom:pre?(prefill.se?prefill.nom:pre.nom):"",se:prefill?.se||"",ss:prefill?.ss||"",emplacement:pre?pre.emplacement:"",designation:"",dateEvt:new Date().toISOString().slice(0,16).replace("T"," ")});
+ const unite=unit||(equipements[0]&&equipements[0].unit)||"";
+ // systèmes proposés : ceux de la liste fournie, sinon ceux des équipements
+ const systemes=systemsList?systemsList.filter(([c])=>c!=="MESURE"&&c!=="CTRL"):[...new Set(equipements.map(e=>e.system))].map(c=>[c,""]);
+ const sousSystemes=(sys)=>{
+  const l=(treeStruct[sys]||[]).map(x=>({code:x.code,nom:x.sub}));
+  equipements.filter(e=>e.system===sys&&e.subCode&&!l.some(x=>x.code===e.subCode)).forEach(e=>l.push({code:e.subCode,nom:""}));
+  return l;
+ };
+ const preSeg=String(prefill?.eq||"").split(".");
+ const [n,setN]=useState({
+  sys:pre?pre.system:(prefill?.niveau==="systeme"||prefill?.niveau==="sousSysteme"?preSeg[0]:""),
+  sub:pre?pre.subCode:(prefill?.niveau==="sousSysteme"?preSeg[2]:""),
+  eq:pre?pre.code:"",se:prefill?.se||"",ss:prefill?.ss||""});
+ const [f,setF]=useState({emplacement:pre?pre.emplacement:"",designation:"",dateEvt:new Date().toISOString().slice(0,16).replace("T"," ")});
  const [fromFiche,setFromFiche]=useState(!!(pre&&pre.emplacement));
  const [perturb,setPerturb]=useState("Non");
  const [typeM,setTypeM]=useState("Corrective");
  const [sousType,setSousType]=useState("Curative");
  const [err,setErr]=useState("");
- function pick(eq){
-  if(!eq){setF({...f,eq:"",nom:"",se:"",ss:"",emplacement:""});setFromFiche(false);return;}
-  setF({...f,eq:eq.code,nom:eq.nom,se:"",ss:"",emplacement:eq.emplacement||""});
-  setFromFiche(!!eq.emplacement);
- }
+ const cur=equipements.find(e=>e.code===n.eq);
+ const seCur=cur&&(cur.sousEquip||[]).find(y=>y.code===n.se);
+ const ssCur=seCur&&(seCur.sousSousEquip||[]).find(y=>y.code===n.ss);
+ const niveau=n.ss?"sousSousEquipement":n.se?"sousEquipement":n.eq?"equipement":n.sub?"sousSysteme":n.sys?"systeme":null;
+ const niveauOk=niveau&&niveaux.includes(niveau);
+ const choisir=(patch)=>{
+  const x={...n,...patch};
+  setN(x);setErr("");
+  if("eq" in patch){const e=equipements.find(y=>y.code===x.eq); setF(v=>({...v,emplacement:e?e.emplacement||"":""})); setFromFiche(!!(e&&e.emplacement));}
+ };
+ const eqsVisibles=equipements.filter(e=>(!n.sys||e.system===n.sys)&&(!n.sub||e.subCode===n.sub));
  const sel="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
+ const valider=()=>{
+  if(!niveau){setErr("Choisissez le nœud de l'arborescence concerné.");return;}
+  if(!niveauOk){setErr("Votre profil ne permet pas de créer une DI au niveau « "+libelleNiveau(niveau)+" ». Niveaux permis : "+(niveaux.map(libelleNiveau).join(", ")||"aucun")+".");return;}
+  let eq,nom;
+  if(niveau==="systeme"){eq=codeSysteme(n.sys,unite);nom=(systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys;}
+  else if(niveau==="sousSysteme"){eq=codeSousSysteme(n.sys,unite,n.sub);const s=sousSystemes(n.sys).find(x=>x.code===n.sub);nom=((systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys)+" — "+(s&&s.nom||n.sub);}
+  else {eq=cur.code;nom=cur.nom+(seCur?" — "+seCur.code+" "+seCur.nom:"")+(ssCur?" — "+ssCur.code+" "+ssCur.nom:"");}
+  onSubmit({eq,nom,se:niveau==="sousEquipement"||niveau==="sousSousEquipement"?n.se:"",ss:niveau==="sousSousEquipement"?n.ss:"",niveau,emplacement:f.emplacement,designation:f.designation,dateEvt:f.dateEvt,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType});
+ };
  return (<div>
-  {pre && <div className="text-xs text-sky-400 mb-2">Équipement préchargé depuis l'arborescence</div>}
+  {pre && <div className="text-xs text-sky-400 mb-2">Nœud préchargé depuis l'arborescence</div>}
   <Field label="Demandeur (automatique)"><Inp value={demandeur} disabled className="opacity-60"/></Field>
-  <Field label="Équipement"><EquipSelect equipements={equipements} value={f.eq} onPick={pick}/></Field>
-  {(()=>{const cur=equipements.find(e=>e.code===f.eq); const sl=(cur&&cur.sousEquip)||[]; return sl.length>0&&<Field label="Sous-équipement concerné (optionnel)"><select value={f.se||""} onChange={e=>{const x=sl.find(y=>y.code===e.target.value); setF({...f,se:e.target.value,ss:"",nom:cur.nom+(x?" — "+x.code+" "+x.nom:"")});}} className={sel}><option value="">— Équipement entier —</option>{sl.map(x=><option key={x.code} value={x.code}>{x.code} — {x.nom}</option>)}</select></Field>;})()}
-  {(()=>{const cur=equipements.find(e=>e.code===f.eq); const x=cur&&(cur.sousEquip||[]).find(y=>y.code===f.se); const ssl=(x&&x.sousSousEquip)||[]; return ssl.length>0&&<Field label="Sous-sous-équipement concerné (optionnel)"><select value={f.ss||""} onChange={e=>{const y=ssl.find(z=>z.code===e.target.value); setF({...f,ss:e.target.value,nom:cur.nom+" — "+x.code+" "+x.nom+(y?" — "+y.code+" "+y.nom:"")});}} className={sel}><option value="">— Sous-équipement entier —</option>{ssl.map(y=><option key={y.code} value={y.code}>{y.code} — {y.nom}</option>)}</select></Field>;})()}
-  <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement de l'équipement"}>
-   <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={f.eq?"Non renseigné dans la fiche équipement — à saisir":"Choisissez d'abord l'équipement"}/>
+  <div className="border border-slate-700 rounded-lg p-2 mt-2">
+   <div className="text-xs text-slate-400">Nœud concerné — du système au sous-sous-équipement (la DI porte sur le dernier niveau choisi)</div>
+   <div className="text-[11px] text-slate-500">Niveaux permis pour votre profil : {niveaux.map(libelleNiveau).join(", ")||"aucun"}</div>
+   <Field label="Système"><select aria-label="Système" value={n.sys} onChange={e=>choisir({sys:e.target.value,sub:"",eq:"",se:"",ss:""})} className={sel}><option value="">— Choisir un système —</option>{systemes.map(([c,nm])=><option key={c} value={c}>{c}{nm?" — "+nm:""}</option>)}</select></Field>
+   {n.sys && <Field label="Sous-système"><select aria-label="Sous-système" value={n.sub} onChange={e=>choisir({sub:e.target.value,eq:"",se:"",ss:""})} className={sel}><option value="">— Système entier —</option>{sousSystemes(n.sys).map(x=><option key={x.code} value={x.code}>{codeSousSysteme(n.sys,unite,x.code)}{x.nom?" — "+x.nom:""}</option>)}</select></Field>}
+   {<Field label={n.sub?"Équipement":"Équipement (accès direct : remplit le système et le sous-système)"}><select aria-label="Équipement" value={n.eq} onChange={e=>{const x=equipements.find(y=>y.code===e.target.value); choisir(x?{sys:x.system,sub:x.subCode,eq:x.code,se:"",ss:""}:{eq:"",se:"",ss:""});}} className={sel}><option value="">{n.sub?"— Sous-système entier —":"— Choisir un équipement —"}</option>{eqsVisibles.map(e=><option key={e.code} value={e.code}>{e.code} — {e.nom}</option>)}</select></Field>}
+   {cur && (cur.sousEquip||[]).length>0 && <Field label="Sous-équipement concerné (optionnel)"><select value={n.se||""} onChange={e=>choisir({se:e.target.value,ss:""})} className={sel}><option value="">— Équipement entier —</option>{cur.sousEquip.map(x=><option key={x.code} value={x.code}>{x.code} — {x.nom}</option>)}</select></Field>}
+   {seCur && (seCur.sousSousEquip||[]).length>0 && <Field label="Sous-sous-équipement concerné (optionnel)"><select value={n.ss||""} onChange={e=>choisir({ss:e.target.value})} className={sel}><option value="">— Sous-équipement entier —</option>{seCur.sousSousEquip.map(y=><option key={y.code} value={y.code}>{y.code} — {y.nom}</option>)}</select></Field>}
+   {niveau && <div className={"text-xs mt-2 "+(niveauOk?"text-emerald-400":"text-rose-300")}>{niveauOk?"✓":"✕"} DI au niveau « {libelleNiveau(niveau)} »{niveauOk?"":" : non autorisé pour votre profil, descendez dans l'arborescence"}</div>}
+  </div>
+  <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement"}>
+   <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={niveau?"À saisir":"Choisissez d'abord le nœud"}/>
   </Field>
   <Field label="Désignation (description du constat)"><Inp value={f.designation} onChange={e=>setF({...f,designation:e.target.value})}/></Field>
   <Field label="Type de maintenance">
@@ -113,6 +165,6 @@ export function DIForm({prefill,equipements,demandeur,onSubmit}){
   </Field>
   <div className="text-xs text-slate-500 mt-2">État initial : "À Transmettre".</div>
   {err && <div className="text-xs text-rose-400 text-right mt-1">{err}</div>}
-  <div className="flex justify-end mt-3"><Btn onClick={()=>{ if(!f.eq){setErr("Choisissez un équipement.");return;} onSubmit({...f,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType}); }}>Créer la DI</Btn></div>
+  <div className="flex justify-end mt-3"><Btn onClick={valider}>Créer la DI</Btn></div>
  </div>);
 }

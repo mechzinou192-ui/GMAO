@@ -18,6 +18,7 @@ export const TOUS_SYSTEMES = '*';
 //   toutesUnites / tousSystemes   périmètre proposé à la création du compte
 //   delegationComptes             peut recevoir du super admin la main sur les comptes de son unité
 //   delegable                     peut être attribué par un administrateur UO délégué
+//   niveauxDI                     niveaux de l'arborescence où le profil peut créer des DI (absent = tous)
 export const PROFILS = {
   'Exploitation':          { volets: [1], diSeulement: true, delegable: true, libelle: 'Crée les demandes d\'intervention (DI)' },
   'Gestionnaire de stock': { volets: [4], delegable: true, libelle: 'Gère le magasin : articles, DS / BS / BR, achats, décharges' },
@@ -33,21 +34,54 @@ export const PROFILS = {
 };
 export const NOMS_PROFILS = Object.keys(PROFILS);
 
+/* ───── Niveaux de l'arborescence où une DI peut être créée ───── */
+// Système (SYS.UNI) → sous-système (SYS.UNI.SOUS) → équipement → sous-équipement → sous-sous-équipement
+export const NIVEAUX_DI = [
+  ['systeme', 'Système'], ['sousSysteme', 'Sous-système'], ['equipement', 'Équipement'],
+  ['sousEquipement', 'Sous-équipement'], ['sousSousEquipement', 'Sous-sous-équipement'],
+];
+export const CLES_NIVEAUX_DI = NIVEAUX_DI.map(([k]) => k);
+export const libelleNiveau = (k) => (NIVEAUX_DI.find(([c]) => c === k) || [k, k])[1];
+// Niveau visé par une DI, déduit de ses données (le serveur ne se fie pas seulement au champ « niveau » envoyé).
+export function niveauDI(d) {
+  if (!d) return null;
+  if (d.ss) return 'sousSousEquipement';
+  if (d.se) return 'sousEquipement';
+  if (d.niveau === 'systeme' || d.niveau === 'sousSysteme') return d.niveau;
+  const n = String(d.eq || '').split('.').filter(Boolean).length;   // SYS.UNI = système, SYS.UNI.SOUS = sous-système
+  return n === 2 ? 'systeme' : n === 3 ? 'sousSysteme' : 'equipement';
+}
+const normaliserNiveaux = (v) => (Array.isArray(v) ? CLES_NIVEAUX_DI.filter((k) => v.includes(k)) : undefined);
+// Niveaux autorisés pour l'utilisateur (super administrateur ou profil sans restriction : tous)
+export function niveauxDIAutorises(user) {
+  const p = profilDe(user);
+  return p && Array.isArray(p.niveauxDI) ? p.niveauxDI : CLES_NIVEAUX_DI;
+}
+export const peutCreerDIAuNiveau = (user, niveau) => niveauxDIAutorises(user).includes(niveau);
+
 // Profils créés par le super administrateur (organigramme) : chargés depuis la collection « profils »
 let PERSONNALISES = {};
-const CLES = ['volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle'];
+// Réglages du super administrateur sur les profils de base (fixes) : seulement les niveaux de DI.
+// Enregistrés dans la même collection « profils », sous le nom du profil de base, avec surcharge: true.
+let SURCHARGES = {};
+const CLES = ['volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI'];
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
   o.volets = [...new Set((Array.isArray(o.volets) ? o.volets : []).map(Number).filter((v) => Number.isInteger(v) && v >= 0 && v <= 7))].sort();
   if (!['uo', 'expert', 'responsable', 'lecture'].includes(o.rapports)) delete o.rapports;
   o.libelle = String(o.libelle || '').slice(0, 300);
+  const niv = normaliserNiveaux(o.niveauxDI);
+  if (niv) o.niveauxDI = niv; else delete o.niveauxDI;
   return o;
 }
 export function definirProfilsPersonnalises(liste) {
-  PERSONNALISES = Object.fromEntries((liste || []).filter((d) => d && d.nom && !PROFILS[d.nom]).map((d) => [String(d.nom).trim(), { ...normaliserProfil(d), personnalise: true }]));
+  const l = (liste || []).filter((d) => d && d.nom);
+  PERSONNALISES = Object.fromEntries(l.filter((d) => !PROFILS[d.nom]).map((d) => [String(d.nom).trim(), { ...normaliserProfil(d), personnalise: true }]));
+  SURCHARGES = Object.fromEntries(l.filter((d) => PROFILS[d.nom] && normaliserNiveaux(d.niveauxDI)).map((d) => [d.nom, { niveauxDI: normaliserNiveaux(d.niveauxDI) }]));
 }
-export const catalogue = () => ({ ...PROFILS, ...PERSONNALISES });
+export const estSurchargeBase = (d) => !!(d && PROFILS[d.nom]);
+export const catalogue = () => ({ ...Object.fromEntries(Object.entries(PROFILS).map(([n, p]) => [n, SURCHARGES[n] ? { ...p, ...SURCHARGES[n] } : p])), ...PERSONNALISES });
 export const nomsProfils = () => Object.keys(catalogue());
 
 // Anciens intitulés (avant la v1.18) -> profils
@@ -89,6 +123,13 @@ export function controleProfil(user, collection, cur, next) {
   const p = catalogue()[nom];
   if (!p) return null;                                        // ancien compte sans profil reconnu : droits par volets seulement
   if (p.lectureSeule) return `Profil ${nom} : consultation uniquement, aucune modification.`;
+
+  // DI : niveau de l'arborescence autorisé par le super administrateur (création, ou changement de l'élément visé)
+  if (collection === 'dis' && next && Array.isArray(p.niveauxDI)) {
+    const niv = niveauDI(next);
+    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '');
+    if (change && !p.niveauxDI.includes(niv)) return `Profil ${nom} : création de DI non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxDI.map(libelleNiveau).join(', ') || 'aucun'}).`;
+  }
 
   if (p.valide) {
     if (!(collection in VALIDABLES)) return `Profil ${nom} : consultation et validation uniquement.`;
