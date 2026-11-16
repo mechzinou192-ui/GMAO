@@ -20,7 +20,7 @@ import {api} from "./api.js";
 import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue} from "../../server/src/profils-core.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
-import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
+import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SousSousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
 import {Splash} from "./pages/Connexion.jsx";
 import {DIDetail,DIForm} from "./pages/DemandesIntervention.jsx";
 import {MaintenanceCorrective} from "./pages/MaintenanceCorrective.jsx";
@@ -105,6 +105,7 @@ export function GmaoApp({session,onLogout}){
  const toutLu=async()=>{ try{ await api.marquerLues({tout:true}); }catch{ /* sans gravité */ } setNotifs(s=>({items:s.items.map(x=>({...x,lu:true})),nonLues:0})); };
  const [sousEquipModal,setSousEquipModal]=useState(null);
  const [sousEquipDetail,setSousEquipDetail]=useState(null);
+ const [sousSousModal,setSousSousModal]=useState(null);
  const [equipements,setEquipements,sEq]=useSynced("equipements");
  const [systemsList,setSystemsList,sSys]=useSynced("systemes",{defaults:SYSTEMS_SEED,sa:session.superAdmin});
  const [treeStruct,setTreeStruct,sTree]=useSynced("arborescence",{defaults:TREE_STRUCT_SEED,sa:session.superAdmin});
@@ -157,6 +158,25 @@ export function GmaoApp({session,onLogout}){
    return {...e,sousEquip:exists?cur.map(x=>x.code===se.code?{...x,...se}:x):[...cur,se]};
   }));
   setSousEquipModal(null);
+ }
+ function saveSousSousEquip(payload){
+  const {parentCode,seCode,...ss}=payload;
+  setEquipements(list=>list.map(e=>{
+   if(e.code!==parentCode) return e;
+   return {...e,sousEquip:(e.sousEquip||[]).map(se=>{
+    if(se.code!==seCode) return se;
+    const cur=se.sousSousEquip||[];
+    const exists=cur.some(x=>x.code===ss.code);
+    return {...se,sousSousEquip:exists?cur.map(x=>x.code===ss.code?{...x,...ss}:x):[...cur,ss]};
+   })};
+  }));
+  setSousSousModal(null);
+  setSousEquipDetail({equip:{code:parentCode},se:{code:seCode}});
+ }
+ function removeSousSousEquip(parentCode,seCode,code){
+  setEquipements(list=>list.map(e=>e.code!==parentCode?e:{...e,sousEquip:(e.sousEquip||[]).map(se=>se.code!==seCode?se:{...se,sousSousEquip:(se.sousSousEquip||[]).filter(x=>x.code!==code)})}));
+  setSousSousModal(null);
+  setSousEquipDetail({equip:{code:parentCode},se:{code:seCode}});
  }
  function removeSousEquip(parentCode,code){
   setEquipements(list=>list.map(e=>e.code===parentCode?{...e,sousEquip:(e.sousEquip||[]).filter(x=>x.code!==code)}:e));
@@ -771,6 +791,15 @@ const [notice,setNotice]=useState(null);
    <SousEquipForm modal={sousEquipModal} count={sousEquipModal.mode==="add"?(equipements.find(x=>x.code===sousEquipModal.equip.code)||sousEquipModal.equip).sousEquip?.length||0:0} onSubmit={saveSousEquipement}/>
   </Modal>}
 
+  {sousSousModal && (()=>{
+   const parent=equipements.find(x=>x.code===sousSousModal.equip.code)||sousSousModal.equip;
+   const se=(parent.sousEquip||[]).find(x=>x.code===sousSousModal.se.code)||sousSousModal.se;
+   const m={...sousSousModal,equip:parent,se};
+   return <Modal title={m.mode==="edit"?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
+    <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>
+    {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
+   </Modal>;})()}
+
   {sousEquipDetail && (()=>{
    const parent=equipements.find(x=>x.code===sousEquipDetail.equip.code)||sousEquipDetail.equip;
    const se=(parent.sousEquip||[]).find(x=>x.code===sousEquipDetail.se.code)||sousEquipDetail.se;
@@ -785,10 +814,12 @@ const [notice,setNotice]=useState(null);
      <div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>
      {se.fournisseurs.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom} — {f.tel} — {f.email}</div>)}
     </div>
-    {(se.sousSousEquip||[]).length>0 && <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
-     <div className="text-slate-400 font-medium mb-1">Sous-sous-équipements ({se.sousSousEquip.length})</div>
-     {se.sousSousEquip.map(ss=><div key={ss.code} className="py-0.5">▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
-    </div>}
+    <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-sous-équipements ({(se.sousSousEquip||[]).length})</div>
+      <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,se});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn></div>
+     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title="Voir / modifier / supprimer">▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
+     {(se.sousSousEquip||[]).length===0 && <div className="text-slate-600">Aucun sous-sous-équipement.</div>}
+    </div>
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
      <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>
