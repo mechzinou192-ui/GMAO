@@ -785,6 +785,10 @@ const [notice,setNotice]=useState(null);
      <div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>
      {se.fournisseurs.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom} — {f.tel} — {f.email}</div>)}
     </div>
+    {(se.sousSousEquip||[]).length>0 && <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
+     <div className="text-slate-400 font-medium mb-1">Sous-sous-équipements ({se.sousSousEquip.length})</div>
+     {se.sousSousEquip.map(ss=><div key={ss.code} className="py-0.5">▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
+    </div>}
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
      <Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>

@@ -126,6 +126,15 @@ export const FEUILLES = [
     cols: [
       C('parent', 'Équipement parent (repère ou code GMAO)', 'T1', { req: true, alias: ['code equipement parent', 'equipement parent', 'code equipement', 'repere parent', 'parent'] }),
       C('nom', 'Désignation', 'Moteur de traction', { req: true }),
+      C('repere', 'Repère', 'S1', { alias: ['repere (facultatif)', 'reference interne', 'ref interne'] }),
+      C('f_nom', 'Fournisseur', 'ElecPro'), C('f_tel', 'Tél. fournisseur', ''), C('f_email', 'Email fournisseur', ''),
+      C('code', 'Code', 'laisser vide pour une création'),
+    ] },
+  { cle: 'sousSous', nom: 'Sous-sous-équipements', collection: 'equipements',
+    but: 'Composants d\'un sous-équipement (facultatif : à remplir seulement si vos sous-équipements ont eux-mêmes des composants). Sous-équipement parent : son « Repère » de la feuille Sous-équipements (ex. S1) OU son code GMAO s\'il existe déjà (ex. CFO.ALG.SST.01.01). Équipements, sous-équipements et sous-sous-équipements s\'importent ainsi en une seule fois. Code créé automatiquement : CFO.ALG.SST.01.01.01.',
+    cols: [
+      C('parent', 'Sous-équipement parent (repère ou code GMAO)', 'S1', { req: true, alias: ['code sous-equipement parent', 'code sous equipement parent', 'sous-equipement parent', 'sous equipement parent', 'repere parent', 'code sous-equipement', 'parent'] }),
+      C('nom', 'Désignation', 'Rotor', { req: true }),
       C('f_nom', 'Fournisseur', 'ElecPro'), C('f_tel', 'Tél. fournisseur', ''), C('f_email', 'Email fournisseur', ''),
       C('code', 'Code', 'laisser vide pour une création'),
     ] },
@@ -492,6 +501,7 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
   ctx.equipements.forEach((e) => bumpPrefix(e.code));
 
   const parRepere = new Map();     // repère (feuille Équipements) -> code GMAO, attribué ou existant
+  const parRepereSous = new Map();  // repère (feuille Sous-équipements) -> { parent: équipement, se: sous-équipement }
   // Sous-systèmes : c'est le fichier qui décide. Un sous-système absent de l'arborescence est CRÉÉ par l'import
   // (dans la même transaction que les équipements), au lieu de bloquer la ligne.
   const nouveauxSous = [];         // { system, code, sub }
@@ -594,6 +604,8 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
       const viaRepere = parRepere.get(norm(v.parent));
       const parent = eqIndex.get(viaRepere || String(v.parent).toUpperCase());
       if (!parent) { err(def.nom, ligne, 'Équipement parent', `« ${v.parent} » est introuvable : ni repère de la feuille Équipements, ni code d'un équipement existant`); continue; }
+      const repereSous = v.repere ? norm(v.repere) : '';
+      if (repereSous && parRepereSous.has(repereSous)) { err(def.nom, ligne, 'Repère', `« ${v.repere} » est déjà utilisé par une autre ligne : chaque repère doit être unique dans la feuille`); continue; }
       const subs = parent.data.sousEquip || (parent.data.sousEquip = []);
       if (!parParent.has(parent.id)) parParent.set(parent.id, indexer(clone(subs), (x) => norm(x.nom)));
       let existant = null; let code = v.code ? v.code.toUpperCase() : '';
@@ -608,10 +620,59 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
         if (!existant) code = `${parent.id}.${pad2(Math.max(0, ...subs.map((x) => dernierNumero(x.code)), ...[...explicites].map(dernierNumero)) + 1)}`;
       }
       const fournisseur = v.f_nom ? [{ nom: v.f_nom, tel: v.f_tel || '', email: v.f_email || '' }] : null;
+      let cible = existant;
       if (existant) {
         if (maj) { existant.nom = v.nom; if (fournisseur) existant.fournisseurs = fournisseur; parent.ecrase = true; s.modifies++; } else s.existants++;
       } else {
-        subs.push({ code, nom: v.nom, fournisseurs: fournisseur || [{ nom: 'Non renseigné', tel: '', email: '' }] });
+        cible = { code, nom: v.nom, fournisseurs: fournisseur || [{ nom: 'Non renseigné', tel: '', email: '' }] };
+        subs.push(cible);
+        parent.nouvelleSub = true; s.nouveaux++;
+      }
+      if (repereSous) parRepereSous.set(repereSous, { parent, se: cible });
+    }
+  }
+
+  /* ============ SOUS-SOUS-ÉQUIPEMENTS (facultatif : composants d'un sous-équipement) ============ */
+  if (present('sousSous')) {
+    const def = defOf('sousSous'), s = stats('sousSous');
+    const lignes = lire(def, lecture.feuilles.sousSous); s.lignes = lecture.feuilles.sousSous.lignes.length;
+    const explicites = new Set();
+    const consommables = new Map();   // code du sous-équipement -> index des sous-sous-équipements existants avant import
+    for (const { ligne, v } of lignes) {
+      // parent : repère de la feuille Sous-équipements (prioritaire), sinon code GMAO d'un sous-équipement existant ou créé par ce fichier
+      let parent = null; let se = null;
+      const viaRepere = parRepereSous.get(norm(v.parent));
+      if (viaRepere) ({ parent, se } = viaRepere);
+      else {
+        const codeSe = String(v.parent).toUpperCase();
+        parent = eqIndex.get(codeSe.replace(/\.\d+$/, '')) || null;
+        se = parent ? (parent.data.sousEquip || []).find((x) => x.code === codeSe) || null : null;
+      }
+      if (!parent || !se) {
+        const equipement = parRepere.has(norm(v.parent)) || eqIndex.has(String(v.parent).toUpperCase());
+        err(def.nom, ligne, 'Sous-équipement parent', equipement
+          ? `« ${v.parent} » est un équipement, pas un sous-équipement : indiquez le repère (feuille Sous-équipements) ou le code d'un sous-équipement (ex. ${v.parent.toUpperCase()}.01)`
+          : `« ${v.parent} » est introuvable : ni repère de la feuille Sous-équipements, ni code d'un sous-équipement existant`);
+        continue;
+      }
+      const ssubs = se.sousSousEquip || [];
+      if (!consommables.has(se.code)) consommables.set(se.code, indexer(clone(ssubs), (x) => norm(x.nom)));
+      let existant = null; let code = v.code ? v.code.toUpperCase() : '';
+      if (code) {
+        if (!code.startsWith(`${se.code}.`)) { err(def.nom, ligne, 'Code', `« ${code} » ne commence pas par le code du sous-équipement parent (${se.code}.)`); continue; }
+        if (explicites.has(code)) { err(def.nom, ligne, 'Code', `« ${code} » apparaît plusieurs fois dans la feuille`); continue; }
+        explicites.add(code);
+        existant = ssubs.find((x) => x.code === code) || null;
+      } else {
+        const ex = prendre(consommables.get(se.code), norm(v.nom));
+        existant = ex ? ssubs.find((x) => x.code === ex.code) : null;
+        if (!existant) code = `${se.code}.${pad2(Math.max(0, ...ssubs.map((x) => dernierNumero(x.code)), ...[...explicites].filter((c) => c.startsWith(`${se.code}.`)).map(dernierNumero)) + 1)}`;
+      }
+      const fournisseur = v.f_nom ? [{ nom: v.f_nom, tel: v.f_tel || '', email: v.f_email || '' }] : null;
+      if (existant) {
+        if (maj) { existant.nom = v.nom; if (fournisseur) existant.fournisseurs = fournisseur; parent.ecrase = true; s.modifies++; } else s.existants++;
+      } else {
+        (se.sousSousEquip ||= []).push({ code, nom: v.nom, fournisseurs: fournisseur || [{ nom: 'Non renseigné', tel: '', email: '' }] });
         parent.nouvelleSub = true; s.nouveaux++;
       }
     }
