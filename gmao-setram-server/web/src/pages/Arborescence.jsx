@@ -247,6 +247,40 @@ export function SousEquipForm({modal,count,onSubmit}){
  </div>);
 }
 
+export function SousSousEquipForm({modal,onSubmit}){
+ const isEdit=modal.mode==="edit";
+ const {equip,se}=modal;
+ const ss=isEdit?modal.ss:null;
+ const existants=se.sousSousEquip||[];
+ const prochain=Math.max(0,...existants.map(x=>parseInt(String(x.code).split(".").pop(),10)||0))+1;
+ const code=isEdit?ss.code:(se.code+"."+String(prochain).padStart(2,"0"));
+ const [f,setF]=useState({nom:ss?ss.nom:""});
+ const [fournisseurs,setFournisseurs]=useState(ss?(ss.fournisseurs||[]):[]);
+ const [fNom,setFNom]=useState(""); const [fTel,setFTel]=useState(""); const [fEmail,setFEmail]=useState("");
+ function ajouterFournisseur(){
+  if(!fNom) return;
+  setFournisseurs(l=>[...l,{nom:fNom,tel:fTel,email:fEmail}]);
+  setFNom("");setFTel("");setFEmail("");
+ }
+ return (<div>
+  <div className="text-xs text-slate-400 mb-1">Équipement : {equip.code} — {equip.nom}</div>
+  <div className="text-xs text-slate-400 mb-1">Sous-équipement parent : {se.code} — {se.nom}</div>
+  <Field label="Code GMAO"><Inp value={code} disabled className="opacity-60"/></Field>
+  <Field label="Nom du sous-sous-équipement"><Inp value={f.nom} onChange={e=>setF({...f,nom:e.target.value})} placeholder="ex: Roulement"/></Field>
+
+  <div className="text-xs text-slate-400 mt-3 font-medium">Fournisseur(s) — un ou plusieurs</div>
+  {fournisseurs.map((fr,idx)=><div key={idx} className="text-xs flex justify-between bg-slate-900 rounded px-2 py-1 mt-1"><span>{fr.nom} — {fr.tel} — {fr.email}</span><button className="text-rose-400" onClick={()=>setFournisseurs(l=>l.filter((_,i)=>i!==idx))}>✕</button></div>)}
+  <div className="flex gap-1 mt-2">
+   <input value={fNom} onChange={e=>setFNom(e.target.value)} placeholder="Nom fournisseur" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"/>
+   <input value={fTel} onChange={e=>setFTel(e.target.value)} placeholder="Téléphone" className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"/>
+   <input value={fEmail} onChange={e=>setFEmail(e.target.value)} placeholder="Email" className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"/>
+   <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={ajouterFournisseur}>+ Ajouter</Btn>
+  </div>
+
+  <div className="flex justify-end mt-3"><Btn onClick={()=>{ if(!f.nom.trim()) return; onSubmit({parentCode:equip.code,seCode:se.code,code,nom:f.nom.trim(),fournisseurs:fournisseurs.length?fournisseurs:[{nom:"Non renseigné",tel:"",email:""}]}); }}>{isEdit?"Enregistrer les modifications":"Créer le sous-sous-équipement"}</Btn></div>
+ </div>);
+}
+
 export function SystemForm({modal,onSubmit}){
  const [code,setCode]=useState(modal.code||"");
  const [nom,setNom]=useState(modal.nom||"");
