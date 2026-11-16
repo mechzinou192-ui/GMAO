@@ -1,5 +1,12 @@
 # Journal des modifications
 
+## Non publié — import des sous-sous-équipements
+- Import Excel : nouvelle feuille facultative **Sous-sous-équipements** (parent = repère ou code GMAO d'un sous-équipement) ;
+  colonne **Repère** ajoutée à la feuille *Sous-équipements* pour importer les trois niveaux en une seule fois.
+  Codes automatiques `CFO.ALG.SST.01.01.01`, sans doublon au rechargement, mode « mettre à jour » pris en charge.
+- Création **manuelle** : dans la fiche d'un sous-équipement, bouton « + Sous-sous-équipement » (créer, modifier, supprimer ; code automatique `….01.01.01`).
+- Arborescence, fiche du sous-équipement et export Excel : affichent les sous-sous-équipements.
+
 ## 1.19.0 — rapports d'activité UO / DG, profils DG, profils personnalisables, statuts manuels
 
 ### Rapports d'activité maintenance (nouveau volet 7)
