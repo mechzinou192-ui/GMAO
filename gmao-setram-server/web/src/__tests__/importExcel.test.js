@@ -183,6 +183,74 @@ describe('équipements', () => {
   });
 });
 
+describe('sous-sous-équipements', () => {
+  const SE_H = ['Équipement parent *', 'Désignation *', 'Repère'];
+  const SS_H = ['Sous-équipement parent (repère ou code GMAO) *', 'Désignation *', 'Fournisseur', 'Code'];
+
+  it('import en une seule fois : équipement (repère) → sous-équipement (repère) → sous-sous-équipement', async () => {
+    const lec = await lire({
+      'Équipements': [['Repère', ...EQ_H], ['T1', 'Alger', 'CFO', 'SST', 'Moteur A']],
+      'Sous-équipements': [SE_H, ['T1', 'Stator', 'S1'], ['t1', 'Rotor', 'S2']],
+      'Sous-sous-équipements': [SS_H, ['S1', 'Bobinage', 'ElecPro'], ['s1', 'Isolant'], ['S2', 'Roulement']],
+    });
+    const p = preparerImport(lec, ctx());
+    expect(p.erreurs).toEqual([]);
+    const eq = p.collections.equipements[0].data;
+    expect(eq.sousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.01', 'CFO.ALG.SST.01.02']);
+    expect(eq.sousEquip[0].sousSousEquip.map((x) => `${x.code} ${x.nom}`)).toEqual(['CFO.ALG.SST.01.01.01 Bobinage', 'CFO.ALG.SST.01.01.02 Isolant']);
+    expect(eq.sousEquip[0].sousSousEquip[0].fournisseurs[0].nom).toBe('ElecPro');
+    expect(eq.sousEquip[1].sousSousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.02.01']);
+    expect(p.resume.find((r) => r.cle === 'sousSous')).toMatchObject({ lignes: 3, nouveaux: 3 });
+  });
+
+  it('parent = code GMAO d\'un sous-équipement existant ; relecture sans doublon ; sous-sous-équipement existant conservé', async () => {
+    const parent = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T1',
+      sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Bobine', fournisseurs: [], sousSousEquip: [{ code: 'CFO.ALG.SST.01.01.01', nom: 'Fil', fournisseurs: [] }] }] };
+    const lec = await lire({ 'Sous-sous-équipements': [SS_H, ['CFO.ALG.SST.01.01', 'Fil'], ['cfo.alg.sst.01.01', 'Vernis']] });
+    const p = preparerImport(lec, ctx({ equipements: [parent] }));
+    expect(p.erreurs).toEqual([]);
+    const r = p.collections.equipements[0];
+    expect(r.ecrase).toBe(true);
+    expect(r.data.sousEquip[0].sousSousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.01.01', 'CFO.ALG.SST.01.01.02']);   // « Fil » reconnu, « Vernis » ajouté
+    expect(p.resume.find((x) => x.cle === 'sousSous')).toMatchObject({ nouveaux: 1, existants: 1 });
+  });
+
+  it('sans nouveauté, rien n\'est réécrit', async () => {
+    const parent = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T1',
+      sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Bobine', fournisseurs: [], sousSousEquip: [{ code: 'CFO.ALG.SST.01.01.01', nom: 'Fil', fournisseurs: [] }] }] };
+    const lec = await lire({ 'Sous-sous-équipements': [SS_H, ['CFO.ALG.SST.01.01', 'Fil']] });
+    const p = preparerImport(lec, ctx({ equipements: [parent] }));
+    expect(p.erreurs).toEqual([]);
+    expect(p.collections.equipements || []).toEqual([]);
+  });
+
+  it('erreurs claires : parent introuvable, parent = équipement, code incohérent, repère en double', async () => {
+    const parent = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T1', sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Bobine', fournisseurs: [] }] };
+    const lec = await lire({
+      'Sous-équipements': [SE_H, ['CFO.ALG.SST.01', 'A', 'S1'], ['CFO.ALG.SST.01', 'B', 'S1']],
+      'Sous-sous-équipements': [SS_H, ['ZZ', 'X'], ['CFO.ALG.SST.01', 'Y'], ['CFO.ALG.SST.01.01', 'Z', '', 'CFO.ALG.SST.09.01.01']],
+    });
+    const p = preparerImport(lec, ctx({ equipements: [parent] }));
+    const msgs = p.erreurs.map((e) => `${e.feuille}:${e.ligne}:${e.message}`);
+    expect(msgs.some((m) => /Sous-équipements:3:.*déjà utilisé/.test(m))).toBe(true);
+    expect(msgs.some((m) => /Sous-sous-équipements:2:.*« ZZ » est introuvable/.test(m))).toBe(true);
+    expect(msgs.some((m) => /Sous-sous-équipements:3:.*est un équipement, pas un sous-équipement/.test(m))).toBe(true);
+    expect(msgs.some((m) => /Sous-sous-équipements:4:.*ne commence pas par le code du sous-équipement parent/.test(m))).toBe(true);
+  });
+
+  it('mode « mettre à jour » : renomme le sous-sous-équipement existant', async () => {
+    const parent = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T1',
+      sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Bobine', fournisseurs: [], sousSousEquip: [{ code: 'CFO.ALG.SST.01.01.01', nom: 'Fil', fournisseurs: [] }] }] };
+    const lec = await lire({ 'Sous-sous-équipements': [SS_H, ['CFO.ALG.SST.01.01', 'Fil de cuivre', 'Cuivrex', 'CFO.ALG.SST.01.01.01']] });
+    const p = preparerImport(lec, ctx({ equipements: [parent] }), { onConflict: 'update' });
+    expect(p.erreurs).toEqual([]);
+    const ss = p.collections.equipements[0].data.sousEquip[0].sousSousEquip;
+    expect(ss).toHaveLength(1);
+    expect(ss[0]).toMatchObject({ code: 'CFO.ALG.SST.01.01.01', nom: 'Fil de cuivre' });
+    expect(ss[0].fournisseurs[0].nom).toBe('Cuivrex');
+  });
+});
+
 describe('sous-équipements', () => {
   it('rattache au parent du fichier ou à un parent existant ; en mode « ignorer », ajoute sans toucher au reste', async () => {
     const parent = { code: 'CFO.ALG.SST.01', system: 'CFO', subCode: 'SST', unit: 'Alger', nom: 'T1', sousEquip: [{ code: 'CFO.ALG.SST.01.01', nom: 'Bobine', fournisseurs: [] }] };
