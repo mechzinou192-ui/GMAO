@@ -5,7 +5,7 @@ import {api} from "../api.js";
 import {KPI_ALL,KPI_BLOCS,KPI_VUES,VOLETS} from "../constantes.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,Chk,Field,Inp,SubTabs} from "../ui/base.jsx";
-import {PROFILS,catalogue,nomsProfils,profilsDelegables,nomProfil,NIVEAUX_DI,CLES_NIVEAUX_DI} from "../../../server/src/profils-core.js";
+import {PROFILS,catalogue,nomsProfils,profilsDelegables,nomProfil,NIVEAUX_DI,CLES_NIVEAUX_DI,ACTIONS,CLES_ACTIONS,VOLETS_ACTIONS,normaliserActions} from "../../../server/src/profils-core.js";
 import {PHRASE_REINITIALISATION,COLLECTIONS_METIER,COLLECTIONS_REFERENTIELS,REFERENTIELS_PAR_SYSTEME,phraseCorrecte} from "../../../server/src/reinitialisation-core.js";
 
 export function AdminPage({systemsList,me,importRefs,superAdmin=true,unitesAdmin=UNITS,profilsPerso=[],setProfilsPerso}){
@@ -217,6 +217,26 @@ function ChoixNiveauxDI({valeur,onChange}){
   <div className="flex gap-3 mt-1 text-xs"><button type="button" className="underline text-slate-400" onClick={()=>onChange(undefined)}>Tous les niveaux</button><button type="button" className="underline text-slate-400" onClick={()=>onChange([])}>Aucun</button>{tous&&<span className="text-slate-500">(actuellement : tous)</span>}</div>
  </div>;
 }
+// Actions permises par module : le super administrateur décide, profil par profil, qui crée, modifie ou supprime.
+// Absent (ou tout coché) = toutes les actions. Le serveur refuse les autres (profils-core.js, controleProfil).
+function ChoixActions({volets,valeur,onChange}){
+ const mods=VOLETS_ACTIONS.filter(v=>volets.includes(v));
+ const a=(v)=>valeur&&valeur[v]?valeur[v]:CLES_ACTIONS;
+ const basculer=(v,op)=>{const cur=a(v); const l=cur.includes(op)?cur.filter(x=>x!==op):[...cur,op]; onChange(normaliserActions({...(valeur||{}),[v]:l}));};
+ const ligne=(v,l)=>onChange(normaliserActions({...(valeur||{}),[v]:l}));
+ if(!mods.length) return null;
+ return <div data-testid="actions-profil"><div className="text-sm font-semibold text-slate-200 mb-1">Droits par module — créer, modifier, supprimer</div>
+  <div className="text-[11px] text-slate-500 mb-1">Décochez ce que ce profil ne doit pas faire. Le réglage s'applique tout de suite à tous les comptes de ce profil ; le serveur refuse l'action interdite.</div>
+  <table className="w-full text-sm"><thead><tr className="text-xs text-slate-400 text-left"><th className="py-1 font-medium">Module</th>{ACTIONS.map(([k,l])=><th key={k} className="py-1 font-medium text-center w-24">{l}</th>)}<th/></tr></thead>
+   <tbody>{mods.map(v=><tr key={v} className="border-t border-slate-800">
+    <td className="py-1 text-slate-300">{VOLETS[v]}</td>
+    {ACTIONS.map(([k,l])=><td key={k} className="text-center"><input type="checkbox" aria-label={l+" — "+VOLETS[v]} checked={a(v).includes(k)} onChange={()=>basculer(v,k)}/></td>)}
+    <td className="text-right text-xs whitespace-nowrap"><button type="button" className="underline text-slate-400 mr-2" onClick={()=>ligne(v,CLES_ACTIONS)}>Tout</button><button type="button" className="underline text-slate-400" onClick={()=>ligne(v,[])}>Lecture seule</button></td>
+   </tr>)}</tbody></table>
+  <div className="text-[11px] text-slate-500 mt-1">Ajouter ou retirer un sous-équipement, un sous-système ou une ligne d'une fiche compte comme une modification de l'élément parent. Les règles propres au profil (DI seulement, technicien sans clôture, validation DG…) restent appliquées en plus.</div>
+ </div>;
+}
+const resumeActions=(act)=>{const r=Object.entries(act||{}).map(([v,l])=>(VOLETS[v]||"").split(" (")[0]+(l.length?" : "+ACTIONS.filter(([k])=>l.includes(k)).map(([,x])=>x.toLowerCase()).join("/")+" seulement":" : lecture seule")); return r.length?"restrictions — "+r.join(", "):"";};
 // Modules (volets) d'un profil de base : ceux d'origine sont fixes (cochés, grisés), on peut en ajouter
 function ChoixModulesBase({base,valeur,onChange}){
  return <div data-testid="modules-base"><div className="text-sm font-semibold text-slate-200 mb-1">Modules accessibles</div>
@@ -225,7 +245,7 @@ function ChoixModulesBase({base,valeur,onChange}){
   <div className="text-[11px] text-slate-500 mt-1">À l'enregistrement, les modules ajoutés sont donnés automatiquement à tous les comptes de ce profil, sur chacune de leurs unités (vous pouvez ensuite en retirer compte par compte).</div>
  </div>;
 }
-const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):""].filter(Boolean).join(" · ");
+const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):"",resumeActions(p.actions)].filter(Boolean).join(" · ");
 export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const [sel,setSel]=useState(null); const [msg,setMsg]=useState(""); const [comptes,setComptes]=useState([]);
  useEffect(()=>{api.users().then(r=>setComptes(r.users||[])).catch(()=>{});},[]);
@@ -234,7 +254,7 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const perso=profilsPerso.filter(p=>!PROFILS[p.nom]);
  const surcharge=(nom)=>profilsPerso.find(p=>p.nom===nom);
  const [baseSel,setBaseSel]=useState(null);
- const enregistrerBase=()=>{const {nom,niveauxDI,volets}=baseSel; const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length?[...r,{nom,surcharge:true,...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{})}]:r;}); setBaseSel(null);};
+ const enregistrerBase=()=>{const {nom,niveauxDI,volets}=baseSel; const actions=normaliserActions(baseSel.actions); const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length||actions?[...r,{nom,surcharge:true,...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{}),...(actions?{actions}:{})}]:r;}); setBaseSel(null);};
   const modulesPlus=(nom)=>(surcharge(nom)?.volets||[]).filter(v=>!PROFILS[nom].volets.includes(v));
  const nouveau=()=>{setSel({_new:true,nom:"",libelle:"",volets:[],creerOT:true});setMsg("");};
  const enregistrer=()=>{
@@ -254,12 +274,13 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
    {perso.map(p=><Card key={p.nom} cls={"cursor-pointer "+(sel&&sel.nom===p.nom&&!sel._new?"border-sky-500":"")}><div onClick={()=>{setSel({...p,volets:[...(p.volets||[])]});setBaseSel(null);setMsg("");}}>
     <b className="text-slate-100 text-sm">{p.nom}</b> <span className="text-xs text-sky-400">personnalisé</span><div className="text-xs text-slate-400 mt-1">{resumeProfil({volets:[],...p})}</div><div className="text-xs text-slate-500">{utilisateurs(p.nom)} compte(s)</div></div></Card>)}
    <div className="text-xs text-slate-400 font-medium mt-3">Profils de base (fixes)</div>
-   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}</div></Card>)}
+   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,actions:surcharge(n)?.actions,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}{surcharge(n)?.actions&&<div className="text-xs text-amber-300/80 mt-1">{resumeActions(surcharge(n).actions)}</div>}</div></Card>)}
   </div>
   <div className="md:col-span-2">{baseSel&&!sel?<Card cls="space-y-3">
-    <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — vous pouvez lui ajouter des modules et régler les niveaux de DI</span></div>
+    <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — vous pouvez lui ajouter des modules, régler les niveaux de DI et ce qu'il peut créer, modifier ou supprimer</span></div>
     <ChoixModulesBase base={PROFILS[baseSel.nom]} valeur={baseSel.volets||[]} onChange={v=>setBaseSel(b=>({...b,volets:v}))}/>
     <ChoixNiveauxDI valeur={baseSel.niveauxDI} onChange={v=>setBaseSel(b=>({...b,niveauxDI:v}))}/>
+    <ChoixActions volets={baseSel.volets||[]} valeur={baseSel.actions} onChange={v=>setBaseSel(b=>({...b,actions:v}))}/>
     <div className="flex gap-2 justify-end"><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setBaseSel(null)}>Annuler</Btn><Btn onClick={enregistrerBase}>Enregistrer</Btn></div>
    </Card>:!sel?<Card><div className="text-sm text-slate-400">Créez un profil pour suivre l'organigramme de la société (ex. « Coordinateur méthodes », « Chef de district »). Il combine des modules et des capacités ; il apparaît ensuite dans la liste des profils des comptes.</div></Card>:
    <Card cls="space-y-3">
@@ -271,6 +292,7 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
      <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1">{VOLETS.map((v,i)=><Chk key={i} checked={sel.volets.includes(i)} onChange={()=>setSel(s=>({...s,volets:s.volets.includes(i)?s.volets.filter(x=>x!==i):[...s.volets,i].sort()}))}>{v}</Chk>)}</div></div>
     <div><div className="text-sm font-semibold text-slate-200 mb-1">Capacités</div>
      <div className="space-y-1">{CAPACITES.map(([k,l])=><Chk key={k} checked={k==="creerOT"?sel.creerOT!==false:!!sel[k]} onChange={()=>bascule(k)}>{l}</Chk>)}</div></div>
+    <ChoixActions volets={sel.volets} valeur={sel.actions} onChange={v=>setSel(s=>({...s,actions:v}))}/>
     <ChoixNiveauxDI valeur={sel.niveauxDI} onChange={v=>setSel(s=>({...s,niveauxDI:v}))}/>
     <Field label="Rôle dans les rapports d'activité"><select aria-label="Rôle rapports" value={sel.rapports||""} onChange={e=>setSel({...sel,rapports:e.target.value||undefined})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1">{ROLES_RAPPORTS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></Field>
     {msg&&<div className="text-sm text-rose-100 bg-rose-900/60 border border-rose-500 rounded-lg px-3 py-2">⚠ {msg}</div>}

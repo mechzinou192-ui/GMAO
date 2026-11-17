@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool, q, audit } from './db.js';
-import { controleProfil, ajusterValidation, catalogue, nomProfil, definitionProfil, propagerDroitsProfil } from './profils-core.js';
+import { controleProfil, actionPermise, ajusterValidation, catalogue, nomProfil, definitionProfil, propagerDroitsProfil } from './profils-core.js';
 import { ajusterRapport } from './rapports-core.js';
 import { rechargerProfils } from './profils.js';
 
@@ -128,6 +128,8 @@ dataRouter.post('/:collection/next-code', collectionOf, async (req, res) => {
     return res.status(400).json({ error: `count doit être compris entre 1 et ${MAX_BATCH}.` });
   if (!canWrite(req.user, collection, def.perUnit ? unit : '', null))
     return res.status(403).json({ error: "Vous n'avez pas le droit de créer ces données." });
+  if (!actionPermise(req.user, collection, 'creer'))
+    return res.status(403).json({ error: 'Votre profil ne permet pas de créer ces données (réglage du super administrateur).', code: 'PROFIL' });
   try {
     const codes = await reserveCodes(key, { unit, count });
     res.json({ codes });
