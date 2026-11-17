@@ -48,7 +48,7 @@ describe('profil de base : ajouter des modules (ex. Exploitation + Arborescence)
     const caseDI = screen.getByLabelText(/Demandes d'Intervention \(DI\) \(d'origine\)/);
     expect(caseDI.checked).toBe(true);
     expect(caseDI.disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText(/Arborescence technique et matériaux/));
+    fireEvent.click(screen.getByLabelText(/^Arborescence technique/));
     expect(zone).toBeTruthy();
     fireEvent.click(screen.getByText('Enregistrer'));
     await waitFor(() => expect(setProfilsPerso).toHaveBeenCalled());

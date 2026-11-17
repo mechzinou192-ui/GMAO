@@ -1,6 +1,6 @@
 // Application connectée : données synchronisées, actions métier, mise en page (menu, en-tête, onglets).
 import React,{useState,useEffect,useRef} from "react";
-import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES,VALIDATION,RAPPORTS,VOLET_RAPPORTS} from "./constantes.js";
+import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES,VALIDATION,RAPPORTS,VOLET_RAPPORTS,VOLET_MATERIAUX} from "./constantes.js";
 import {XL_LOGO} from "./excel.js";
 import {ajouterReleve,dernier,etatPlanCompteur,isCompteurPlan} from "./lib/compteurs.js";
 import {addMonths,fmtD,frDate,todayStr} from "./lib/dates.js";
@@ -48,7 +48,7 @@ export function GmaoApp({session,onLogout}){
  // administrateur UO (ou profil équivalent) à qui le super administrateur a donné la main sur les comptes de son unité
  const delegue=!sa&&!!catalogue()[nomProfil(session.role)]?.delegationComptes&&!!session.gestionComptes;
  const voletRapports=sa||Object.values(session.droits||{}).some(g=>(g.volets||[]).includes(VOLET_RAPPORTS));
- const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||peutValider(session)):i===RAPPORTS?voletRapports:(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
+ const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||peutValider(session)):i===RAPPORTS?voletRapports:i===MATERIAUX?(sa||grant.volets.includes(VOLET_MATERIAUX)):(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
  // capacités du profil (le serveur les revérifie à chaque enregistrement)
  const profil=sa?"Super administrateur":nomProfil(session.role);
  const capCloture=peutCloturer(session), capCreerOT=peutCreerOT(session)&&tabOk(2);
@@ -58,7 +58,7 @@ export function GmaoApp({session,onLogout}){
  const diAu=(niv)=>niveauxDI.includes(niv);   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
- const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===MATERIAUX?tabOk(0):tabOk(i);
+ const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):tabOk(i);   // matériaux : volet 8, indépendant de l'arborescence
  const tab=voir(tabRaw)?tabRaw:ACCUEIL;
  const setTab=(i)=>{if(voir(i))setTabRaw(i);};
  // ouvre un OT dans le module qui le contient (OT préventifs : Gestion des OT ; correctifs : maintenance corrective)
@@ -560,7 +560,7 @@ const [notice,setNotice]=useState(null);
   {n:"Indicateurs de performance",c:"Indicateurs",ic:I.chart},
   {n:"Administration",c:"Administration",ic:I.gear},
   {n:"Accueil",c:"Accueil",ic:I.home},   // ACCUEIL = 8 : hors volets de droits (0 à 7)
-  {n:"Gestion et suivi des matériaux",c:"Matériaux",ic:I.gauge},   // MATERIAUX = 9 : volet Arborescence
+  {n:"Gestion et suivi des matériaux",c:"Matériaux",ic:I.gauge},   // MATERIAUX = 9 : volet 8 (séparé de l'arborescence)
   {n:"Validation DG",c:"Validation DG",ic:I.check||I.flag},           // VALIDATION = 10 : expert DG, super administrateur
   {n:"Rapports d'activité maintenance",c:"Rapports d'activité",ic:I.file||I.chart},   // RAPPORTS = 11 : volet 7
  ];
@@ -690,7 +690,7 @@ const [notice,setNotice]=useState(null);
      onOpenEquip={setEquipDetail}
      onSupprimerEquip={lectureArbo?undefined:(e)=>setEquipModal({mode:"edit",equip:e,supprimer:true})} onSupprimerSousEquip={lectureArbo?undefined:(equip,se)=>setSousEquipDetail({equip,se,supprimer:true})}
      onCreateDI={lecture||!tabOk(1)?undefined:(prefill)=>setDiModal({prefill})} niveauxDI={niveauxDI}
-     onOpenSousSous={lectureArbo?undefined:(equip,se,ss)=>setSousSousModal({mode:"edit",equip,se,ss})}
+     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:lectureArbo?"voir":"edit",equip,se,ss})}
      onAddSousEquip={lectureArbo?undefined:(equip)=>setSousEquipModal({mode:"add",equip})}
      onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
      onRemoveSousEquip={lectureArbo?undefined:removeSousEquip}
@@ -780,13 +780,13 @@ const [notice,setNotice]=useState(null);
     </div>
     <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
      <div className="flex items-center justify-between mb-1"><span className="text-slate-400 font-medium">Sous-équipements ({sousL.length})</span>
-      <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousEquipModal({mode:"add",equip:ed});}}>+ Sous-équipement</Btn></div>
+      {!lectureArbo&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousEquipModal({mode:"add",equip:ed});}}>+ Sous-équipement</Btn>}</div>
      {sousL.length===0 && <div className="text-slate-600">Aucun sous-équipement.</div>}
      {sousL.map(se=><div key={se.code} onClick={()=>setSousEquipDetail({equip:ed,se})} className="py-0.5 cursor-pointer hover:text-sky-400">◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</div>)}
     </div>
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setEquipDetail(null)}>Fermer</Btn>
-     <Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{setEquipModal({mode:"edit",equip:ed,supprimer:true});setEquipDetail(null);}}>Supprimer</Btn>
+     {!lectureArbo&&<Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{setEquipModal({mode:"edit",equip:ed,supprimer:true});setEquipDetail(null);}}>Supprimer</Btn>}
      {!lectureArbo&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setEquipModal({mode:"edit",equip:ed});setEquipDetail(null);}}>Modifier</Btn>}
      {diAu("equipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:ed.code,nom:ed.nom,niveau:"equipement"}});setEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
@@ -801,9 +801,18 @@ const [notice,setNotice]=useState(null);
    const parent=equipements.find(x=>x.code===sousSousModal.equip.code)||sousSousModal.equip;
    const se=(parent.sousEquip||[]).find(x=>x.code===sousSousModal.se.code)||sousSousModal.se;
    const m={...sousSousModal,equip:parent,se};
-   return <Modal title={m.mode==="edit"?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
-    <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>
-    {m.mode==="edit" && diAu("sousSousEquipement") && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code,niveau:"sousSousEquipement"}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
+   const fiche=m.mode!=="add";   // « edit » (modification) ou « voir » (consultation : exploitation, DI seulement…)
+   const ssCur=fiche?((se.sousSousEquip||[]).find(x=>x.code===m.ss.code)||m.ss):null;
+   const fournSS=fiche?(ssCur.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné"):[];
+   return <Modal title={fiche?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
+    {m.mode==="voir"
+     ? <div className="text-sm space-y-3" data-testid="fiche-sous-sous">
+        <div className="text-xs text-slate-500">Équipement : <span className="text-sky-400">{parent.code}</span> — {parent.nom}<br/>Sous-équipement parent : <span className="text-sky-400">{se.code}</span> — {se.nom}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Code :</span> {ssCur.code}</div><div><span className="text-slate-500">Nom :</span> {ssCur.nom}</div></div>
+        <div className="border-t border-slate-700 pt-2 text-xs text-slate-300"><div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>{fournSS.length===0?<div className="text-slate-600">Non renseigné.</div>:fournSS.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom}{f.tel?" — "+f.tel:""}{f.email?" — "+f.email:""}</div>)}</div>
+       </div>
+     : <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>}
+    {fiche && diAu("sousSousEquipement") && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code,niveau:"sousSousEquipement"}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
     {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} bloque={blocage.sousSous(parent.code,m.ss.code)} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
    </Modal>;})()}
 
@@ -824,7 +833,7 @@ const [notice,setNotice]=useState(null);
     <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
      <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-sous-équipements ({(se.sousSousEquip||[]).length})</div>
       {!lectureArbo&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,se});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn>}</div>
-     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={lectureArbo?undefined:()=>{setSousSousModal({mode:"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className={"py-0.5"+(lectureArbo?"":" cursor-pointer hover:text-sky-400")} title={lectureArbo?undefined:"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
+     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:lectureArbo?"voir":"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title={lectureArbo?"Voir la fiche / créer une DI":"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
      {(se.sousSousEquip||[]).length===0 && <div className="text-slate-600">Aucun sous-sous-équipement.</div>}
     </div>
     <div className="flex justify-end gap-2">
@@ -832,7 +841,7 @@ const [notice,setNotice]=useState(null);
      {!lectureArbo&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>}
      {diAu("sousEquipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code,niveau:"sousEquipement"}});setSousEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
-    <ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>
+    {!lectureArbo&&<ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>}
    </div>
   </Modal>;})()}
 

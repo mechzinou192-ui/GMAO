@@ -4,7 +4,8 @@ import { controleRapport } from './rapports-core.js';
 // Le profil (colonne users.role) fixe CE QUE la personne peut faire ; les droits (users.droits) fixent OÙ :
 // unités et systèmes. Les deux sont vérifiés par le serveur à chaque écriture (pas seulement masqués à l'écran).
 //
-// Volets : 0 Arborescence/matériaux · 1 DI · 2 OT · 3 Préventif · 4 Stock · 5 Personnel · 6 Indicateurs
+// Volets : 0 Arborescence technique · 1 DI · 2 OT · 3 Préventif · 4 Stock · 5 Personnel · 6 Indicateurs
+//          7 Rapports d'activité · 8 Gestion et suivi des matériaux (séparé de l'arborescence depuis la v1.20)
 export const TOUS_SYSTEMES = '*';
 
 // Capacités (drapeaux), combinables pour les profils créés par le super administrateur :
@@ -23,13 +24,13 @@ export const PROFILS = {
   'Exploitation':          { volets: [1], diSeulement: true, delegable: true, libelle: 'Crée les demandes d\'intervention (DI)' },
   'Gestionnaire de stock': { volets: [4], delegable: true, libelle: 'Gère le magasin : articles, DS / BS / BR, achats, décharges' },
   'Technicien':            { volets: [2], saisieSeule: true, creerOT: false, delegable: true, libelle: 'Remplit les OT qui lui sont confiés ; ne crée pas et ne clôture pas d\'OT' },
-  'Chargé système':        { volets: [0, 1, 2, 3, 5, 6], cloture: true, delegable: true, libelle: 'Son (ses) système(s) et leurs intervenants ; génère, contrôle et clôture les OT' },
-  'Responsable système':   { volets: [0, 1, 2, 3, 5, 6], cloture: true, delegable: true, libelle: 'Comme le chargé système ; informé des clôtures faites par le chargé' },
-  'Administrateur UO':     { volets: [0, 1, 2, 3, 4, 5, 6, 7], cloture: true, tousSystemes: true, rapports: 'uo', delegationComptes: true, libelle: 'Tous les droits métier de son unité (tous systèmes) ; envoie le rapport d\'activité à la DG ; pas d\'import ; comptes seulement si le super admin lui en donne la main' },
-  'Directeur UO':          { volets: [0, 1, 2, 3, 4, 5, 6, 7], lectureSeule: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de son unité (aucune modification)' },
-  'Expert DG':             { volets: [0, 1, 2, 3, 6, 7], valide: true, creerOT: false, toutesUnites: true, rapports: 'expert', libelle: 'Son (ses) système(s) sur toutes les unités ; valide les OT clôturés et les référentiels ; revoit les rapports d\'activité (erreurs, commentaire)' },
-  'Responsable DG':        { volets: [0, 1, 2, 3, 4, 5, 6, 7], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'responsable', libelle: 'Valide et clôture les rapports d\'activité des UO (ou les renvoie pour correction) ; consulte toutes les données' },
-  'Directeur DG':          { volets: [0, 1, 2, 3, 4, 5, 6, 7], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de toutes les unités (aucune modification)' },
+  'Chargé système':        { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, delegable: true, libelle: 'Son (ses) système(s) et leurs intervenants ; génère, contrôle et clôture les OT' },
+  'Responsable système':   { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, delegable: true, libelle: 'Comme le chargé système ; informé des clôtures faites par le chargé' },
+  'Administrateur UO':     { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], cloture: true, tousSystemes: true, rapports: 'uo', delegationComptes: true, libelle: 'Tous les droits métier de son unité (tous systèmes) ; envoie le rapport d\'activité à la DG ; pas d\'import ; comptes seulement si le super admin lui en donne la main' },
+  'Directeur UO':          { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de son unité (aucune modification)' },
+  'Expert DG':             { volets: [0, 1, 2, 3, 6, 7, 8], valide: true, creerOT: false, toutesUnites: true, rapports: 'expert', libelle: 'Son (ses) système(s) sur toutes les unités ; valide les OT clôturés et les référentiels ; revoit les rapports d\'activité (erreurs, commentaire)' },
+  'Responsable DG':        { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'responsable', libelle: 'Valide et clôture les rapports d\'activité des UO (ou les renvoie pour correction) ; consulte toutes les données' },
+  'Directeur DG':          { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de toutes les unités (aucune modification)' },
   'Directeur':             { volets: [6], delegable: true, libelle: 'Consulte les indicateurs' },
 };
 export const NOMS_PROFILS = Object.keys(PROFILS);
@@ -52,7 +53,7 @@ export function niveauDI(d) {
   return n === 2 ? 'systeme' : n === 3 ? 'sousSysteme' : 'equipement';
 }
 const normaliserNiveaux = (v) => (Array.isArray(v) ? CLES_NIVEAUX_DI.filter((k) => v.includes(k)) : undefined);
-const normaliserVolets = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 7))].sort() : undefined);
+const normaliserVolets = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 8))].sort() : undefined);
 // Niveaux autorisés pour l'utilisateur (super administrateur ou profil sans restriction : tous)
 export function niveauxDIAutorises(user) {
   const p = profilDe(user);
@@ -70,7 +71,7 @@ const CLES = ['volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'val
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
-  o.volets = [...new Set((Array.isArray(o.volets) ? o.volets : []).map(Number).filter((v) => Number.isInteger(v) && v >= 0 && v <= 7))].sort();
+  o.volets = [...new Set((Array.isArray(o.volets) ? o.volets : []).map(Number).filter((v) => Number.isInteger(v) && v >= 0 && v <= 8))].sort();
   if (!['uo', 'expert', 'responsable', 'lecture'].includes(o.rapports)) delete o.rapports;
   o.libelle = String(o.libelle || '').slice(0, 300);
   const niv = normaliserNiveaux(o.niveauxDI);
