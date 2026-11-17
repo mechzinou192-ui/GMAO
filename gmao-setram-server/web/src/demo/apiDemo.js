@@ -14,7 +14,7 @@ import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
 import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
-import { controleProfil, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises, definitionProfil, propagerDroitsProfil } from '../../../server/src/profils-core.js';
+import { controleProfil, actionPermise, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises, definitionProfil, propagerDroitsProfil } from '../../../server/src/profils-core.js';
 import { ajusterRapport } from '../../../server/src/rapports-core.js';
 import { detectDocumentOctets } from '../../../server/src/fichiers-core.js';
 import { evenements, estDestinataire } from '../../../server/src/notifications-core.js';
@@ -197,6 +197,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (def.perUnit && !UNITS.includes(u)) throw err(400, 'Unité invalide.');
       if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH) throw err(400, `count doit être compris entre 1 et ${MAX_BATCH}.`);
       if (!canWrite(user, collection, def.perUnit ? u : '', null)) throw err(403, "Vous n'avez pas le droit de créer ces données.");
+      if (!actionPermise(user, collection, 'creer')) throw err(403, 'Votre profil ne permet pas de créer ces données (réglage du super administrateur).', { code: 'PROFIL' });
       const codes = reserver(cle, { unit: u, count }); sauver();
       return codes;
     },

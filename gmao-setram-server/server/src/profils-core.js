@@ -1,4 +1,5 @@
 import { controleRapport } from './rapports-core.js';
+import { COLLECTIONS } from './rights-core.js';
 // Profils utilisateurs : logique PURE (sans base de données), partagée avec la démonstration en navigateur.
 //
 // Le profil (colonne users.role) fixe CE QUE la personne peut faire ; les droits (users.droits) fixent OÙ :
@@ -20,6 +21,8 @@ export const TOUS_SYSTEMES = '*';
 //   delegationComptes             peut recevoir du super admin la main sur les comptes de son unité
 //   delegable                     peut être attribué par un administrateur UO délégué
 //   niveauxDI                     niveaux de l'arborescence où le profil peut créer des DI (absent = tous)
+//   actions                       par module : actions permises { "<volet>": ["creer","modifier","supprimer"] }
+//                                 (module absent = toutes les actions ; décidé par le super administrateur)
 export const PROFILS = {
   'Exploitation':          { volets: [1], diSeulement: true, delegable: true, libelle: 'Crée les demandes d\'intervention (DI)' },
   'Gestionnaire de stock': { volets: [4], delegable: true, libelle: 'Gère le magasin : articles, DS / BS / BR, achats, décharges' },
@@ -67,7 +70,28 @@ let PERSONNALISES = {};
 // Un profil de base ne perd jamais ses modules d'origine : on ne peut qu'en ajouter (ex. Exploitation + Arborescence).
 // Enregistrés dans la même collection « profils », sous le nom du profil de base, avec surcharge: true.
 let SURCHARGES = {};
-const CLES = ['volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI'];
+/* ───── Actions permises par module (créer / modifier / supprimer), décidées par le super administrateur ───── */
+export const ACTIONS = [['creer', 'Créer'], ['modifier', 'Modifier'], ['supprimer', 'Supprimer']];
+export const CLES_ACTIONS = ACTIONS.map(([k]) => k);
+export const NOMS_VOLETS = ['Arborescence technique', 'Demandes d\'intervention', 'Ordres de travail', 'Planning préventif', 'Gestion de stock', 'Gestion du personnel', 'Indicateurs', 'Rapports d\'activité', 'Gestion et suivi des matériaux'];
+// Modules où le réglage a un sens (indicateurs : consultation seule ; rapports : circuit de validation à part)
+export const VOLETS_ACTIONS = [0, 1, 2, 3, 4, 5, 8];
+const LIBELLES_OP = { creer: 'création', modifier: 'modification', supprimer: 'suppression' };
+export function normaliserActions(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const o = {};
+  for (const [k, l] of Object.entries(v)) {
+    const n = Number(k);
+    if (!VOLETS_ACTIONS.includes(n) || !Array.isArray(l)) continue;
+    const a = CLES_ACTIONS.filter((x) => l.includes(x));
+    if (a.length < CLES_ACTIONS.length) o[n] = a;            // toutes les actions cochées = pas de restriction
+  }
+  return Object.keys(o).length ? o : undefined;
+}
+// Opération demandée d'après les données avant / après (null = création / suppression)
+export const operation = (cur, next) => (!cur ? 'creer' : !next ? 'supprimer' : 'modifier');
+
+const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI'];
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
@@ -76,6 +100,8 @@ export function normaliserProfil(d) {
   o.libelle = String(o.libelle || '').slice(0, 300);
   const niv = normaliserNiveaux(o.niveauxDI);
   if (niv) o.niveauxDI = niv; else delete o.niveauxDI;
+  const act = normaliserActions(o.actions);
+  if (act) o.actions = act; else delete o.actions;
   return o;
 }
 export function definirProfilsPersonnalises(liste) {
@@ -85,6 +111,8 @@ export function definirProfilsPersonnalises(liste) {
     const reglage = {};
     const niv = normaliserNiveaux(d.niveauxDI);
     if (niv) reglage.niveauxDI = niv;
+    const act = normaliserActions(d.actions);
+    if (act) reglage.actions = act;
     const vol = normaliserVolets(d.volets);
     if (vol) {
       const tous = [...new Set([...PROFILS[d.nom].volets, ...vol])].sort();
@@ -107,6 +135,28 @@ export const peutCloturer = (user) => !!(user && (estSuper(user) || !profilDe(us
 export const peutValider = (user) => !!(user && (estSuper(user) || profilDe(user)?.valide));
 export const peutCreerOT = (user) => !!(user && (estSuper(user) || !profilDe(user) || (profilDe(user).creerOT !== false && !profilDe(user).lectureSeule && !profilDe(user).diSeulement)));
 export const enConsultation = (user) => !!profilDe(user)?.lectureSeule;
+// Le profil permet-il cette action (creer | modifier | supprimer) dans ce module ? (affichage des boutons)
+export function peutFaire(user, volet, op) {
+  if (!user || estSuper(user)) return true;
+  const a = profilDe(user)?.actions?.[volet];
+  return !a || a.includes(op);
+}
+// Même question pour une collection (contrôle du serveur) : permise si l'un des modules qui l'écrivent, détenus par le
+// profil, l'autorise (ex. DS : stock ou OT).
+export function actionPermise(user, collection, op) {
+  if (!user || estSuper(user)) return true;
+  const p = profilDe(user);
+  const def = COLLECTIONS[collection];
+  if (!p || !p.actions || !def) return true;
+  const vs = (def.writeVolets || [def.volet]).filter((v) => p.volets.includes(v));
+  return !vs.length || vs.some((v) => peutFaire(user, v, op));
+}
+function refusAction(user, collection, op) {
+  if (actionPermise(user, collection, op)) return null;
+  const def = COLLECTIONS[collection];
+  const v = (def.writeVolets || [def.volet]).find((x) => profilDe(user).volets.includes(x));
+  return `Profil ${nomProfil(user.role)} : ${LIBELLES_OP[op]} non autorisée dans le module « ${NOMS_VOLETS[v] || collection} » (réglage du super administrateur).`;
+}
 export const roleRapports = (user) => (estSuper(user) ? 'admin' : profilDe(user)?.rapports || null);
 
 // Collections soumises à la validation DG, et rubriques « de fonctionnement » qui ne la remettent pas en cause
@@ -136,6 +186,9 @@ export function controleProfil(user, collection, cur, next) {
   const p = catalogue()[nom];
   if (!p) return null;                                        // ancien compte sans profil reconnu : droits par volets seulement
   if (p.lectureSeule) return `Profil ${nom} : consultation uniquement, aucune modification.`;
+  // actions permises par module (créer / modifier / supprimer), réglées par le super administrateur
+  const refusOp = refusAction(user, collection, operation(cur, next));
+  if (refusOp) return refusOp;
 
   // DI : niveau de l'arborescence autorisé par le super administrateur (création, ou changement de l'élément visé)
   if (collection === 'dis' && next && Array.isArray(p.niveauxDI)) {

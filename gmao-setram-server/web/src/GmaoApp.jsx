@@ -17,7 +17,7 @@ import {AdminPage} from "./pages/Administration.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
-import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe} from "../../server/src/profils-core.js";
+import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire} from "../../server/src/profils-core.js";
 import {cheminDI} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
@@ -51,10 +51,14 @@ export function GmaoApp({session,onLogout}){
  const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||peutValider(session)):i===RAPPORTS?voletRapports:i===MATERIAUX?(sa||grant.volets.includes(VOLET_MATERIAUX)):(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
  // capacités du profil (le serveur les revérifie à chaque enregistrement)
  const profil=sa?"Super administrateur":nomProfil(session.role);
- const capCloture=peutCloturer(session), capCreerOT=peutCreerOT(session)&&tabOk(2);
+ // actions permises par module (créer / modifier / supprimer), réglées par le super administrateur sur le profil
+ const fait=(v,op)=>peutFaire(session,v,op);
+ const capCloture=peutCloturer(session), capCreerOT=peutCreerOT(session)&&tabOk(2)&&fait(2,"creer");
  const lecture=enConsultation(session);
- const lectureArbo=lecture||!!profilDe(session)?.diSeulement;   // Arborescence : consultation seule (le serveur refuse de toute façon l'écriture)
- const niveauxDI=lecture?[]:niveauxDIAutorises(session);   // niveaux de l'arborescence où ce profil peut créer une DI
+ const lectureArbo=lecture||!!profilDe(session)?.diSeulement||(!fait(0,"creer")&&!fait(0,"modifier")&&!fait(0,"supprimer"));
+ const arboCreer=!lectureArbo&&fait(0,"creer"), arboModif=!lectureArbo&&fait(0,"modifier"), arboSuppr=!lectureArbo&&fait(0,"supprimer");
+ const creerDI=!lecture&&fait(1,"creer");   // Arborescence : consultation seule (le serveur refuse de toute façon l'écriture)
+ const niveauxDI=creerDI?niveauxDIAutorises(session):[];   // niveaux de l'arborescence où ce profil peut créer une DI
  const diAu=(niv)=>tabOk(1)&&niveauxDI.includes(niv);   // bouton « Créer une DI » des fiches : module DI requis (comme le clic droit de l'arborescence)   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
@@ -682,22 +686,22 @@ const [notice,setNotice]=useState(null);
    </div>}
 
    {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
-     onGo={allerA} onNewDI={lecture?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
-   {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={lecture?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+     onGo={allerA} onNewDI={!creerDI?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
+   {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={!creerDI?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
-     onAddEquip={lectureArbo?undefined:(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
+     onAddEquip={!arboCreer?undefined:(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
-     onSupprimerEquip={lectureArbo?undefined:(e)=>setEquipModal({mode:"edit",equip:e,supprimer:true})} onSupprimerSousEquip={lectureArbo?undefined:(equip,se)=>setSousEquipDetail({equip,se,supprimer:true})}
-     onCreateDI={lecture||!tabOk(1)?undefined:(prefill)=>setDiModal({prefill})} niveauxDI={niveauxDI}
-     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:lectureArbo?"voir":"edit",equip,se,ss})}
-     onAddSousEquip={lectureArbo?undefined:(equip)=>setSousEquipModal({mode:"add",equip})}
+     onSupprimerEquip={!arboSuppr?undefined:(e)=>setEquipModal({mode:"edit",equip:e,supprimer:true})} onSupprimerSousEquip={!(arboModif&&arboSuppr)?undefined:(equip,se)=>setSousEquipDetail({equip,se,supprimer:true})}
+     onCreateDI={!creerDI||!tabOk(1)?undefined:(prefill)=>setDiModal({prefill})} niveauxDI={niveauxDI}
+     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:!arboModif?"voir":"edit",equip,se,ss})}
+     onAddSousEquip={!arboModif?undefined:(equip)=>setSousEquipModal({mode:"add",equip})}
      onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
-     onRemoveSousEquip={lectureArbo?undefined:removeSousEquip}
+     onRemoveSousEquip={!(arboModif&&arboSuppr)?undefined:removeSousEquip}
      onAddSystem={sa?()=>setSystemModal({mode:"add",code:"",nom:""}):undefined}
      onEditSystem={sa?(code,nom)=>setSystemModal({mode:"edit",code,nom}):undefined}
-     onAddSubSystem={lectureArbo?undefined:(systemCode)=>setSubSystemModal({mode:"add",systemCode,code:"",nom:""})}
-     onEditSubSystem={lectureArbo?undefined:(systemCode,code,nom)=>setSubSystemModal({mode:"edit",systemCode,code,nom})}
+     onAddSubSystem={!arboModif?undefined:(systemCode)=>setSubSystemModal({mode:"add",systemCode,code:"",nom:""})}
+     onEditSubSystem={!arboModif?undefined:(systemCode,code,nom)=>setSubSystemModal({mode:"edit",systemCode,code,nom})}
      mesureList={mesureList} ctrlList={ctrlList} onAddCtrl={()=>setCtrlModal({mode:"add"})} onEditCtrl={(c)=>setCtrlModal({mode:"edit",item:c})} organismes={organismes} onAddOrg={()=>setOrgModal({mode:"add"})} onEditOrg={(o)=>setOrgModal({mode:"edit",item:o})}
          onAddMesure={()=>setMesureModal({mode:"add"})}
      onEditMesure={(item)=>setMesureModal({mode:"edit",item})}
@@ -780,14 +784,14 @@ const [notice,setNotice]=useState(null);
     </div>
     <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
      <div className="flex items-center justify-between mb-1"><span className="text-slate-400 font-medium">Sous-équipements ({sousL.length})</span>
-      {!lectureArbo&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousEquipModal({mode:"add",equip:ed});}}>+ Sous-équipement</Btn>}</div>
+      {arboModif&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousEquipModal({mode:"add",equip:ed});}}>+ Sous-équipement</Btn>}</div>
      {sousL.length===0 && <div className="text-slate-600">Aucun sous-équipement.</div>}
      {sousL.map(se=><div key={se.code} onClick={()=>setSousEquipDetail({equip:ed,se})} className="py-0.5 cursor-pointer hover:text-sky-400">◦ <span className="text-slate-400">{se.code}</span> — {se.nom}</div>)}
     </div>
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setEquipDetail(null)}>Fermer</Btn>
-     {!lectureArbo&&<Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{setEquipModal({mode:"edit",equip:ed,supprimer:true});setEquipDetail(null);}}>Supprimer</Btn>}
-     {!lectureArbo&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setEquipModal({mode:"edit",equip:ed});setEquipDetail(null);}}>Modifier</Btn>}
+     {arboSuppr&&<Btn cls="bg-rose-700 hover:bg-rose-600" onClick={()=>{setEquipModal({mode:"edit",equip:ed,supprimer:true});setEquipDetail(null);}}>Supprimer</Btn>}
+     {arboModif&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setEquipModal({mode:"edit",equip:ed});setEquipDetail(null);}}>Modifier</Btn>}
      {diAu("equipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:ed.code,nom:ed.nom,niveau:"equipement"}});setEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
    </div>
@@ -832,16 +836,16 @@ const [notice,setNotice]=useState(null);
     </div>
     <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
      <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-sous-équipements ({(se.sousSousEquip||[]).length})</div>
-      {!lectureArbo&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,se});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn>}</div>
-     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:lectureArbo?"voir":"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title={lectureArbo?"Voir la fiche / créer une DI":"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
+      {arboModif&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,se});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn>}</div>
+     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:!arboModif?"voir":"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title={lectureArbo?"Voir la fiche / créer une DI":"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
      {(se.sousSousEquip||[]).length===0 && <div className="text-slate-600">Aucun sous-sous-équipement.</div>}
     </div>
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
-     {!lectureArbo&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>}
+     {arboModif&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>}
      {diAu("sousEquipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code,niveau:"sousEquipement"}});setSousEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
-    {!lectureArbo&&<ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>}
+    {arboModif&&arboSuppr&&<ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>}
    </div>
   </Modal>;})()}
 
