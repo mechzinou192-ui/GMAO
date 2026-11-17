@@ -39,3 +39,20 @@ export function cheminDI(d,{equipements=[],systemsList=[],treeStruct={}}={}){
 
 // Texte sur une ligne : « CFO › CFO.ALG.SST › CFO.ALG.SST.01 › … »
 export const cheminTexte=(chemin,avecNoms=false)=>chemin.map(n=>avecNoms&&n.nom?n.code+" "+n.nom:n.code).join(" › ");
+
+/*
+ * Le nœud concerné par une DI (ou un OT), SEUL : { code, nom } du dernier niveau choisi, sans le chemin.
+ * `d.nom` contient le texte composé à la création (équipement — sous-équipement — sous-sous-équipement) :
+ * on préfère le nom du nœud lui-même, et à défaut le dernier morceau de ce texte.
+ */
+export function noeudDI(d,chemin){
+ if(!d) return {code:"",nom:""};
+ const dernier=chemin&&chemin.length?chemin[chemin.length-1]:null;
+ const code=(dernier&&dernier.code)||d.ss||d.se||d.eq||"";
+ if(dernier&&dernier.nom) return {code,nom:dernier.nom};
+ const morceaux=String(d.nom||"").split(" — ");
+ const dernierMorceau=morceaux[morceaux.length-1]||"";
+ if(code&&dernierMorceau.startsWith(code+" ")) return {code,nom:dernierMorceau.slice(code.length+1)};
+ return {code,nom:d.ss||d.se?"":dernierMorceau};
+}
+export const noeudTexte=(d,chemin)=>{const n=noeudDI(d,chemin);return n.nom?n.code+" — "+n.nom:n.code;};
