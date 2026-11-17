@@ -73,7 +73,7 @@ describe('Profils et délégation', () => {
     fireEvent.click(screen.getByText('Enregistrer'));
     await waitFor(() => expect(api.createUser).toHaveBeenCalled());
     expect(api.createUser.mock.calls[0][0]).toMatchObject({ id: 'admin.oran', role: 'Administrateur UO', gestionComptes: true, email: 'admin.oran@setram.dz',
-      droits: { Oran: { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7] } } });
+      droits: { Oran: { systems: ['*'], volets: [0, 1, 2, 3, 4, 5, 6, 7, 8] } } });
   });
 
   it('technicien : un seul volet (OT) ; l’expert DG reçoit toutes les unités', async () => {

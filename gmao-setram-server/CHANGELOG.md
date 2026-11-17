@@ -1,5 +1,18 @@
 # Journal des modifications
 
+## Non publié — DI sur sous-sous-équipement en consultation, matériaux séparés de l'arborescence
+- **Correctif — DI sur un sous-sous-équipement** : un profil qui voit l'arborescence en consultation seulement (ex. Exploitation
+  + Arborescence) ne pouvait pas ouvrir un sous-sous-équipement, donc pas de bouton « Créer une DI » à ce niveau (le chargé
+  système, qui ouvre la fiche en modification, l'avait). Le clic sur un sous-sous-équipement (arbre ou fiche du sous-équipement)
+  ouvre maintenant une **fiche en consultation** avec « Créer une DI » (selon les niveaux de DI autorisés au profil).
+  Les boutons « Supprimer » et « + Sous-équipement » de la fiche équipement sont masqués en consultation.
+- **Profils : « Gestion et suivi des matériaux » devient un module à part (volet 8)**, séparé de « Arborescence technique » (volet 0).
+  On peut donner l'arborescence seule (ex. Exploitation : arborescence technique sans les matériaux).
+  Serveur : appareils de mesure, contrôles réglementaires et organismes relèvent du volet 8 (lecture aussi avec les indicateurs).
+- **Migration `009_volet_materiaux.sql`** : le volet 8 est ajouté partout où le volet 0 était donné (comptes et profils personnalisés),
+  sauf aux comptes Exploitation, Gestionnaire de stock, Technicien et Directeur, qui gardent l'arborescence seule.
+  Les profils de base qui avaient l'arborescence (chargé / responsable système, administrateur et directeur UO, profils DG) ont désormais aussi le volet 8.
+
 ## Non publié — nœud de DI seul, modules ajoutables aux profils de base
 - **DI : « Nœud visé »** n'affiche plus tous les codes du chemin mais seulement le nœud concerné (ex. `LAC.ALG.CDP.01.01.04 — Relevage LAC`),
   dans la fiche, la liste (cartes et tableau) et la colonne « Désignation du nœud » de l'export. Le bloc « Arborescence — du système au nœud » de la fiche est inchangé.

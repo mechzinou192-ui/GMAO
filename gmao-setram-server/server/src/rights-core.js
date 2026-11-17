@@ -2,7 +2,8 @@
 /*
  * Volets (identiques à l'interface) :
  * 0 Arborescence · 1 DI · 2 OT · 3 Planning préventif · 4 Gestion de stock
- * 5 Gestion du personnel · 6 Indicateurs de performance
+ * 5 Gestion du personnel · 6 Indicateurs de performance · 7 Rapports d'activité
+ * 8 Gestion et suivi des matériaux (séparé de l'arborescence depuis la v1.20)
  */
 export const VOLET_INDICATEURS = 6;
 
@@ -27,9 +28,10 @@ export const COLLECTIONS = {
   decharges:    { volet: 4, shared: true },
   intervenants: { volet: 5, shared: true, readVolets: [2, 3, 5, 6] },
   prestataires: { volet: 5, shared: true, readVolets: [2, 3, 5, 6] },
-  mesures:      { volet: 0, shared: true, readVolets: [0, 6] },
-  controles:    { volet: 0, shared: true, readVolets: [0, 6] },
-  organismes:   { volet: 0, shared: true, readVolets: [0, 6] },
+  // gestion et suivi des matériaux (volet 8) : appareils de mesure, contrôles réglementaires, organismes
+  mesures:      { volet: 8, shared: true, readVolets: [8, 6] },
+  controles:    { volet: 8, shared: true, readVolets: [8, 6] },
+  organismes:   { volet: 8, shared: true, readVolets: [8, 6] },
   // rapports d'activité maintenance des UO (volet 7) : préparés par l'UO, revus et validés par la DG
   rapports:     { volet: 7, readVolets: [7], writeVolets: [7] },
   // profils créés par le super administrateur (organigramme) : lisibles par tous, modifiables par le super admin seul
