@@ -217,6 +217,14 @@ function ChoixNiveauxDI({valeur,onChange}){
   <div className="flex gap-3 mt-1 text-xs"><button type="button" className="underline text-slate-400" onClick={()=>onChange(undefined)}>Tous les niveaux</button><button type="button" className="underline text-slate-400" onClick={()=>onChange([])}>Aucun</button>{tous&&<span className="text-slate-500">(actuellement : tous)</span>}</div>
  </div>;
 }
+// Modules (volets) d'un profil de base : ceux d'origine sont fixes (cochés, grisés), on peut en ajouter
+function ChoixModulesBase({base,valeur,onChange}){
+ return <div data-testid="modules-base"><div className="text-sm font-semibold text-slate-200 mb-1">Modules accessibles</div>
+  <div className="text-[11px] text-slate-500 mb-1">Les modules d'origine du profil restent toujours accessibles ; cochez ceux à ajouter (ex. Arborescence pour Exploitation). Le profil le voit alors en consultation seulement s'il ne peut pas modifier.</div>
+  <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1">{VOLETS.map((v,i)=>{const origine=base.volets.includes(i); return <Chk key={i} checked={origine||valeur.includes(i)} disabled={origine} onChange={()=>onChange(valeur.includes(i)?valeur.filter(x=>x!==i):[...valeur,i].sort())}>{v}{origine?" (d'origine)":""}</Chk>;})}</div>
+  <div className="text-[11px] text-slate-500 mt-1">Après enregistrement, ouvrez chaque compte de ce profil (Comptes et droits d'accès) et cochez le nouveau module pour l'unité voulue : le droit s'applique compte par compte.</div>
+ </div>;
+}
 const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):""].filter(Boolean).join(" · ");
 export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const [sel,setSel]=useState(null); const [msg,setMsg]=useState(""); const [comptes,setComptes]=useState([]);
@@ -226,7 +234,8 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const perso=profilsPerso.filter(p=>!PROFILS[p.nom]);
  const surcharge=(nom)=>profilsPerso.find(p=>p.nom===nom);
  const [baseSel,setBaseSel]=useState(null);
- const enregistrerBase=()=>{const {nom,niveauxDI}=baseSel; setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)?[...r,{nom,surcharge:true,niveauxDI}]:r;}); setBaseSel(null);};
+ const enregistrerBase=()=>{const {nom,niveauxDI,volets}=baseSel; const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length?[...r,{nom,surcharge:true,...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{})}]:r;}); setBaseSel(null);};
+  const modulesPlus=(nom)=>(surcharge(nom)?.volets||[]).filter(v=>!PROFILS[nom].volets.includes(v));
  const nouveau=()=>{setSel({_new:true,nom:"",libelle:"",volets:[],creerOT:true});setMsg("");};
  const enregistrer=()=>{
   const nom=String(sel.nom||"").trim();
@@ -245,10 +254,11 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
    {perso.map(p=><Card key={p.nom} cls={"cursor-pointer "+(sel&&sel.nom===p.nom&&!sel._new?"border-sky-500":"")}><div onClick={()=>{setSel({...p,volets:[...(p.volets||[])]});setBaseSel(null);setMsg("");}}>
     <b className="text-slate-100 text-sm">{p.nom}</b> <span className="text-xs text-sky-400">personnalisé</span><div className="text-xs text-slate-400 mt-1">{resumeProfil({volets:[],...p})}</div><div className="text-xs text-slate-500">{utilisateurs(p.nom)} compte(s)</div></div></Card>)}
    <div className="text-xs text-slate-400 font-medium mt-3">Profils de base (fixes)</div>
-   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}</div></Card>)}
+   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}</div></Card>)}
   </div>
   <div className="md:col-span-2">{baseSel&&!sel?<Card cls="space-y-3">
-    <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — seuls les niveaux de DI sont réglables</span></div>
+    <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — vous pouvez lui ajouter des modules et régler les niveaux de DI</span></div>
+    <ChoixModulesBase base={PROFILS[baseSel.nom]} valeur={baseSel.volets||[]} onChange={v=>setBaseSel(b=>({...b,volets:v}))}/>
     <ChoixNiveauxDI valeur={baseSel.niveauxDI} onChange={v=>setBaseSel(b=>({...b,niveauxDI:v}))}/>
     <div className="flex gap-2 justify-end"><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setBaseSel(null)}>Annuler</Btn><Btn onClick={enregistrerBase}>Enregistrer</Btn></div>
    </Card>:!sel?<Card><div className="text-sm text-slate-400">Créez un profil pour suivre l'organigramme de la société (ex. « Coordinateur méthodes », « Chef de district »). Il combine des modules et des capacités ; il apparaît ensuite dans la liste des profils des comptes.</div></Card>:
