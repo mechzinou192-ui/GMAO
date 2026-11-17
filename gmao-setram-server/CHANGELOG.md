@@ -1,5 +1,10 @@
 # Journal des modifications
 
+## Non publié — droits créer / modifier / supprimer par profil
+- **Nouveau** : dans Administration → Profils, le super administrateur règle, profil par profil et module par module, qui peut
+  créer, modifier ou supprimer (grille « Droits par module »). Contrôlé par le serveur à chaque enregistrement et suppression.
+- `server/public/` recompilé pour que l'écran soit en ligne (sans recompilation, le serveur sert l'ancienne interface).
+
 ## Non publié — application recompilée (le correctif DI sous-sous-équipement n'était pas en ligne)
 - **Cause du problème « l'Exploitation ne peut pas créer de DI sur un sous-sous-équipement »** : le code source était corrigé,
   mais l'application compilée servie par le serveur (`server/public/`) datait d'avant le correctif. Le Dockerfile copie ce
