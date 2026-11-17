@@ -55,7 +55,7 @@ export function GmaoApp({session,onLogout}){
  const lecture=enConsultation(session);
  const lectureArbo=lecture||!!profilDe(session)?.diSeulement;   // Arborescence : consultation seule (le serveur refuse de toute façon l'écriture)
  const niveauxDI=lecture?[]:niveauxDIAutorises(session);   // niveaux de l'arborescence où ce profil peut créer une DI
- const diAu=(niv)=>niveauxDI.includes(niv);   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
+ const diAu=(niv)=>tabOk(1)&&niveauxDI.includes(niv);   // bouton « Créer une DI » des fiches : module DI requis (comme le clic droit de l'arborescence)   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
  const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):tabOk(i);   // matériaux : volet 8, indépendant de l'arborescence
