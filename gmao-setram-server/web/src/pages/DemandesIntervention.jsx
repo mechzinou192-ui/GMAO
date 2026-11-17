@@ -4,7 +4,7 @@ import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
-import {cheminTexte,codeSysteme,codeSousSysteme} from "../lib/arbre.js";
+import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte} from "../lib/arbre.js";
 import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 
 // Chemin du nœud (système → … → nœud visé), affiché code par code
@@ -20,7 +20,7 @@ export function Chemin({chemin,compact=false}){
 export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT,chemin=()=>[]}){
  const exportDI=()=>exporterXlsx({fichier:"Demandes_Intervention_DI",feuilles:[{nom:"DI",titre:"Demandes d'Intervention (DI)",
   colonnes:[{h:"Code DI"},{h:"Code du nœud"},{h:"Chemin (système → nœud)",max:60},{h:"Désignation du nœud"},{h:"Demandeur"},{h:"Désignation",max:50},{h:"Type de maintenance"},{h:"Emplacement"},{h:"Date événement",t:"datetime"},{h:"Date création",t:"datetime"},{h:"Perturbation"},{h:"OT lié"},{h:"État"}],
-  lignes:dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return [d.code,d.ss||d.se||d.eq,cheminTexte(chemin(d)),d.nom,d.demandeur,d.designation,typeLabel(d),d.emplacement,d.dateEvt,d.dateCreation,ouiNon(d.perturb),bt?bt.code:"",d.etat];})}]});
+  lignes:dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return [d.code,noeudDI(d,chemin(d)).code,cheminTexte(chemin(d)),noeudDI(d,chemin(d)).nom,d.demandeur,d.designation,typeLabel(d),d.emplacement,d.dateEvt,d.dateCreation,ouiNon(d.perturb),bt?bt.code:"",d.etat];})}]});
  return (<div className="space-y-5">
   <KPI items={[
    ["DI ouvertes",dis.filter(d=>d.etat!=="Traité").length,"text-sky-400"],
@@ -36,7 +36,7 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT,chemin=()=>[]}){
    <div className="md:hidden mt-3 space-y-2" data-testid="di-cartes">
     {dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return <div key={d.code} onClick={()=>onOpenDI(d)} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 cursor-pointer active:bg-slate-700/40">
      <div className="flex items-start justify-between gap-2"><span className="text-sky-400 font-medium">{d.code}</span><Badge t={d.etat}/></div>
-     <div className="text-sm mt-1">{d.ss||d.se||d.eq}</div><div className="text-xs text-slate-400">{d.nom}</div><Chemin compact chemin={chemin(d)}/>
+     <div className="text-sm mt-1">{noeudDI(d,chemin(d)).code}</div><div className="text-xs text-slate-400">{noeudDI(d,chemin(d)).nom}</div><Chemin compact chemin={chemin(d)}/>
      <div className="text-sm text-slate-300 mt-1 break-words">{d.designation}</div>
      <div className="text-xs text-slate-400 mt-1">{typeLabel(d)}{d.dateEvt?" · "+d.dateEvt:""}{d.perturb?<span className="text-rose-400"> · Perturbation</span>:null}</div>
      {bt && <div className="text-xs text-slate-400">OT lié : {bt.code}</div>}
@@ -47,7 +47,7 @@ export function DIPage({dis,bts,onNewDI,onOpenDI,onGenererBT,chemin=()=>[]}){
    <div className="hidden md:block overflow-x-auto mt-2"><table className="w-full text-sm">
     <thead><tr className="text-slate-400 text-left"><th className="py-1">Code DI</th><th>Nœud (système → …)</th><th>Demandeur</th><th>Désignation</th><th>Type</th><th>Emplacement</th><th>Date événement</th><th>Perturb.</th><th>OT lié</th><th>État</th><th></th></tr></thead>
     <tbody>{dis.map(d=>{const bt=bts.find(b=>b.di===d.code);return <tr key={d.code} onClick={()=>onOpenDI(d)} className="border-t border-slate-700 align-top cursor-pointer hover:bg-slate-700/40">
-     <td className="py-1.5 text-sky-400">{d.code}</td><td>{d.ss||d.se||d.eq}<br/><span className="text-xs text-slate-400">{d.nom}</span><Chemin compact chemin={chemin(d)}/></td>
+     <td className="py-1.5 text-sky-400">{d.code}</td><td>{noeudDI(d,chemin(d)).code}<br/><span className="text-xs text-slate-400">{noeudDI(d,chemin(d)).nom}</span><Chemin compact chemin={chemin(d)}/></td>
      <td className="text-xs text-slate-400">{d.demandeur||"—"}</td>
      <td className="text-xs text-slate-400 max-w-xs">{d.designation}</td><td className="text-xs text-slate-400">{typeLabel(d)}</td><td className="text-xs text-slate-400">{d.emplacement}</td>
      <td className="text-xs text-slate-400">{d.dateEvt}</td>
@@ -66,7 +66,7 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut,chemin=[]}){
   <div className="flex items-center gap-2"><Badge t={di.etat}/>{di.perturb && <span className="text-xs text-rose-400">Perturbation exploitation</span>}</div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
    <Info l="Code DI">{di.code}</Info>
-   <Info l="Nœud visé">{di.ss||di.se||di.eq} — {di.nom}</Info>
+   <Info l="Nœud visé">{noeudTexte(di,chemin)}</Info>
    <Info l="Demandeur">{di.demandeur||"—"}</Info>
    <Info l="Type de maintenance">{typeLabel(di)}</Info>
    <Info l="Emplacement">{di.emplacement||"—"}</Info>
