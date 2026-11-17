@@ -77,7 +77,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
        </button>
        <span className="text-xs text-slate-500 mr-2">{subs.length} sous-systèmes</span>
        {onEditSystem && <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSystem(code,nom)} title="Modifier ou supprimer le système (super administrateur)" aria-label={"Modifier le système "+code}>✎</button>}
-       <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>onAddSubSystem(code)}>+ Sous-système</Btn>
+       {onAddSubSystem&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>onAddSubSystem(code)}>+ Sous-système</Btn>}
       </div>
       {isOpen && <div className="pl-4 border-l border-slate-700 ml-2 space-y-1">
        {subs.length===0 && <div className="text-xs text-slate-600 py-1">Aucun sous-système. Utilisez "+ Sous-système" ci-dessus.</div>}
@@ -90,7 +90,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
            {fleche(subOpen)}<span className="text-slate-200">{s.sub} <span className="text-xs text-slate-500">({code}.{UNIT_ABBR[unit]}.{s.code})</span></span>
           </button>
           <span className="text-xs text-slate-500 mr-2">{eqs.length} équip.</span>
-          <button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSubSystem(code,s.code,s.sub)} title="Modifier le nom du sous-système">✎</button>
+          {onEditSubSystem&&<button className="text-xs text-slate-400 hover:text-sky-400 mr-2" onClick={()=>onEditSubSystem(code,s.code,s.sub)} title="Modifier le nom du sous-système">✎</button>}
          </div>
          {subOpen && <div className="pl-4 border-l border-slate-800 ml-2">
           <ul>{eqs.map(e=>{
@@ -108,19 +108,19 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
               <button className="text-slate-500 hover:text-sky-400" title="Sous-sous-équipements" aria-label={"Ouvrir "+se.code} aria-expanded={seOpen} onClick={()=>setOpenSe(seOpen?null:seKey)}>{fleche(seOpen)}</button>
               <span className="flex-1 cursor-pointer hover:text-sky-400" onClick={()=>onOpenSousEquip(e,se)}><span className="text-slate-400">{se.code}</span> — {se.nom}</span>
               {ssList.length>0 && <span className="text-slate-600 mr-1">{ssList.length} sous-sous-équip.</span>}
-              <button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>
+              {(onSupprimerSousEquip||onRemoveSousEquip)&&<button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>}
               </div>
               {seOpen && <ul className="pl-4 border-l border-slate-800 ml-2">{ssList.map(ss=><li key={ss.code} onContextMenu={ev=>menu(ev,{niveau:"sousSousEquipement",equip:e,sous:se,ss})} onClick={()=>onOpenSousSous&&onOpenSousSous(e,se,ss)} className={"py-0.5 pl-4 text-slate-500"+(onOpenSousSous?" cursor-pointer hover:text-sky-400":"")}><span className="text-slate-400">{ss.code}</span> — {ss.nom}</li>)}
                {ssList.length===0 && <li className="py-0.5 pl-4 text-slate-700">Aucun sous-sous-équipement (à ajouter depuis la fiche du sous-équipement).</li>}</ul>}
              </li>;})}
              {sousList.length===0 && <li className="text-xs text-slate-700 py-0.5">Aucun sous-équipement.</li>}
              </ul>
-             <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddSousEquip(e)}>+ Ajouter un sous-équipement</Btn>
+             {onAddSousEquip&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddSousEquip(e)}>+ Ajouter un sous-équipement</Btn>}
             </div>}
            </li>;})}
           {eqs.length===0 && <li className="text-xs text-slate-600 py-1">Aucun équipement pour cette unité.</li>}
           </ul>
-          <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddEquip(code,s.code,s.sub)}>+ Ajouter un équipement</Btn>
+          {onAddEquip&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddEquip(code,s.code,s.sub)}>+ Ajouter un équipement</Btn>}
          </div>}
         </div>);
        })}
