@@ -1,5 +1,14 @@
 # Journal des modifications
 
+## Non publié — application recompilée (le correctif DI sous-sous-équipement n'était pas en ligne)
+- **Cause du problème « l'Exploitation ne peut pas créer de DI sur un sous-sous-équipement »** : le code source était corrigé,
+  mais l'application compilée servie par le serveur (`server/public/`) datait d'avant le correctif. Le Dockerfile copie ce
+  dossier tel quel : tant qu'il n'est pas recompilé (`cd web && npm run build`), le serveur continue à servir l'ancienne version.
+  `server/public/` est recompilé avec les deux derniers correctifs (fiche du sous-sous-équipement en consultation avec
+  « Créer une DI », module « Gestion et suivi des matériaux » séparé de l'arborescence).
+- Les boutons « Créer une DI » des fiches (équipement, sous-équipement, sous-sous-équipement) demandent aussi le module DI,
+  comme le clic droit dans l'arborescence (le serveur refusait déjà l'enregistrement).
+
 ## Non publié — DI sur sous-sous-équipement en consultation, matériaux séparés de l'arborescence
 - **Correctif — DI sur un sous-sous-équipement** : un profil qui voit l'arborescence en consultation seulement (ex. Exploitation
   + Arborescence) ne pouvait pas ouvrir un sous-sous-équipement, donc pas de bouton « Créer une DI » à ce niveau (le chargé
