@@ -14,7 +14,7 @@ import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
 import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
-import { controleProfil, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises } from '../../../server/src/profils-core.js';
+import { controleProfil, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises, definitionProfil, propagerDroitsProfil } from '../../../server/src/profils-core.js';
 import { ajusterRapport } from '../../../server/src/rapports-core.js';
 import { detectDocumentOctets } from '../../../server/src/fichiers-core.js';
 import { evenements, estDestinataire } from '../../../server/src/notifications-core.js';
@@ -33,7 +33,8 @@ const validId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 
 
 export function createDemoApi({ now = new Date(), stockage = (typeof sessionStorage !== 'undefined' ? sessionStorage : null) } = {}) {
   const jeu = genererDemo(now);
-  const comptes = jeu.users;
+  const comptes = jeu.users.map((u) => ({ ...u }));
+  const droitsOrigine = Object.fromEntries(jeu.users.map((u) => [u.id, u.droits]));
   let horloge = 0;
   const tick = () => { horloge = Math.max(Date.now(), horloge + 1); return new Date(horloge).toISOString(); };
   const blobs = new Map();                                   // id de fichier -> URL locale (non conservée au rechargement)
@@ -49,7 +50,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
     for (const [c, liste] of Object.entries(jeu.collections)) liste.forEach((r) => put(c, r.id, r.unit, r.system, r.data));
     const compteurs = {};
     jeu.compteurs.forEach((c) => { compteurs[`${c.name}|${c.scope}|${c.year}`] = c.last; });
-    return { records, compteurs, audit: [], fichiers: {}, session: null };
+    return { records, compteurs, audit: [], fichiers: {}, session: null, droits: {} };
   };
   const charger = () => {
     try { const j = stockage && stockage.getItem(CLE); if (j) { const e = JSON.parse(j); if (e && e.records) return { ...e, fichiers: {} }; } } catch { /* état illisible : on repart de zéro */ }
@@ -57,6 +58,15 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
   };
   const sauver = () => { try { stockage && stockage.setItem(CLE, JSON.stringify({ ...etat, fichiers: {} })); } catch { /* quota dépassé : sans importance pour une démo */ } };
   etat = charger();
+  // droits des comptes de démonstration : ceux d'origine, sauf ceux modifiés par un changement de profil (gardés dans l'état)
+  const appliquerDroits = () => comptes.forEach((c) => { c.droits = (etat.droits || {})[c.id] || droitsOrigine[c.id]; });
+  appliquerDroits();
+  const propagerProfil = (nom, avant, apres) => {
+    const a = definitionProfil(nom, avant), b = definitionProfil(nom, apres);
+    if (!b) return;
+    for (const c of comptes) if (!c.superAdmin && nomProfil(c.role) === nom) (etat.droits ||= {})[c.id] = propagerDroitsProfil(c.droits, a, b);
+    appliquerDroits();
+  };
   const majProfils = () => definirProfilsPersonnalises(Object.values(etat.records.profils || {}).filter((r) => !r.deleted).map((r) => ({ ...r.data, nom: r.id })));
   majProfils();
 
@@ -162,7 +172,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
         journal(user, 'create', { collection, recordId: id, unit: u, detail: { version: 1, system: sys } });
       }
       notifier(user, collection, id, u, sys, avant, out.data);
-      if (collection === 'profils') majProfils();
+      if (collection === 'profils') { propagerProfil(id, avant, out.data); majProfils(); }
       sauver();
       return enregistrer(toApi(out));
     },
@@ -171,8 +181,9 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (!cur || cur.deleted) throw err(404, 'Introuvable.');
       if (!canWrite(user, collection, cur.unit, cur.system)) throw err(403, "Vous n'avez pas le droit de supprimer ces données.");
       const refus = controleProfil(user, collection, cur.data, null); if (refus) throw err(403, refus, { code: 'PROFIL' });
+      const avantSuppr = cur.data;
       Object.assign(cur, { deleted: true, version: cur.version + 1, updatedAt: tick() });
-      if (collection === 'profils') majProfils();
+      if (collection === 'profils') { propagerProfil(id, avantSuppr, null); majProfils(); }
       journal(user, 'delete', { collection, recordId: id, unit: cur.unit });
       sauver();
       return { ok: true };
@@ -336,7 +347,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       for (const n of etat.notifications || []) if (n.userId === user.id && (b.tout === true || ids.includes(n.id))) n.lu = true;
       sauver(); return { ok: true };
     },
-    _reinitialiser: () => { etat = initial(); majProfils(); sauver(); },
+    _reinitialiser: () => { etat = initial(); appliquerDroits(); majProfils(); sauver(); },
     _etat: () => etat,
   };
   return api;
