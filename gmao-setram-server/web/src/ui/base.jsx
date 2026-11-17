@@ -101,7 +101,7 @@ export function MateriauxSection({label,categorie,pieces,list,setList}){
   </>}
  </div>);
 }
-export const Chk=({checked,onChange,children})=><label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/>{children}</label>;
+export const Chk=({checked,onChange,children,disabled})=><label className={"flex items-center gap-1.5 text-sm "+(disabled?"opacity-60 cursor-not-allowed":"cursor-pointer")}><input type="checkbox" checked={checked} disabled={disabled} onChange={e=>onChange(e.target.checked)}/>{children}</label>;
 
 // Lien vers la FMP d'origine : ouvrable s'il s'agit d'une adresse web ; un chemin réseau (\\serveur\…, fichier local)
 // ne peut pas être ouvert depuis une page web (sécurité des navigateurs) : il est affiché avec un bouton « Copier ».
