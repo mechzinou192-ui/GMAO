@@ -52,6 +52,7 @@ export function niveauDI(d) {
   return n === 2 ? 'systeme' : n === 3 ? 'sousSysteme' : 'equipement';
 }
 const normaliserNiveaux = (v) => (Array.isArray(v) ? CLES_NIVEAUX_DI.filter((k) => v.includes(k)) : undefined);
+const normaliserVolets = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 7))].sort() : undefined);
 // Niveaux autorisés pour l'utilisateur (super administrateur ou profil sans restriction : tous)
 export function niveauxDIAutorises(user) {
   const p = profilDe(user);
@@ -61,7 +62,8 @@ export const peutCreerDIAuNiveau = (user, niveau) => niveauxDIAutorises(user).in
 
 // Profils créés par le super administrateur (organigramme) : chargés depuis la collection « profils »
 let PERSONNALISES = {};
-// Réglages du super administrateur sur les profils de base (fixes) : seulement les niveaux de DI.
+// Réglages du super administrateur sur les profils de base (fixes) : niveaux de DI et modules (volets) en plus.
+// Un profil de base ne perd jamais ses modules d'origine : on ne peut qu'en ajouter (ex. Exploitation + Arborescence).
 // Enregistrés dans la même collection « profils », sous le nom du profil de base, avec surcharge: true.
 let SURCHARGES = {};
 const CLES = ['volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI'];
@@ -78,7 +80,17 @@ export function normaliserProfil(d) {
 export function definirProfilsPersonnalises(liste) {
   const l = (liste || []).filter((d) => d && d.nom);
   PERSONNALISES = Object.fromEntries(l.filter((d) => !PROFILS[d.nom]).map((d) => [String(d.nom).trim(), { ...normaliserProfil(d), personnalise: true }]));
-  SURCHARGES = Object.fromEntries(l.filter((d) => PROFILS[d.nom] && normaliserNiveaux(d.niveauxDI)).map((d) => [d.nom, { niveauxDI: normaliserNiveaux(d.niveauxDI) }]));
+  SURCHARGES = Object.fromEntries(l.filter((d) => PROFILS[d.nom]).map((d) => {
+    const reglage = {};
+    const niv = normaliserNiveaux(d.niveauxDI);
+    if (niv) reglage.niveauxDI = niv;
+    const vol = normaliserVolets(d.volets);
+    if (vol) {
+      const tous = [...new Set([...PROFILS[d.nom].volets, ...vol])].sort();
+      if (tous.length > PROFILS[d.nom].volets.length) reglage.volets = tous;
+    }
+    return [d.nom, reglage];
+  }).filter(([, reglage]) => Object.keys(reglage).length));
 }
 export const estSurchargeBase = (d) => !!(d && PROFILS[d.nom]);
 export const catalogue = () => ({ ...Object.fromEntries(Object.entries(PROFILS).map(([n, p]) => [n, SURCHARGES[n] ? { ...p, ...SURCHARGES[n] } : p])), ...PERSONNALISES });
