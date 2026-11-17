@@ -1,5 +1,12 @@
 # Journal des modifications
 
+## Non publié — nœud de DI seul, modules ajoutables aux profils de base
+- **DI : « Nœud visé »** n'affiche plus tous les codes du chemin mais seulement le nœud concerné (ex. `LAC.ALG.CDP.01.01.04 — Relevage LAC`),
+  dans la fiche, la liste (cartes et tableau) et la colonne « Désignation du nœud » de l'export. Le bloc « Arborescence — du système au nœud » de la fiche est inchangé.
+- **Profils de base** (ex. Exploitation) : le super administrateur peut **ajouter des modules** (ex. Arborescence) en plus de ceux d'origine,
+  en plus du réglage des niveaux de DI. Un profil « DI seulement » qui reçoit l'Arborescence la voit **en consultation seulement**
+  (boutons d'ajout / modification masqués ; le serveur refuse de toute façon l'écriture). Le droit reste à cocher compte par compte.
+
 ## Non publié — arborescence par flèches, chemin complet des DI, niveaux de DI par profil
 - **Arborescence** : une flèche ▸ par niveau — système → sous-système → équipement → sous-équipement → sous-sous-équipement.
   Chaque niveau ne s'ouvre qu'avec sa flèche (les sous-sous-équipements ne sont plus affichés d'office) ; clic sur un sous-sous-équipement = sa fiche.
