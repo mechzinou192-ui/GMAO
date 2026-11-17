@@ -1,8 +1,24 @@
 import { Router } from 'express';
 import { pool, q, audit } from './db.js';
-import { controleProfil, ajusterValidation, catalogue, nomProfil } from './profils-core.js';
+import { controleProfil, ajusterValidation, catalogue, nomProfil, definitionProfil, propagerDroitsProfil } from './profils-core.js';
 import { ajusterRapport } from './rapports-core.js';
 import { rechargerProfils } from './profils.js';
+
+// Un profil modifié (ou sa surcharge supprimée) est répercuté sur les droits des comptes qui l'utilisent : sinon les
+// comptes gardent les modules enregistrés à leur création et la modification du profil reste sans effet.
+async function propagerProfil(db, nom, avant, apres) {
+  const a = definitionProfil(nom, avant), b = definitionProfil(nom, apres);
+  if (!b) return 0;
+  const { rows } = await db.query('SELECT id, role, droits FROM users WHERE NOT super_admin');
+  let n = 0;
+  for (const u of rows.filter((r) => nomProfil(r.role) === nom)) {
+    const droits = propagerDroitsProfil(u.droits, a, b);
+    if (JSON.stringify(droits) === JSON.stringify(u.droits || {})) continue;
+    await db.query('UPDATE users SET droits=$2 WHERE id=$1', [u.id, JSON.stringify(droits)]);
+    n++;
+  }
+  return n;
+}
 import { notifier } from './notifications.js';
 import { config } from './config.js';
 import { COLLECTIONS, canRead, canWrite } from './rights.js';
@@ -191,6 +207,7 @@ dataRouter.put('/:collection/:id', collectionOf, async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
         [collection, id, unit, system, JSON.stringify(b.data), req.user.id])).rows[0];
     }
+    if (collection === 'profils') await propagerProfil(client, id, avant, out.data);
     await client.query('COMMIT');
     done();
     const wasLive = cur && !cur.deleted;
@@ -225,7 +242,7 @@ dataRouter.delete('/:collection/:id', collectionOf, async (req, res) => {
   await q(`UPDATE records SET deleted=true, version=version+1, updated_at=now(), updated_by=$3
            WHERE collection=$1 AND id=$2`, [collection, id, req.user.id]);
   await audit(req, 'delete', { collection, recordId: id, unit: cur.unit, detail: { version: cur.version + 1, system: cur.system, before: snapshot(cur.data) } });
-  if (collection === 'profils') rechargerProfils();
+  if (collection === 'profils') { await propagerProfil({ query: q }, id, cur.data, null); rechargerProfils(); }
   res.json({ ok: true });
 });
 

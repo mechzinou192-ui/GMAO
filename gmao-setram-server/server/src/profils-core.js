@@ -209,6 +209,29 @@ export function normaliserDroitsProfil(role, droits) {
   return out;
 }
 
+/* ───── Répercussion d'une modification de profil sur les comptes qui l'utilisent ───── */
+// Modules et périmètre système d'un profil d'après son enregistrement « profils » (data = null : enregistrement absent
+// ou supprimé → profil de base d'origine, ou null pour un profil personnalisé supprimé).
+export function definitionProfil(nom, data) {
+  const base = PROFILS[nom];
+  if (base) return { volets: [...new Set([...base.volets, ...(normaliserVolets(data?.volets) || [])])].sort(), tousSystemes: !!base.tousSystemes };
+  if (!data) return null;
+  const p = normaliserProfil(data);
+  return { volets: p.volets, tousSystemes: !!p.tousSystemes };
+}
+// Droits d'un compte après modification de son profil (avant → apres) : les modules ajoutés au profil sont donnés sur
+// chaque unité du compte, les modules retirés du profil sont enlevés ; les modules décochés à la main restent décochés.
+export function propagerDroitsProfil(droits, avant, apres) {
+  if (!apres) return droits;
+  const ajoutes = apres.volets.filter((v) => !(avant?.volets || []).includes(v));
+  const out = {};
+  for (const [u, g] of Object.entries(droits || {})) {
+    const volets = [...new Set([...(g?.volets || []).filter((v) => apres.volets.includes(v)), ...ajoutes])].sort();
+    out[u] = { ...g, volets, systems: apres.tousSystemes ? [TOUS_SYSTEMES] : (g?.systems || []) };
+  }
+  return out;
+}
+
 /* ───── Gestion des comptes déléguée à un administrateur UO ───── */
 export const profilsDelegables = () => Object.entries(catalogue()).filter(([, p]) => p.delegable).map(([n]) => n);
 export const PROFILS_DELEGABLES = profilsDelegables();          // profils de base (compatibilité)

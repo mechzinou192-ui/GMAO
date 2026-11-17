@@ -222,7 +222,7 @@ function ChoixModulesBase({base,valeur,onChange}){
  return <div data-testid="modules-base"><div className="text-sm font-semibold text-slate-200 mb-1">Modules accessibles</div>
   <div className="text-[11px] text-slate-500 mb-1">Les modules d'origine du profil restent toujours accessibles ; cochez ceux à ajouter (ex. Arborescence pour Exploitation). Le profil le voit alors en consultation seulement s'il ne peut pas modifier.</div>
   <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1">{VOLETS.map((v,i)=>{const origine=base.volets.includes(i); return <Chk key={i} checked={origine||valeur.includes(i)} disabled={origine} onChange={()=>onChange(valeur.includes(i)?valeur.filter(x=>x!==i):[...valeur,i].sort())}>{v}{origine?" (d'origine)":""}</Chk>;})}</div>
-  <div className="text-[11px] text-slate-500 mt-1">Après enregistrement, ouvrez chaque compte de ce profil (Comptes et droits d'accès) et cochez le nouveau module pour l'unité voulue : le droit s'applique compte par compte.</div>
+  <div className="text-[11px] text-slate-500 mt-1">À l'enregistrement, les modules ajoutés sont donnés automatiquement à tous les comptes de ce profil, sur chacune de leurs unités (vous pouvez ensuite en retirer compte par compte).</div>
  </div>;
 }
 const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):""].filter(Boolean).join(" · ");

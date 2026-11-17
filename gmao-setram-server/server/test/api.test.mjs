@@ -1148,3 +1148,16 @@ test('configuration : les secrets et mots de passe d\'exemple sont refusés en p
   r = configAvec({ NODE_ENV: 'production', DATABASE_URL: bon.DATABASE_URL });                  // secret absent
   assert.equal(r.status, 3);
 });
+
+test('profil modifié par le super administrateur : répercuté sur les droits des comptes de ce profil', async () => {
+  const expl = await newUser('p.expl.prop', { Oran: { systems: ['CFO'], volets: [1] }, Alger: { systems: ['CFO'], volets: [1] } }, undefined, 'Exploitation');
+  assert.deepEqual((await expl.call('GET', '/auth/me')).body.user.droits.Oran.volets, [1]);
+  // ajout du module Arborescence (0) au profil de base Exploitation : donné sur chaque unité du compte, sans le modifier à la main
+  assert.equal((await admin.call('PUT', '/data/profils/Exploitation', { data: { surcharge: true, volets: [1, 0] } })).status, 200);
+  let d = (await expl.call('GET', '/auth/me')).body.user.droits;
+  assert.deepEqual(d.Oran.volets, [0, 1]); assert.deepEqual(d.Alger.volets, [0, 1]);
+  // réglage retiré : retour aux modules d'origine
+  assert.equal((await admin.call('DELETE', '/data/profils/Exploitation')).status, 200);
+  d = (await expl.call('GET', '/auth/me')).body.user.droits;
+  assert.deepEqual(d.Oran.volets, [1]); assert.deepEqual(d.Alger.volets, [1]);
+});
