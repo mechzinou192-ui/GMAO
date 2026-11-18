@@ -205,6 +205,7 @@ const CAPACITES=[
  ["cloture","Clôture les OT"],["creerOT","Crée / génère des OT"],["diSeulement","DI seulement (modifiables tant qu'elles sont « À transmettre »)"],
  ["saisieSeule","Remplit les OT sans les créer ni les clôturer"],["valide","Validation DG (ne modifie que la validation)"],["lectureSeule","Consultation seulement"],
  ["toutesUnites","Toutes les unités (proposé à la création du compte)"],["tousSystemes","Tous les systèmes"],["delegationComptes","Peut recevoir la main sur les comptes de son unité"],["delegable","Attribuable par un administrateur UO"],
+ ["supprimerRapports","Peut supprimer les rapports d'activité (main donnée par le super administrateur)"],
 ];
 const ROLES_RAPPORTS=[["","Aucun"],["uo","Prépare et envoie (UO)"],["expert","Revoit (expert DG)"],["responsable","Valide et clôture (responsable DG)"],["lecture","Consulte"]];
 const resumeNiveaux=(n)=>!Array.isArray(n)?"DI : tous niveaux":n.length===0?"DI : aucun niveau":"DI : "+NIVEAUX_DI.filter(([k])=>n.includes(k)).map(([,l])=>l.toLowerCase()).join(", ");
@@ -254,7 +255,7 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const perso=profilsPerso.filter(p=>!PROFILS[p.nom]);
  const surcharge=(nom)=>profilsPerso.find(p=>p.nom===nom);
  const [baseSel,setBaseSel]=useState(null);
- const enregistrerBase=()=>{const {nom,niveauxDI,volets}=baseSel; const actions=normaliserActions(baseSel.actions); const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length||actions?[...r,{nom,surcharge:true,...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{}),...(actions?{actions}:{})}]:r;}); setBaseSel(null);};
+ const enregistrerBase=()=>{const {nom,niveauxDI,volets,supprimerRapports}=baseSel; const actions=normaliserActions(baseSel.actions); const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length||actions||supprimerRapports?[...r,{nom,surcharge:true,...(supprimerRapports?{supprimerRapports:true}:{}),...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{}),...(actions?{actions}:{})}]:r;}); setBaseSel(null);};
   const modulesPlus=(nom)=>(surcharge(nom)?.volets||[]).filter(v=>!PROFILS[nom].volets.includes(v));
  const nouveau=()=>{setSel({_new:true,nom:"",libelle:"",volets:[],creerOT:true});setMsg("");};
  const enregistrer=()=>{
@@ -274,13 +275,14 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
    {perso.map(p=><Card key={p.nom} cls={"cursor-pointer "+(sel&&sel.nom===p.nom&&!sel._new?"border-sky-500":"")}><div onClick={()=>{setSel({...p,volets:[...(p.volets||[])]});setBaseSel(null);setMsg("");}}>
     <b className="text-slate-100 text-sm">{p.nom}</b> <span className="text-xs text-sky-400">personnalisé</span><div className="text-xs text-slate-400 mt-1">{resumeProfil({volets:[],...p})}</div><div className="text-xs text-slate-500">{utilisateurs(p.nom)} compte(s)</div></div></Card>)}
    <div className="text-xs text-slate-400 font-medium mt-3">Profils de base (fixes)</div>
-   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,actions:surcharge(n)?.actions,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}{surcharge(n)?.actions&&<div className="text-xs text-amber-300/80 mt-1">{resumeActions(surcharge(n).actions)}</div>}</div></Card>)}
+   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,actions:surcharge(n)?.actions,supprimerRapports:!!surcharge(n)?.supprimerRapports,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}{surcharge(n)?.actions&&<div className="text-xs text-amber-300/80 mt-1">{resumeActions(surcharge(n).actions)}</div>}</div></Card>)}
   </div>
   <div className="md:col-span-2">{baseSel&&!sel?<Card cls="space-y-3">
     <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — vous pouvez lui ajouter des modules, régler les niveaux de DI et ce qu'il peut créer, modifier ou supprimer</span></div>
     <ChoixModulesBase base={PROFILS[baseSel.nom]} valeur={baseSel.volets||[]} onChange={v=>setBaseSel(b=>({...b,volets:v}))}/>
     <ChoixNiveauxDI valeur={baseSel.niveauxDI} onChange={v=>setBaseSel(b=>({...b,niveauxDI:v}))}/>
     <ChoixActions volets={baseSel.volets||[]} valeur={baseSel.actions} onChange={v=>setBaseSel(b=>({...b,actions:v}))}/>
+    {(baseSel.volets||[]).includes(7)&&<Chk checked={!!baseSel.supprimerRapports} onChange={()=>setBaseSel(b=>({...b,supprimerRapports:!b.supprimerRapports}))}>Peut supprimer les rapports d'activité (main donnée par le super administrateur)</Chk>}
     <div className="flex gap-2 justify-end"><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setBaseSel(null)}>Annuler</Btn><Btn onClick={enregistrerBase}>Enregistrer</Btn></div>
    </Card>:!sel?<Card><div className="text-sm text-slate-400">Créez un profil pour suivre l'organigramme de la société (ex. « Coordinateur méthodes », « Chef de district »). Il combine des modules et des capacités ; il apparaît ensuite dans la liste des profils des comptes.</div></Card>:
    <Card cls="space-y-3">

@@ -586,11 +586,18 @@ describe('application complète en mode site statique', () => {
     onglet(/Rapports d'activité/);
     fireEvent.click(await screen.findByTestId('rapport-' + code));
     const fiche = await screen.findByTestId('fiche-rapport');
-    fireEvent.change(within(fiche).getByLabelText("Nombre d'erreurs"), { target: { value: '2' } });
-    fireEvent.click(within(fiche).getByText('Terminer ma revue'));
-    expect(await within(fiche).findByText(/Décrivez les erreurs/)).toBeTruthy();
-    fireEvent.change(within(fiche).getByLabelText('Commentaire de revue'), { target: { value: 'Disponibilité CFO erronée' } });
-    fireEvent.click(within(fiche).getByText('Terminer ma revue'));
+    expect(within(fiche).getAllByText('Envoyé aux experts DG pour validation').length).toBeGreaterThan(0);
+    // l'expert commence son analyse : le statut devient « En cours d'analyse par les experts DG »
+    fireEvent.click(within(fiche).getByText("Commencer l'analyse"));
+    await waitFor(() => expect(Object.keys(rap().data.revues[1] || {}).length).toBe(1), { timeout: 4000 });
+    fireEvent.click(await screen.findByTestId('rapport-' + code));
+    const fiche1 = await screen.findByTestId('fiche-rapport');
+    expect(within(fiche1).getAllByText("En cours d'analyse par les experts DG").length).toBeGreaterThan(0);
+    fireEvent.change(within(fiche1).getByLabelText("Nombre d'erreurs"), { target: { value: '2' } });
+    fireEvent.click(within(fiche1).getByText('Terminer ma revue'));
+    expect(await within(fiche1).findByText(/Décrivez les erreurs/)).toBeTruthy();
+    fireEvent.change(within(fiche1).getByLabelText('Commentaire de revue'), { target: { value: 'Disponibilité CFO erronée' } });
+    fireEvent.click(within(fiche1).getByText('Terminer ma revue'));
     await waitFor(() => expect(rap().data.etat).toBe('À valider DG'), { timeout: 4000 });
     // responsable DG : clôture impossible (erreurs) ; renvoi pour correction
     cleanup(); await apiSite.logout();
@@ -600,13 +607,13 @@ describe('application complète en mode site statique', () => {
     const f2 = await screen.findByTestId('fiche-rapport');
     expect(within(f2).getByText(/doit être renvoyé à l'UO/)).toBeTruthy();
     fireEvent.change(within(f2).getByLabelText('Motif de renvoi'), { target: { value: 'Revoir la disponibilité CFO' } });
-    fireEvent.click(within(f2).getByText("Renvoyer à l'UO pour correction"));
+    fireEvent.click(within(f2).getByText("Envoyer à l'UO pour correction"));
     await waitFor(() => expect(rap().data.etat).toBe('À corriger'), { timeout: 4000 });
     // UO (administrateur UO) : notifiée, joint la correction et renvoie
     cleanup(); await apiSite.logout();
     await seConnecter('Responsable maintenance');
     fireEvent.click(screen.getByLabelText('Alertes'));
-    expect((await screen.findByTestId('notifications')).textContent).toMatch(/à corriger/);
+    expect((await screen.findByTestId('notifications')).textContent).toMatch(/pour correction/);
     onglet(/Rapports d'activité/);
     fireEvent.click(await screen.findByTestId('rapport-' + code));
     const f3 = await screen.findByTestId('fiche-rapport');
@@ -617,6 +624,22 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(await within(await screen.findByTestId('fiche-rapport')).findByText('Correction terminée — renvoyer aux experts'));
     await waitFor(() => expect(rap().data).toMatchObject({ etat: 'Envoyé', tour: 2 }), { timeout: 4000 });
     expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.expert' && /tour 2/.test(n.texte))).toBe(true);
+  });
+
+  it('rapports d’activité : le super administrateur supprime un rapport (confirmation, tracé)', async () => {
+    const code = Object.values(apiSite._etat().records.rapports).find((r) => r.unit === 'Alger').id;
+    await seConnecter('Super administrateur');
+    onglet(/Rapports d'activité/);
+    fireEvent.click(await screen.findByTestId('rapport-' + code));
+    const fiche = await screen.findByTestId('fiche-rapport');
+    const confirmer = vi.spyOn(window, 'confirm');
+    confirmer.mockReturnValueOnce(false);
+    fireEvent.click(within(fiche).getByText('Supprimer ce rapport'));
+    expect(apiSite._etat().records.rapports[code].deleted).toBeFalsy();               // refus de confirmer : rien supprimé
+    confirmer.mockReturnValueOnce(true);
+    fireEvent.click(within(fiche).getByText('Supprimer ce rapport'));
+    await waitFor(() => expect(apiSite._etat().records.rapports[code].deleted).toBe(true), { timeout: 4000 });
+    confirmer.mockRestore();
   });
 
   it('super administrateur : statut manuel d’une DI (tracé), système ajouté puis supprimé avec ses sous-systèmes', async () => {
