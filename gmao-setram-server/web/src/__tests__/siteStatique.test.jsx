@@ -178,6 +178,7 @@ describe('application complète en mode site statique', () => {
     const select = await waitFor(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value.startsWith('CFO.ALG'))); if (!s) throw new Error('equipements'); return s; });
     fireEvent.change(select, { target: { value: 'CFO.ALG.SST.01' } });
     const avant = Object.keys(apiSite._etat().records.dis).length;
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     await waitFor(() => expect(Object.keys(apiSite._etat().records.dis).length).toBe(avant + 1));
     const nouvelle = Object.values(apiSite._etat().records.dis).find((r) => r.createdAt === Object.values(apiSite._etat().records.dis).map((x) => x.createdAt).sort().pop());

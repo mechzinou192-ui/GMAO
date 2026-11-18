@@ -44,6 +44,7 @@ describe('Création d’une DI : le numéro vient du serveur', () => {
   it('utilise le numéro attribué par le serveur (unité de l’équipement) et l’enregistre', async () => {
     api.nextCodes.mockResolvedValue(['DI-ALG-2026-0042']);
     await ouvrirFormulaireDI();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     await waitFor(() => expect(api.nextCodes).toHaveBeenCalledWith('dis', { unit: 'Alger', variant: undefined, count: 1 }));
     expect((await screen.findAllByText('DI-ALG-2026-0042')).length).toBeGreaterThan(0);   // carte (téléphone) + tableau (ordinateur)
@@ -54,6 +55,7 @@ describe('Création d’une DI : le numéro vient du serveur', () => {
   it('numérotation impossible : aucune DI n’est créée et un message s’affiche', async () => {
     api.nextCodes.mockRejectedValue(Object.assign(new Error('Serveur injoignable.'), { network: true }));
     await ouvrirFormulaireDI();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     await screen.findByText(/n'a pas été créé/);
     expect(api.save).not.toHaveBeenCalledWith('dis', expect.anything(), expect.anything());
@@ -63,6 +65,7 @@ describe('Création d’une DI : le numéro vient du serveur', () => {
     let fin;
     api.nextCodes.mockImplementation(() => new Promise((r) => { fin = () => r(['DI-ALG-2026-0007']); }));
     await ouvrirFormulaireDI();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     const bouton = screen.getByText('Créer la DI');
     fireEvent.click(bouton); fireEvent.click(bouton); fireEvent.click(bouton);
     await waitFor(() => expect(api.nextCodes).toHaveBeenCalledTimes(1));

@@ -60,18 +60,20 @@ describe('profils : niveaux où créer une DI', () => {
 });
 
 describe('formulaire DI en cascade', () => {
-  it('DI au niveau sous-système', () => {
+  it('DI lancée depuis l\'arborescence au niveau sous-système : nœud préchargé, non modifiable', () => {
     const onSubmit = vi.fn();
-    render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText('Système'), { target: { value: 'CFO' } });
-    fireEvent.change(screen.getByLabelText('Sous-système'), { target: { value: 'SST' } });
+    render(<DIForm prefill={{ eq: 'CFO.ALG.SST', niveau: 'sousSysteme' }} equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={onSubmit} />);
+    expect(screen.getByTestId('noeud-precharge').textContent).toContain('CFO.ALG.SST');
+    expect(screen.queryByLabelText('Équipement')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: 'CFO.ALG.SST', niveau: 'sousSysteme', se: '', ss: '' });
   });
   it('niveau non permis : refus avec message, rien n\'est envoyé', () => {
     const onSubmit = vi.fn();
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" niveaux={['sousSousEquipement']} demandeur="K" onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText('Équipement (accès direct : remplit le système et le sous-système)'), { target: { value: eq.code } });
+    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: eq.code } });
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('ne permet pas de créer une DI au niveau « Équipement »');
@@ -104,5 +106,42 @@ describe('arborescence : une flèche par niveau', () => {
     fireEvent.click(screen.getByText('CFO', { exact: false }).closest('button'));
     fireEvent.contextMenu(screen.getByText('Sous-station', { exact: false }));
     expect(screen.getByText('DI non autorisée à ce niveau pour votre profil')).toBeTruthy();
+  });
+});
+
+describe('formulaire DI : un seul champ Équipement (code GMAO + nom)', () => {
+  it('aucune cascade : seuls « code — nom » des équipements sont proposés', () => {
+    render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={() => {}} />);
+    expect(screen.queryByLabelText('Système')).toBeNull();
+    expect(screen.queryByLabelText('Sous-système')).toBeNull();
+    const options = [...screen.getByLabelText('Équipement').options].map((o) => o.textContent);
+    expect(options).toContain('CFO.ALG.SST.01 — Transformateur');
+    expect(options.some((o) => o.includes(se.code))).toBe(false);
+  });
+  it('choisir un équipement crée une DI sur l\'équipement entier et reprend son emplacement', () => {
+    const onSubmit = vi.fn();
+    render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: eq.code } });
+    expect(screen.getByDisplayValue('Local 1')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Fuite' } });
+    fireEvent.click(screen.getByText('Créer la DI'));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, niveau: 'equipement', se: '', ss: '' });
+  });
+});
+
+describe('DI : la désignation est obligatoire', () => {
+  it('sans désignation : refus avec message, rien n\'est envoyé ; avec désignation : la DI est créée', () => {
+    const onSubmit = vi.fn();
+    render(<DIForm prefill={{ eq: eq.code }} equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="Test" onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByText('Créer la DI'));
+    expect(screen.getByText(/désignation .* est obligatoire/i)).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByText('Créer la DI'));
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Fuite d\'huile' } });
+    fireEvent.click(screen.getByText('Créer la DI'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].designation).toBe('Fuite d\'huile');
   });
 });

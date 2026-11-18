@@ -38,19 +38,19 @@ describe('DI sur un sous-sous-équipement', () => {
   it('la DI préremplie depuis un sous-sous-équipement garde se et ss', () => {
     const onSubmit = vi.fn();
     render(<DIForm prefill={{ eq: eq.code, nom: 'x', se: se.code, ss: 'CFO.ALG.SST.01.01.03' }} equipements={[eq]} demandeur="Karim" onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, se: se.code, ss: 'CFO.ALG.SST.01.01.03' });
   });
 
-  it('on peut choisir le sous-sous-équipement dans le formulaire ; changer de sous-équipement le remet à zéro', () => {
+  it('un sous-équipement préchargé depuis l\'arborescence est affiché en lecture seule (pas de cascade)', () => {
     const onSubmit = vi.fn();
     render(<DIForm prefill={{ eq: eq.code, nom: eq.nom, se: se.code }} equipements={[eq]} demandeur="Karim" onSubmit={onSubmit} />);
-    const choix = screen.getByDisplayValue('— Sous-équipement entier —');
-    fireEvent.change(choix, { target: { value: 'CFO.ALG.SST.01.01.01' } });
+    expect(screen.getByTestId('noeud-precharge').textContent).toContain('CFO.ALG.SST.01');
+    expect(screen.queryByDisplayValue('— Sous-équipement entier —')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
-    const di = onSubmit.mock.calls[0][0];
-    expect(di).toMatchObject({ se: se.code, ss: 'CFO.ALG.SST.01.01.01' });
-    expect(di.nom).toContain('CFO.ALG.SST.01.01.01 Rotor');
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, se: se.code, ss: '' });
   });
 
   it('sans sous-sous-équipement, aucun sélecteur supplémentaire', () => {
