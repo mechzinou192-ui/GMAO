@@ -5,6 +5,7 @@ import { nomProfil, TOUS_SYSTEMES, catalogue } from './profils-core.js';
 import { evenementsRapport } from './rapports-core.js';
 
 const CHARGES = ['Chargé système', 'Responsable système'];
+const EXPERTS = ['Expert DG'];
 
 // -> [{ type, cibles: [profils], texte }]
 export function evenements(collection, cur, next, auteur) {
@@ -16,12 +17,18 @@ export function evenements(collection, cur, next, auteur) {
   if (collection === 'bts') {
     const reprise = next.validationDG?.etat === 'À reprendre' && cur?.validationDG?.etat !== 'À reprendre';
     if (reprise) {
-      out.push({ type: 'ot_a_reprendre', cibles: CHARGES, texte: `OT ${objet(next)} à reprendre (Expert DG ${qui}) : ${next.validationDG.motif || ''}`.trim() });
+      out.push({ type: 'ot_a_reprendre', cibles: CHARGES, texte: `OT ${objet(next)} à reprendre (validation : ${qui}) : ${next.validationDG.motif || ''}`.trim() });
     } else if (next.etat === 'À clôturer' && cur?.etat !== 'À clôturer') {
       out.push({ type: 'ot_a_cloturer', cibles: CHARGES, texte: `OT ${objet(next)} à clôturer : saisie terminée par ${qui}` });
     }
     if (next.etat === 'Clôturé' && cur?.etat !== 'Clôturé' && nomProfil(auteur?.role) === 'Chargé système') {
-      out.push({ type: 'ot_cloture', cibles: ['Responsable système'], texte: `OT ${objet(next)} clôturé par ${qui} (chargé système)` });
+      out.push({ type: 'ot_cloture', cibles: ['Responsable système'], texte: `OT ${objet(next)} clôturé par ${qui} (chargé système) : à valider` });
+    }
+  } else if (collection === 'demandes') {
+    const lib = `Demande d'${String(next.type || '').toLowerCase()} ${next.code}${next.eq ? ' — ' + next.eq : ''}`;
+    if (!cur && next.etat === 'Envoyée') out.push({ type: 'demande_envoyee', cibles: EXPERTS, texte: `${lib} envoyée par ${qui}` });
+    else if (cur && cur.etat !== next.etat && ['En cours', 'Traitée'].includes(next.etat)) {
+      out.push({ type: 'demande_' + (next.etat === 'Traitée' ? 'traitee' : 'en_cours'), cibles: CHARGES, texte: `${lib} ${next.etat === 'Traitée' ? 'traitée' : 'prise en charge'} par ${qui} (Expert DG)` });
     }
   } else if (['equipements', 'planning', 'arborescence'].includes(collection)) {
     if (next.validationDG?.etat === 'À reprendre' && cur?.validationDG?.etat !== 'À reprendre') {

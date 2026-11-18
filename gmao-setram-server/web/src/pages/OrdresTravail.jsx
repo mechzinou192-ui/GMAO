@@ -5,7 +5,7 @@ import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {imprimerHtml} from "../imprimer.js";
 import {controleReleve,dernier,fmtNb} from "../lib/compteurs.js";
-import {coutBT} from "../lib/couts.js";
+import {coutBT,coutIntervenant} from "../lib/couts.js";
 import {frDate,todayStr} from "../lib/dates.js";
 import {interDuSysteme,interPourSys,systemeDe} from "../lib/equipes.js";
 import {btImprimableHtml} from "../lib/impression.js";
@@ -82,7 +82,7 @@ export function BTReadOnly({bt,pieces}){
   </div>
   <div><div className="text-xs text-slate-500 mb-1">Intervenants</div>
    {(bt.intervenants||[]).length===0 ? <div className="text-xs text-slate-500">—</div> :
-    (bt.intervenants||[]).map((it,i)=><div key={i} className="text-xs flex justify-between bg-slate-900 rounded px-2 py-1 mt-1"><span>{it.nom} — {it.fonction} — {it.temps}h × {it.taux} DA/h</span><span>{(it.temps*it.taux).toLocaleString()} DA</span></div>)}
+    (bt.intervenants||[]).map((it,i)=><div key={i} className="text-xs flex justify-between bg-slate-900 rounded px-2 py-1 mt-1"><span>{it.nom} — {it.fonction} — {it.temps}h intervention + {Number(it.logistique)||0}h logistique × {it.taux} DA/h</span><span>{coutIntervenant(it).toLocaleString()} DA</span></div>)}
   </div>
   <div><div className="text-xs text-slate-500 mb-1">Matières utilisées</div>
    {["pieces","outillage","consommables"].flatMap(cat=>(bt[cat]||[]).map((it,i)=>{const pc=pieces.find(p=>p.code===it.code);
@@ -98,7 +98,7 @@ export function BandeauValidation({v}){
  if(!v) return null;
  const cls=v.etat==="Validé"?"border-emerald-600 bg-emerald-900/30 text-emerald-200":v.etat==="À reprendre"?"border-rose-600 bg-rose-900/30 text-rose-200":"border-amber-600 bg-amber-900/30 text-amber-200";
  return <div className={"text-xs rounded-lg border px-3 py-2 mb-2 "+cls} data-testid="validation-dg">
-  <b>Validation DG : {v.etat}</b>{v.par && v.etat!=="À valider"?" — "+v.par:""}{v.le?" le "+String(v.le).slice(0,10).split("-").reverse().join("/"):""}{v.motif?" — motif : "+v.motif:""}
+  <b>Validation : {v.etat}</b>{v.par && v.etat!=="À valider"?" — "+v.par:""}{v.le?" le "+String(v.le).slice(0,10).split("-").reverse().join("/"):""}{v.motif?" — motif : "+v.motif:""}
  </div>;
 }
 
@@ -194,7 +194,7 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
   setIntervenants(l=>[...l,{nom:t.nom,fonction:t.poste,temps:tempsInt,taux:t.taux}]);
   setSelInt("");setTempsInt(1);setAjoutInter(false);
  }
- const coutMO=intervenants.reduce((s,i)=>s+i.temps*i.taux,0);
+ const coutMO=intervenants.reduce((s,i)=>s+coutIntervenant(i),0);
  const coutLot=(lot)=>lot.reduce((s,it)=>{const pc=pieces.find(p=>p.code===it.code);return s+(pc?pc.prix*it.qte:0);},0);
  const coutMat=coutLot(piecesBT)+coutLot(outillageBT)+coutLot(consommablesBT);
  const data=()=>({...f,assignes:intervenants.length?intervenants.map(x=>x.nom):(bt.assignes||[]),taches,panne:f.panne||"-",cause:f.cause||"-",effet:f.effet||"-",intervenants,pieces:piecesBT,outillage:outillageBT,consommables:consommablesBT});
@@ -275,13 +275,15 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
    <Field label="Temps logistique (h)"><Inp type="number" step="0.5" value={f.tempsLogistique} onChange={e=>setF({...f,tempsLogistique:Number(e.target.value)})}/></Field>
   </div>
 
-  <div className="text-xs text-slate-400 mt-3 font-medium">Intervenants assignés — saisissez la durée d'intervention de chacun (h)</div>
+  <div className="text-xs text-slate-400 mt-3 font-medium">Intervenants assignés — saisissez la durée d'intervention et temps logistique de chacun (h)</div>
+  {intervenants.length>0 && <div className="text-[11px] text-slate-500 flex justify-end gap-2 pr-32 mt-1"><span className="w-16 text-center">Interv.</span><span className="w-16 text-center">Logist.</span></div>}
   {intervenants.length===0 && <div className="text-xs text-slate-500 mt-1">Aucun intervenant assigné à cet OT.</div>}
   {intervenants.map((it,idx)=><div key={idx} className="text-xs flex justify-between items-center gap-2 bg-slate-900 rounded px-2 py-1.5 mt-1">
    <span className="flex-1">{it.nom} — {it.fonction} <span className="text-slate-500">({it.taux} DA/h)</span></span>
-   <input type="number" step="0.5" min="0" value={it.temps} onChange={e=>setIntervenants(l=>l.map((x,j)=>j===idx?{...x,temps:Number(e.target.value)}:x))} className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-sm text-center"/>
+   <input type="number" step="0.5" min="0" aria-label={"Durée d'intervention de "+it.nom+" (h)"} title="Durée d'intervention (h)" value={it.temps} onChange={e=>setIntervenants(l=>l.map((x,j)=>j===idx?{...x,temps:Number(e.target.value)}:x))} className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-sm text-center"/>
+   <input type="number" step="0.5" min="0" aria-label={"Temps logistique de "+it.nom+" (h)"} title="Temps logistique (h)" value={it.logistique||0} onChange={e=>setIntervenants(l=>l.map((x,j)=>j===idx?{...x,logistique:Number(e.target.value)}:x))} className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-sm text-center"/>
    <span className="text-slate-500">h</span>
-   <span className="w-20 text-right">{(it.temps*it.taux).toLocaleString()} DA</span>
+   <span className="w-20 text-right">{coutIntervenant(it).toLocaleString()} DA</span>
    <button className="text-slate-500 hover:text-rose-400" onClick={()=>setIntervenants(l=>l.filter((_,i)=>i!==idx))} title="Retirer cet intervenant">{I.x}</button>
   </div>)}
   {!ajoutInter && <button type="button" onClick={()=>setAjoutInter(true)} className="text-xs text-sky-400 hover:underline mt-2">+ Ajouter / modifier un intervenant</button>}

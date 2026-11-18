@@ -186,6 +186,8 @@ describe('coût d\'un ordre de travail', () => {
     const bt = { intervenants: [{ temps: 2, taux: 1000 }, { temps: 1.5, taux: 2000 }], pieces: [{ code: 'P-001', qte: 3 }, { code: 'P-999', qte: 9 }], outillage: [{ code: 'O-001', qte: 1 }], consommables: [{ code: 'C-001', qte: 4 }] };
     expect(coutBT(bt, pieces)).toEqual({ mo: 5000, mat: 5340, total: 10340 });
     expect(coutBT({}, pieces)).toEqual({ mo: 0, mat: 0, total: 0 });
+    // main-d'œuvre = (durée d'intervention + temps logistique) × taux, par intervenant
+    expect(coutBT({ intervenants: [{ temps: 2, logistique: 1.5, taux: 1000 }, { temps: 1, taux: 800 }] }, pieces).mo).toBe(4300);
   });
 });
 

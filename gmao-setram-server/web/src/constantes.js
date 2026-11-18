@@ -4,7 +4,7 @@
 export const RAPPORTS=11;     // onglet « Rapports d'activité » (volet 7 des droits)
 export const VOLET_RAPPORTS=7;
 export const VOLET_MATERIAUX=8;   // volet « Gestion et suivi des matériaux », séparé de l'arborescence technique (v1.20)
-export const VALIDATION=10;   // onglet « Validation DG » (expert DG, super administrateur)
+export const VALIDATION=10;   // onglet « Validation » : OT (responsable maintenance), référentiels (expert DG), demandes d'expertise / d'assistance
 export const MATERIAUX=9;  // onglet « Gestion et suivi des matériaux » (appareils de mesure, contrôles réglementaires, organismes) : volet 8
 export const ACCUEIL=8;   // onglet « Accueil » (tableau de bord), indépendant des volets de droits 0 à 8
 

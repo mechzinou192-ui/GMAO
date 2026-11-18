@@ -756,31 +756,47 @@ test('profils : exploitation = DI seulement, technicien sans création ni clôtu
   } finally { _definirTransport(null); }
 });
 
-test('validation DG : l\'expert valide ou fait reprendre (motif), ne modifie rien d\'autre ; personne d\'autre ne se valide', async () => {
+test('validation des OT : le responsable maintenance valide ou fait reprendre (motif) ; l\'expert DG ne valide plus les OT ; personne d\'autre ne se valide', async () => {
   const U = 'Constantine';
   const droitsToutes = Object.fromEntries(['Alger', 'Oran', 'Constantine'].map((u) => [u, { systems: ['CFO'], volets: [0, 1, 2, 3, 6] }]));
   const exp = await newUser('p.expert', droitsToutes, undefined, 'Expert DG');
-  const chg = (() => { const c = new Client(); return c; })();
-  assert.equal((await chg.call('POST', '/auth/login', { id: 'p.charge', password: 'Motdepasse2026ok' })).status, 200);
+  const connecter = async (id) => { const c = new Client(); assert.equal((await c.call('POST', '/auth/login', { id, password: 'Motdepasse2026ok' })).status, 200); return c; };
+  const chg = await connecter('p.charge');
+  const resp = await connecter('p.resp');
+  const autre = await connecter('p.resp.mr');
   const lire = async () => (await admin.call('GET', '/data/bts?unit=Constantine')).body.items.find((i) => i.id === 'OT-CST-P1');
   let cur = await lire();
-  // l'expert ne change pas la saisie
+  // l'expert DG ne touche plus aux OT (ni saisie, ni validation, ni création)
   let r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, panne: 'modifiée' }, unit: U, system: 'CFO', version: cur.version });
   assert.equal(r.status, 403);
+  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 403); assert.match(r.body.error.message, /responsable maintenance/);
   assert.equal((await exp.call('PUT', '/data/bts/OT-NEW', { data: { code: 'OT-NEW' }, unit: U, system: 'CFO' })).status, 403);
+  // responsable d'un autre système : pas d'accès à l'OT
+  assert.equal((await autre.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version })).status, 403);
   // à reprendre sans motif : refusé ; avec motif : l'OT revient « À clôturer » et le chargé est prévenu
-  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre' } }, unit: U, system: 'CFO', version: cur.version });
+  r = await resp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre' } }, unit: U, system: 'CFO', version: cur.version });
   assert.equal(r.status, 403);
-  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre', motif: 'Cause non renseignée', par: 'p.expert' } }, unit: U, system: 'CFO', version: cur.version });
+  r = await resp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'À reprendre', motif: 'x' } }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 403);                                         // doit revenir « À clôturer »
+  r = await resp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'À clôturer', validationDG: { etat: 'À reprendre', motif: 'Cause non renseignée', par: 'quelqu\'un' } }, unit: U, system: 'CFO', version: cur.version });
   assert.equal(r.status, 200);
+  assert.equal(r.body.data.validationDG.parId, 'p.resp');                // signé par le serveur
   assert.ok(await attendreQue(async () => (await chg.call('GET', '/notifications')).body.items.some((x) => x.type === 'ot_a_reprendre' && /Cause non renseignée/.test(x.texte))));
-  // le chargé ne peut pas se valider lui-même : la validation est recalculée par le serveur
+  // un OT non clôturé ne se valide pas
   cur = await lire();
+  assert.equal((await resp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version })).status, 403);
+  // le chargé ne peut pas se valider lui-même : la validation est recalculée par le serveur
   r = await chg.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, etat: 'Clôturé', cause: 'Ventilation', validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version });
   assert.equal(r.status, 200); assert.equal(r.body.data.validationDG.etat, 'À valider');
   cur = await lire();
-  r = await exp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé', par: 'p.expert' } }, unit: U, system: 'CFO', version: cur.version });
+  r = await resp.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data, validationDG: { etat: 'Validé' } }, unit: U, system: 'CFO', version: cur.version });
   assert.equal(r.status, 200);
+  assert.equal(r.body.data.validationDG.etat, 'Validé'); assert.equal(r.body.data.validationDG.parId, 'p.resp');
+  // une saisie ultérieure qui ne touche pas la validation la conserve
+  cur = await lire();
+  r = await chg.call('PUT', '/data/bts/OT-CST-P1', { data: { ...cur.data }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.body.data.validationDG.etat, 'Validé');
   // référentiel : création / modification par le chargé -> « À valider » ; l'avancement d'un plan ne la remet pas en cause
   r = await chg.call('PUT', '/data/planning/PREV-CST-P1', { data: { code: 'PREV-CST-P1', eq: 'CFO.CST.SST.01', periode: 'Mensuel', date: '2026-11-01' }, unit: U, system: 'CFO' });
   assert.equal(r.body.data.validationDG.etat, 'À valider');
@@ -1182,4 +1198,52 @@ test('profil modifié par le super administrateur : répercuté sur les droits d
   assert.equal((await admin.call('DELETE', '/data/profils/Exploitation')).status, 200);
   d = (await expl.call('GET', '/auth/me')).body.user.droits;
   assert.deepEqual(d.Oran.volets, [1]); assert.deepEqual(d.Alger.volets, [1]);
+});
+
+
+test('demandes d\'expertise / d\'assistance : le chargé décrit et joint son rapport, l\'expert DG du système prend en charge et répond', async () => {
+  const U = 'Constantine';
+  const connecter = async (id) => { const c = new Client(); assert.equal((await c.call('POST', '/auth/login', { id, password: 'Motdepasse2026ok' })).status, 200); return c; };
+  const chg = await connecter('p.charge');
+  const exp = await connecter('p.expert');
+  const tec = await connecter('p.tech');
+  const code = (await chg.call('POST', '/data/demandes/next-code', { unit: U, variant: 'EXP' })).body.codes[0];
+  assert.match(code, /^DEX-CST-\d{4}-001$/);
+  assert.match((await chg.call('POST', '/data/demandes/next-code', { unit: U, variant: 'ASS' })).body.codes[0], /^DAS-CST-\d{4}-001$/);
+  const d = { code, unit: U, system: 'CFO', type: 'Expertise', objet: 'Échauffement redresseur', probleme: 'Température 85 °C en charge', etat: 'Envoyée', demandeur: 'p.charge', fichiers: [] };
+  assert.equal((await chg.call('PUT', '/data/demandes/' + code, { data: { ...d, probleme: '' }, unit: U, system: 'CFO' })).status, 403);   // problème obligatoire
+  assert.equal((await chg.call('PUT', '/data/demandes/' + code, { data: { ...d, etat: 'Traitée' }, unit: U, system: 'CFO' })).status, 403);
+  assert.equal((await tec.call('PUT', '/data/demandes/' + code, { data: d, unit: U, system: 'CFO' })).status, 403);                       // technicien : non
+  assert.equal((await exp.call('PUT', '/data/demandes/' + code, { data: d, unit: U, system: 'CFO' })).status, 403);                       // l'expert ne crée pas
+  let r = await chg.call('PUT', '/data/demandes/' + code, { data: d, unit: U, system: 'CFO' });
+  assert.equal(r.status, 200);
+  // l'expert DG du système est prévenu
+  assert.ok(await attendreQue(async () => (await exp.call('GET', '/notifications')).body.items.some((x) => x.type === 'demande_envoyee' && x.recordId === code)));
+  // rapport joint : PDF, Word ou Excel ; pas d'image ni d'ancien format
+  const PDF = Buffer.from('%PDF-1.7\n' + ' '.repeat(40));
+  const q1 = { collection: 'demandes', recordId: code, name: 'rapport.pdf' };
+  const f = await upload(chg, q1, PDF, 'application/pdf');
+  assert.equal(f.status, 201); assert.equal(f.body.mime, 'application/pdf');
+  assert.equal((await upload(chg, q1, JPEG)).status, 415);
+  assert.equal((await upload(tec, q1, PDF, 'application/pdf')).status, 403);
+  // l'expert : prend en charge ; ne modifie pas la demande elle-même ; réponse obligatoire pour clore
+  r = await exp.call('PUT', '/data/demandes/' + code, { data: { ...r.body.data, objet: 'autre' }, unit: U, system: 'CFO', version: 1 });
+  assert.equal(r.status, 403);
+  let cur = (await admin.call('GET', '/data/demandes?unit=Constantine')).body.items.find((i) => i.id === code);
+  r = await exp.call('PUT', '/data/demandes/' + code, { data: { ...cur.data, etat: 'En cours' }, unit: U, system: 'CFO', version: cur.version });
+  assert.equal(r.status, 200);
+  assert.ok(await attendreQue(async () => (await chg.call('GET', '/notifications')).body.items.some((x) => x.type === 'demande_en_cours')));
+  // prise en charge : le demandeur ne modifie plus, ne joint plus de fichier, n'annule plus
+  assert.equal((await chg.call('PUT', '/data/demandes/' + code, { data: { ...r.body.data, probleme: 'modifié' }, unit: U, system: 'CFO', version: r.body.version })).status, 403);
+  assert.equal((await chg.call('PUT', '/data/demandes/' + code, { data: { ...r.body.data, etat: 'Annulée' }, unit: U, system: 'CFO', version: r.body.version })).status, 403);
+  assert.equal((await upload(chg, q1, PDF, 'application/pdf')).status, 403);
+  assert.equal((await upload(exp, { ...q1, name: 'avis.pdf' }, PDF, 'application/pdf')).status, 201);   // pièce jointe à la réponse
+  assert.equal((await exp.call('PUT', '/data/demandes/' + code, { data: { ...r.body.data, etat: 'Traitée' }, unit: U, system: 'CFO', version: r.body.version })).status, 403);
+  r = await exp.call('PUT', '/data/demandes/' + code, { data: { ...r.body.data, etat: 'Traitée', reponse: 'Remplacer le ventilateur V2', reponduPar: 'p.expert' }, unit: U, system: 'CFO', version: r.body.version });
+  assert.equal(r.status, 200);
+  assert.ok(await attendreQue(async () => (await chg.call('GET', '/notifications')).body.items.some((x) => x.type === 'demande_traitee')));
+  assert.equal((await upload(exp, q1, PDF, 'application/pdf')).status, 403);                          // demande close
+  // l'expert d'un autre système ne la voit pas
+  const expMR = await newUser('p.expert.mr', { [U]: { systems: ['MR'], volets: [0, 1, 2, 3, 6] } }, undefined, 'Expert DG');
+  assert.ok(!(await expMR.call('GET', '/data/demandes')).body.items.some((i) => i.id === code));
 });

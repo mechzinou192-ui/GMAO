@@ -14,7 +14,7 @@ import { genererDemo, ABBR } from '../../../server/src/demo/donnees.js';
 import { horsFenetre, lireFenetre } from '../../../server/src/archives-core.js';
 import { lignesReferentiels } from '../../../server/src/demo/referentiels.js';
 import { COLLECTIONS, canRead, canWrite } from '../../../server/src/rights-core.js';
-import { controleProfil, actionPermise, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises, definitionProfil, propagerDroitsProfil } from '../../../server/src/profils-core.js';
+import { depotDemandeRefuse, controleProfil, actionPermise, ajusterValidation, catalogue, nomProfil, roleRapports, definirProfilsPersonnalises, definitionProfil, propagerDroitsProfil } from '../../../server/src/profils-core.js';
 import { ajusterRapport } from '../../../server/src/rapports-core.js';
 import { detectDocumentOctets } from '../../../server/src/fichiers-core.js';
 import { evenements, estDestinataire } from '../../../server/src/notifications-core.js';
@@ -23,7 +23,8 @@ import { SEQUENCES, MAX_BATCH, sequenceKey, unitAbbr, currentYear, formatCode } 
 
 const UNITS = Object.keys(ABBR);
 const CLE = 'gmao-demo-statique-v3';
-const ATTACHABLE = new Set(['dis', 'bts', 'rapports']);
+const ATTACHABLE = new Set(['dis', 'bts', 'rapports', 'demandes']);
+const DOCUMENTS = new Set(['rapports', 'demandes']);
 const MAX_FICHIERS = 12, MAX_OCTETS = 10 * 1024 * 1024, MAX_DOC = 25 * 1024 * 1024;
 const DEMO_BLOQUEE = 'Désactivé dans la version de démonstration.';
 
@@ -284,8 +285,8 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       const rec = (etat.records[collection] || {})[recordId];
       if (!rec || rec.deleted) throw err(404, "Enregistrement introuvable (a-t-il bien été enregistré ?).");
       if (!canWrite(user, collection, rec.unit, rec.system)) throw err(403, "Vous n'avez pas le droit d'ajouter une pièce jointe ici.");
-      const doc = collection === 'rapports';
-      if (doc) { const refus = depotRapportRefuse(user, rec); if (refus) throw err(403, refus); }
+      const doc = DOCUMENTS.has(collection);
+      if (doc) { const refus = depotRapportRefuse(user, rec, collection); if (refus) throw err(403, refus); }
       if (!blob || !blob.size) throw err(400, 'Aucun fichier reçu.');
       if (blob.size > (doc ? MAX_DOC : MAX_OCTETS)) throw err(413, 'Fichier ou envoi trop volumineux.');
       let mime;
@@ -311,7 +312,7 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (!f) throw err(404, 'Fichier introuvable.');
       const rec = (etat.records[f.collection] || {})[f.recordId];
       if (!rec || !canWrite(user, f.collection, rec.unit, rec.system)) throw err(403, "Vous n'avez pas accès à ce fichier.");
-      if (f.collection === 'rapports') { const refus = depotRapportRefuse(user, rec); if (refus) throw err(403, refus); }
+      if (DOCUMENTS.has(f.collection)) { const refus = depotRapportRefuse(user, rec, f.collection); if (refus) throw err(403, refus); }
       delete etat.fichiers[id];
       const u = blobs.get(id); if (u && URL.revokeObjectURL) URL.revokeObjectURL(u); blobs.delete(id);
       journal(user, 'file_deleted', { collection: f.collection, recordId: f.recordId, unit: rec.unit, detail: { id, name: f.name } });
@@ -361,7 +362,8 @@ async function octets(blob, n) {
   return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(new Uint8Array(r.result)); r.onerror = () => ko(r.error); r.readAsArrayBuffer(part); });
 }
 // mêmes règles que le serveur (files.js) pour les documents des rapports d'activité
-function depotRapportRefuse(user, rec) {
+function depotRapportRefuse(user, rec, collection = 'rapports') {
+  if (collection === 'demandes') return depotDemandeRefuse(user, rec);
   const role = roleRapports(user);
   if (role !== 'uo' && role !== 'admin') return 'Seule l\'UO joint les fichiers de son rapport.';
   if (role === 'uo' && !['Brouillon', 'À corriger'].includes(rec.data?.etat)) return 'Rapport entre les mains de la DG : fichiers non modifiables.';

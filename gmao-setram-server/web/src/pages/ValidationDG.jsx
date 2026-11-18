@@ -1,8 +1,13 @@
-// Validation DG : l'expert DG valide (ou fait reprendre, avec un motif) les OT clôturés et les référentiels
-// (équipements, plans préventifs, sous-systèmes) de son périmètre, toutes unités. Le serveur n'accepte de sa part
-// que ces changements (profils-core.js) ; toute modification ultérieure par une unité remet l'élément « À valider ».
+// Validation :
+//  - le responsable maintenance (responsable système / administrateur UO) valide (ou fait reprendre, avec un motif)
+//    les OT clôturés de son périmètre ;
+//  - l'expert DG valide les référentiels (équipements, plans préventifs, sous-systèmes) de ses systèmes, toutes unités ;
+//  - les chargés et responsables maintenance adressent à l'expert DG des demandes d'expertise / d'assistance.
+// Le serveur contrôle chaque changement (profils-core.js) ; toute modification ultérieure par une unité remet
+// l'élément « À valider ».
 import React,{useState} from "react";
 import {Badge,Btn,Card,KPI} from "../ui/base.jsx";
+import {DemandesExpertise} from "./DemandesExpertise.jsx";
 
 const maintenant=()=>new Date().toISOString().slice(0,16).replace("T"," ");
 
@@ -40,9 +45,11 @@ function Groupe({titre,liste,vide,onOuvrir,onValider,onReprendre}){
  </Card>);
 }
 
-export function ValidationDG({user,bts,equipements,planning,treeStruct,uniteDe,systemeDe,onSaveOT,onSaveEquip,onSavePlan,onSaveSous,onOuvrirOT,onOuvrirEquip}){
+export function ValidationDG({user,bts,equipements,planning,treeStruct,uniteDe,systemeDe,onSaveOT,onSaveEquip,onSavePlan,onSaveSous,onOuvrirOT,onOuvrirEquip,
+  valideOT=true,valideRef=true,demandesProps=null}){
  const enAttente=(v)=>v&&(v.etat==="À valider"||v.etat==="À reprendre");
- const ots=bts.filter(b=>enAttente(b.validationDG)).map(b=>({code:b.code,v:b.validationDG,unite:uniteDe(b.eq),systeme:systemeDe(b.eq),date:b.dateCloture||"",
+ const ots=bts.filter(b=>b.etat==="Clôturé"&&enAttente(b.validationDG))   // un OT « à reprendre » revient « À clôturer » : il réapparaît à sa nouvelle clôture
+ .map(b=>({code:b.code,v:b.validationDG,unite:uniteDe(b.eq),systeme:systemeDe(b.eq),date:b.dateCloture||"",
   titre:b.eq+" — "+(b.nom||""),detail:[b.type,b.panne&&b.panne!=="-"?"Panne : "+b.panne:"",b.cause&&b.cause!=="-"?"Cause : "+b.cause:"",b.effet&&b.effet!=="-"?"Action : "+b.effet:""].filter(Boolean).join(" · "),obj:b}));
  const eqs=equipements.filter(e=>enAttente(e.validationDG)).map(e=>({code:e.code,v:e.validationDG,unite:e.unit,systeme:e.system,date:String(e.validationDG.depuis||"").slice(0,10),
   titre:e.nom,detail:(e.sousEquip||[]).length?(e.sousEquip.length+" sous-équipement(s)"):"",obj:e}));
@@ -51,15 +58,17 @@ export function ValidationDG({user,bts,equipements,planning,treeStruct,uniteDe,s
  const sous=Object.entries(treeStruct||{}).flatMap(([sys,l])=>(l||[]).filter(s=>enAttente(s.validationDG)).map(s=>({code:sys+"."+s.code,v:s.validationDG,unite:"Toutes",systeme:sys,date:String(s.validationDG.depuis||"").slice(0,10),titre:s.sub,obj:{sys,s}})));
  const v=(etat,motif)=>({etat,par:user,le:maintenant(),...(motif?{motif}:{})});
  return (<div className="space-y-5" data-testid="validation-dg-page">
-  <KPI items={[["OT clôturés à valider",ots.length,"text-amber-400"],["Équipements",eqs.length,"text-amber-400"],["Plans préventifs",plans.length,"text-amber-400"],["Sous-systèmes",sous.length,"text-amber-400"]]}/>
-  <div className="text-xs text-slate-400">Votre périmètre : vos systèmes, toutes unités. « À reprendre » renvoie l'élément à l'unité avec votre motif (un OT revient « À clôturer ») ; le chargé et le responsable du système sont prévenus. Toute modification faite ensuite par l'unité le remet « À valider ».</div>
-  <Groupe titre="OT clôturés" liste={ots} vide="Aucun OT clôturé en attente de validation." onOuvrir={(e)=>onOuvrirOT(e.code)}
-   onValider={(e)=>onSaveOT({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveOT({...e.obj,etat:"À clôturer",validationDG:v("À reprendre",m)})}/>
-  <Groupe titre="Équipements" liste={eqs} vide="Aucun équipement en attente." onOuvrir={(e)=>onOuvrirEquip(e.obj)}
+  {(valideOT||valideRef)&&<KPI items={[...(valideOT?[["OT clôturés à valider",ots.length,"text-amber-400"]]:[]),...(valideRef?[["Équipements",eqs.length,"text-amber-400"],["Plans préventifs",plans.length,"text-amber-400"],["Sous-systèmes",sous.length,"text-amber-400"]]:[])]}/>}
+  {valideOT&&<div className="text-xs text-slate-400">Validation des OT clôturés par le responsable maintenance, sur votre périmètre (unités et systèmes). « À reprendre » renvoie l'OT « À clôturer » avec votre motif ; le chargé du système est prévenu.</div>}
+  {valideRef&&<div className="text-xs text-slate-400">Référentiels de vos systèmes, toutes unités. « À reprendre » renvoie l'élément à l'unité avec votre motif ; le chargé et le responsable du système sont prévenus. Toute modification faite ensuite par l'unité le remet « À valider ».</div>}
+  {valideOT&&<Groupe titre="OT clôturés" liste={ots} vide="Aucun OT clôturé en attente de validation." onOuvrir={(e)=>onOuvrirOT(e.code)}
+   onValider={(e)=>onSaveOT({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveOT({...e.obj,etat:"À clôturer",validationDG:v("À reprendre",m)})}/>}
+  {demandesProps&&<DemandesExpertise {...demandesProps}/>}
+  {valideRef&&<><Groupe titre="Équipements" liste={eqs} vide="Aucun équipement en attente." onOuvrir={(e)=>onOuvrirEquip(e.obj)}
    onValider={(e)=>onSaveEquip({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveEquip({...e.obj,validationDG:v("À reprendre",m)})}/>
   <Groupe titre="Plans préventifs" liste={plans} vide="Aucun plan préventif en attente."
    onValider={(e)=>onSavePlan({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSavePlan({...e.obj,validationDG:v("À reprendre",m)})}/>
   <Groupe titre="Sous-systèmes (arborescence)" liste={sous} vide="Aucun sous-système en attente."
-   onValider={(e)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("À reprendre",m)})}/>
+   onValider={(e)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("À reprendre",m)})}/></>}
  </div>);
 }

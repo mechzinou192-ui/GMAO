@@ -203,7 +203,7 @@ export function RepartirDeZero({systemsList=[]}){
 // capacités. Le serveur applique les mêmes règles (profils-core.js) à chaque enregistrement.
 const CAPACITES=[
  ["cloture","Clôture les OT"],["creerOT","Crée / génère des OT"],["diSeulement","DI seulement (modifiables tant qu'elles sont « À transmettre »)"],
- ["saisieSeule","Remplit les OT sans les créer ni les clôturer"],["valide","Validation DG (ne modifie que la validation)"],["lectureSeule","Consultation seulement"],
+ ["saisieSeule","Remplit les OT sans les créer ni les clôturer"],["valide","Validation DG des référentiels (ne modifie que la validation) ; répond aux demandes d'expertise / d'assistance"],["valideOT","Valide les OT clôturés (responsable maintenance)"],["demandes","Émet des demandes d'expertise / d'assistance à la DG"],["lectureSeule","Consultation seulement"],
  ["toutesUnites","Toutes les unités (proposé à la création du compte)"],["tousSystemes","Tous les systèmes"],["delegationComptes","Peut recevoir la main sur les comptes de son unité"],["delegable","Attribuable par un administrateur UO"],
  ["supprimerRapports","Peut supprimer les rapports d'activité (main donnée par le super administrateur)"],
 ];

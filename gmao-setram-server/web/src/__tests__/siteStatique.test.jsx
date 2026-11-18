@@ -523,7 +523,7 @@ describe('application complète en mode site statique', () => {
     expect(await within(p2).findByText(/réservée aux profils/)).toBeTruthy();
   });
 
-  it('profils : le technicien termine la saisie, le chargé est notifié et clôture, l’expert DG valide', async () => {
+  it('profils : le technicien termine la saisie, le chargé est notifié et clôture, le responsable maintenance valide (plus l’expert DG)', async () => {
     const recs = apiSite._etat().records;
     const ot = Object.values(recs.bts).find((r) => r.unit === 'Alger' && r.system === 'CFO' && !r.data.plan && r.data.dateCloture);
     ot.data = { ...ot.data, etat: 'En cours', dateCloture: undefined, validationDG: undefined, taches: ot.data.taches.map((t) => ({ ...t, res: 'OK' })) };
@@ -550,13 +550,19 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(screen.getByText("Clôturer l'OT"));
     await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.etat).toBe('Clôturé'), { timeout: 4000 });
     expect(apiSite._etat().records.bts[ot.id].data.validationDG.etat).toBe('À valider');
-    // 3. expert DG : écran de validation, « Valider »
+    // 3. l'expert DG ne valide plus les OT : pas de rubrique « OT clôturés » chez lui
     cleanup(); await apiSite.logout();
     await seConnecter('Expert DG CFO');
-    onglet(/Validation DG/);
+    onglet(/Validation/);
+    await screen.findByTestId('validation-dg-page');
+    expect(screen.queryByTestId('val-' + ot.id)).toBeNull();
+    // 4. responsable maintenance : écran de validation, « Valider »
+    cleanup(); await apiSite.logout();
+    await seConnecter('Responsable maintenance');
+    onglet(/Validation/);
     const ligne = await screen.findByTestId('val-' + ot.id);
     fireEvent.click(within(ligne).getByText('Valider'));
-    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.validationDG).toMatchObject({ etat: 'Validé', par: 'Démo — Expert DG CFO' }), { timeout: 4000 });
+    await waitFor(() => expect(apiSite._etat().records.bts[ot.id].data.validationDG).toMatchObject({ etat: 'Validé', par: 'Démo — Responsable maintenance' }), { timeout: 4000 });
   });
 
   it('profils : l’expert DG fait reprendre un plan avec un motif (chargé notifié) ; exploitation sans OT', async () => {
@@ -564,7 +570,7 @@ describe('application complète en mode site statique', () => {
     const plan = Object.values(recs.planning).find((r) => r.unit === 'Alger' && r.system === 'CFO');
     plan.data = { ...plan.data, validationDG: { etat: 'À valider', depuis: '2026-10-20' } };
     await seConnecter('Expert DG CFO');
-    onglet(/Validation DG/);
+    onglet(/Validation/);
     const ligne = await screen.findByTestId('val-' + plan.id);
     fireEvent.click(within(ligne).getByText('À reprendre'));
     fireEvent.change(within(ligne).getByLabelText('Motif pour ' + plan.id), { target: { value: 'FMP non jointe' } });
@@ -686,5 +692,40 @@ describe('application complète en mode site statique', () => {
     await seConnecter('Super administrateur');
     onglet(/^\s*Administration/);
     await waitFor(() => expect(document.body.textContent).toContain('demo.technicien'));
+  });
+
+  it('demandes d’expertise : le chargé décrit son problème et joint un PDF, l’expert DG prend en charge, répond et clôt', async () => {
+    await seConnecter('Chargé système CFO');
+    onglet(/Validation/);
+    fireEvent.click(await screen.findByText("+ Demande d'expertise / d'assistance"));
+    const form = await screen.findByTestId('nouvelle-demande');
+    fireEvent.click(within(form).getByText("Demande d'assistance"));
+    const selects = form.querySelectorAll('select');
+    fireEvent.change(selects[1], { target: { value: 'CFO' } });
+    fireEvent.change(within(form).getByPlaceholderText(/redresseur SST/), { target: { value: 'Défaut isolement' } });
+    fireEvent.change(within(form).getByPlaceholderText(/Constat, contexte/), { target: { value: 'Défaut d’isolement récurrent sur le départ 3' } });
+    const pdf = new File(['%PDF-1.7\n' + ' '.repeat(40)], 'rapport.pdf', { type: 'application/pdf' });
+    fireEvent.change(within(form).getByLabelText('Joindre un rapport à la demande'), { target: { files: [pdf] } });
+    expect(within(form).getByText('rapport.pdf')).toBeTruthy();
+    fireEvent.click(within(form).getByText('Envoyer à la DG'));
+    const dem = () => Object.values(apiSite._etat().records.demandes || {})[0];
+    await waitFor(() => expect(dem()?.data.fichiers?.length).toBe(1), { timeout: 4000 });
+    expect(dem().id).toMatch(/^DAS-ALG-\d{4}-001$/);
+    expect(dem().data).toMatchObject({ type: 'Assistance', etat: 'Envoyée', system: 'CFO', unit: 'Alger', demandeur: 'Démo — Chargé système CFO' });
+    expect(Object.values(apiSite._etat().fichiers).some((f) => f.collection === 'demandes' && f.mime === 'application/pdf')).toBe(true);
+    expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.expert' && /envoyée/.test(n.texte))).toBe(true);
+    // expert DG : prend en charge, répond et clôt
+    cleanup(); await apiSite.logout();
+    await seConnecter('Expert DG CFO');
+    onglet(/Validation/);
+    fireEvent.click(await screen.findByText(dem().id));
+    const fiche = await screen.findByTestId('fiche-demande');
+    fireEvent.click(within(fiche).getByText('Prendre en charge'));
+    await waitFor(() => expect(dem().data.etat).toBe('En cours'), { timeout: 4000 });
+    const fiche2 = await screen.findByTestId('fiche-demande');
+    fireEvent.change(within(fiche2).getByLabelText('Réponse de la DG'), { target: { value: 'Contrôler le câble du départ 3' } });
+    fireEvent.click(within(fiche2).getByText('Répondre et clore'));
+    await waitFor(() => expect(dem().data).toMatchObject({ etat: 'Traitée', reponse: 'Contrôler le câble du départ 3' }), { timeout: 4000 });
+    expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.charge' && /traitée/.test(n.texte))).toBe(true);
   });
 });

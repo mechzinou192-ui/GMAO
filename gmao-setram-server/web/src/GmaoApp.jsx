@@ -17,7 +17,7 @@ import {AdminPage} from "./pages/Administration.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
-import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
+import {peutCloturer,peutCreerOT,peutValider,peutValiderOT,peutDemander,peutRepondreDemandes,accesValidation,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
 import {cheminDI} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
@@ -48,7 +48,7 @@ export function GmaoApp({session,onLogout}){
  // administrateur UO (ou profil équivalent) à qui le super administrateur a donné la main sur les comptes de son unité
  const delegue=!sa&&!!catalogue()[nomProfil(session.role)]?.delegationComptes&&!!session.gestionComptes;
  const voletRapports=sa||Object.values(session.droits||{}).some(g=>(g.volets||[]).includes(VOLET_RAPPORTS));
- const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||peutValider(session)):i===RAPPORTS?voletRapports:i===MATERIAUX?(sa||grant.volets.includes(VOLET_MATERIAUX)):(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
+ const tabOk=(i)=>i===ACCUEIL?true:i===7?(sa||delegue):i===VALIDATION?(sa||accesValidation(session)):i===RAPPORTS?voletRapports:i===MATERIAUX?(sa||grant.volets.includes(VOLET_MATERIAUX)):(sa||grant.volets.includes(i));   // l'accueil est toujours accessible (il ne montre que les volets autorisés)
  // capacités du profil (le serveur les revérifie à chaque enregistrement)
  const profil=sa?"Super administrateur":nomProfil(session.role);
  // actions permises par module (créer / modifier / supprimer), réglées par le super administrateur sur le profil
@@ -90,6 +90,7 @@ export function GmaoApp({session,onLogout}){
  const [equipDetail,setEquipDetail]=useState(null);
  const [assistant,setAssistant]=useState(false);   // panneau « Assistant GMAO »
  const [rapports,setRapports]=useSynced("rapports");
+ const [demandes,setDemandes]=useSynced("demandes");   // demandes d'expertise / d'assistance (onglet Validation)
  const [rapportOuvert,setRapportOuvert]=useState(null);
  // notifications du serveur (OT à clôturer, clôtures, reprises demandées par la DG) : relevées toutes les 30 s
  const [notifs,setNotifs]=useState({items:[],nonLues:0});
@@ -109,6 +110,7 @@ export function GmaoApp({session,onLogout}){
   else if(n.collection==="planning") setTab(3);
   else if(n.collection==="arborescence") setTab(0);
   else if(n.collection==="rapports"){ setTab(RAPPORTS); setRapportOuvert(n.recordId); }
+  else if(n.collection==="demandes") setTab(VALIDATION);
  };
  const toutLu=async()=>{ try{ await api.marquerLues({tout:true}); }catch{ /* sans gravité */ } setNotifs(s=>({items:s.items.map(x=>({...x,lu:true})),nonLues:0})); };
  const [sousEquipModal,setSousEquipModal]=useState(null);
@@ -565,7 +567,7 @@ const [notice,setNotice]=useState(null);
   {n:"Administration",c:"Administration",ic:I.gear},
   {n:"Accueil",c:"Accueil",ic:I.home},   // ACCUEIL = 8 : hors volets de droits (0 à 7)
   {n:"Gestion et suivi des matériaux",c:"Matériaux",ic:I.gauge},   // MATERIAUX = 9 : volet 8 (séparé de l'arborescence)
-  {n:"Validation DG",c:"Validation DG",ic:I.check||I.flag},           // VALIDATION = 10 : expert DG, super administrateur
+  {n:"Validation et demandes d'expertise",c:"Validation",ic:I.check||I.flag},   // VALIDATION = 10 : OT (responsable maintenance), référentiels (expert DG), demandes d'expertise / d'assistance
   {n:"Rapports d'activité maintenance",c:"Rapports d'activité",ic:I.file||I.chart},   // RAPPORTS = 11 : volet 7
  ];
 
@@ -718,7 +720,17 @@ const [notice,setNotice]=useState(null);
      uniteDe={(c)=>kpiUnitOf(c,equipements)} systemeDe={(c)=>kpiEqInfo(c,equipements).system}
      onSaveOT={(o)=>setBts(l=>l.map(x=>x.code===o.code?o:x))} onSaveEquip={(o)=>setEquipements(l=>l.map(x=>x.code===o.code?o:x))}
      onSavePlan={(o)=>setPlanning(l=>l.map(x=>x.code===o.code?o:x))} onSaveSous={(sys,o)=>setTreeStruct(t=>({...t,[sys]:(t[sys]||[]).map(x=>x.code===o.code?o:x)}))}
-     onOuvrirOT={ouvrirOT} onOuvrirEquip={setEquipDetail}/>}
+     onOuvrirOT={ouvrirOT} onOuvrirEquip={setEquipDetail}
+     valideOT={peutValiderOT(session)} valideRef={peutValider(session)}
+     demandesProps={(sa||peutDemander(session)||peutRepondreDemandes(session))?{demandes,user,userId:session.id,demander:peutDemander(session),repondre:peutRepondreDemandes(session),
+      unites:sa?UNITS:unitsOk.filter(u=>(session.droits[u]?.volets||[]).includes(2)),
+      systemesDe:(u)=>{const g=sa?null:session.droits[u]; return systemsList.filter(([c])=>!g||g.systems.includes("*")||g.systems.includes(c));},
+      equipementsDe:(u,sys)=>equipements.filter(e=>e.unit===u&&e.system===sys),
+      otsDe:(u,sys)=>bts.filter(b=>kpiUnitOf(b.eq,equipements)===u&&kpiEqInfo(b.eq,equipements).system===sys).slice(0,200),
+      onSave:(d)=>setDemandes(l=>l.map(x=>x.code===d.code?d:x)),
+      onCreer:async(f)=>{const nums=await numeros("demandes",{unit:f.unit,variant:f.type==="Expertise"?"EXP":"ASS"}); if(!nums) return null;
+       const d={code:nums[0],...f,etat:"Envoyée",demandeur:user,demandeurId:session.id,le:new Date().toISOString().slice(0,16).replace("T"," "),fichiers:[],historique:[{action:"Envoyée",par:user,le:new Date().toISOString().slice(0,16).replace("T"," ")}]};
+       setDemandes(l=>[d,...l]); return d;}}:null}/>}
    {tab===7 && (sa||delegue) && <AdminPage superAdmin={sa} unitesAdmin={unitsOk} profilsPerso={profilsPerso} setProfilsPerso={setProfilsPerso} systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
    {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}

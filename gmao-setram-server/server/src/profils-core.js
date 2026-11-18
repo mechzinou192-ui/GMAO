@@ -14,7 +14,10 @@ export const TOUS_SYSTEMES = '*';
 //   cloture         clôture des OT                 creerOT (vrai par défaut)  création / génération d'OT
 //   diSeulement     DI uniquement, modifiables tant qu'elles sont « À transmettre »
 //   saisieSeule     OT : remplit seulement (ni création, ni clôture, ni suppression)
-//   valide          validation DG : ne modifie que la validation (OT clôturés, référentiels)
+//   valide          validation DG : ne modifie que la validation des référentiels (équipements, plans, sous-systèmes)
+//                   et répond aux demandes d'expertise / d'assistance
+//   valideOT        valide les OT clôturés de son périmètre (ou les fait reprendre, avec un motif) : responsable maintenance
+//   demandes        émet des demandes d'expertise / d'assistance (problème décrit + rapport PDF / Word / Excel joint)
 //   lectureSeule    consultation : aucune modification (sauf son rôle dans les rapports d'activité)
 //   rapports        rôle dans les rapports d'activité : 'uo' (prépare et envoie) | 'expert' (revoit) | 'responsable' (valide, clôture) | 'lecture'
 //   toutesUnites / tousSystemes   périmètre proposé à la création du compte
@@ -28,11 +31,11 @@ export const PROFILS = {
   'Exploitation':          { volets: [1], diSeulement: true, delegable: true, libelle: 'Crée les demandes d\'intervention (DI)' },
   'Gestionnaire de stock': { volets: [4], delegable: true, libelle: 'Gère le magasin : articles, DS / BS / BR, achats, décharges' },
   'Technicien':            { volets: [2], saisieSeule: true, creerOT: false, delegable: true, libelle: 'Remplit les OT qui lui sont confiés ; ne crée pas et ne clôture pas d\'OT' },
-  'Chargé système':        { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, delegable: true, libelle: 'Son (ses) système(s) et leurs intervenants ; génère, contrôle et clôture les OT' },
-  'Responsable système':   { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, delegable: true, libelle: 'Comme le chargé système ; informé des clôtures faites par le chargé' },
-  'Administrateur UO':     { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], cloture: true, tousSystemes: true, rapports: 'uo', delegationComptes: true, libelle: 'Tous les droits métier de son unité (tous systèmes) ; envoie le rapport d\'activité à la DG ; pas d\'import ; comptes seulement si le super admin lui en donne la main' },
+  'Chargé système':        { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, demandes: true, delegable: true, libelle: 'Son (ses) système(s) et leurs intervenants ; génère, contrôle et clôture les OT ; demandes d\'expertise / d\'assistance' },
+  'Responsable système':   { volets: [0, 1, 2, 3, 5, 6, 8], cloture: true, valideOT: true, demandes: true, delegable: true, libelle: 'Comme le chargé système ; valide les OT clôturés de son (ses) système(s) ; demandes d\'expertise / d\'assistance' },
+  'Administrateur UO':     { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], cloture: true, valideOT: true, demandes: true, tousSystemes: true, rapports: 'uo', delegationComptes: true, libelle: 'Tous les droits métier de son unité (tous systèmes) ; valide les OT clôturés ; envoie le rapport d\'activité à la DG ; pas d\'import ; comptes seulement si le super admin lui en donne la main' },
   'Directeur UO':          { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de son unité (aucune modification)' },
-  'Expert DG':             { volets: [0, 1, 2, 3, 6, 7, 8], valide: true, creerOT: false, toutesUnites: true, rapports: 'expert', libelle: 'Son (ses) système(s) sur toutes les unités ; valide les OT clôturés et les référentiels ; revoit les rapports d\'activité (erreurs, commentaire)' },
+  'Expert DG':             { volets: [0, 1, 2, 3, 6, 7, 8], valide: true, creerOT: false, toutesUnites: true, rapports: 'expert', libelle: 'Son (ses) système(s) sur toutes les unités ; valide les référentiels ; répond aux demandes d\'expertise / d\'assistance ; revoit les rapports d\'activité (erreurs, commentaire)' },
   'Responsable DG':        { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'responsable', libelle: 'Valide et clôture les rapports d\'activité des UO (ou les renvoie pour correction) ; consulte toutes les données' },
   'Directeur DG':          { volets: [0, 1, 2, 3, 4, 5, 6, 7, 8], lectureSeule: true, toutesUnites: true, tousSystemes: true, rapports: 'lecture', libelle: 'Consulte toutes les données de toutes les unités (aucune modification)' },
   'Directeur':             { volets: [6], delegable: true, libelle: 'Consulte les indicateurs' },
@@ -92,7 +95,7 @@ export function normaliserActions(v) {
 // Opération demandée d'après les données avant / après (null = création / suppression)
 export const operation = (cur, next) => (!cur ? 'creer' : !next ? 'supprimer' : 'modifier');
 
-const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI', 'supprimerRapports'];
+const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'valideOT', 'demandes', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI', 'supprimerRapports'];
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
@@ -136,6 +139,13 @@ const estSuper = (user) => !!(user && (user.super_admin || user.superAdmin));
 
 export const peutCloturer = (user) => !!(user && (estSuper(user) || !profilDe(user) || (profilDe(user).cloture && !profilDe(user).lectureSeule)));
 export const peutValider = (user) => !!(user && (estSuper(user) || profilDe(user)?.valide));
+// Validation des OT clôturés : le responsable maintenance (responsable système, administrateur UO), et non plus l'expert DG
+export const peutValiderOT = (user) => !!(user && (estSuper(user) || (profilDe(user)?.valideOT && !profilDe(user)?.lectureSeule)));
+// Demandes d'expertise / d'assistance : émises par le chargé et le responsable maintenance, traitées par l'expert DG
+export const peutDemander = (user) => !!(user && (estSuper(user) || (profilDe(user)?.demandes && !profilDe(user)?.lectureSeule)));
+export const peutRepondreDemandes = (user) => !!(user && (estSuper(user) || profilDe(user)?.valide));
+// Onglet « Validation » : validation des OT, des référentiels, ou demandes d'expertise
+export const accesValidation = (user) => peutValider(user) || peutValiderOT(user) || peutDemander(user);
 export const peutCreerOT = (user) => !!(user && (estSuper(user) || !profilDe(user) || (profilDe(user).creerOT !== false && !profilDe(user).lectureSeule && !profilDe(user).diSeulement)));
 export const enConsultation = (user) => !!profilDe(user)?.lectureSeule;
 // Le profil permet-il cette action (creer | modifier | supprimer) dans ce module ? (affichage des boutons)
@@ -174,6 +184,7 @@ export const VALIDABLES = {
   arborescence: [],
 };
 const sans = (o, cles) => { const c = { ...(o || {}) }; for (const k of cles) delete c[k]; return c; };
+const pick = (o, cles) => Object.fromEntries(cles.filter((k) => o?.[k] !== undefined).map((k) => [k, o[k]]));
 const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // comparaison indépendante de l'ordre des rubriques
 const trie = (v) => (Array.isArray(v) ? v.map(trie) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, trie(v[k])])) : v);
@@ -206,7 +217,10 @@ export function controleProfil(user, collection, cur, next) {
     if (change && !p.niveauxDI.includes(niv)) return `Profil ${nom} : création de DI non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxDI.map(libelleNiveau).join(', ') || 'aucun'}).`;
   }
 
+  if (collection === 'demandes') return controleDemande(user, p, cur, next);
+
   if (p.valide) {
+    if (collection === 'bts') return `Profil ${nom} : la validation des OT clôturés est faite par le responsable maintenance (responsable système).`;
     if (!(collection in VALIDABLES)) return `Profil ${nom} : consultation et validation uniquement.`;
     if (!cur || !next) return `Profil ${nom} : il ne crée ni ne supprime d'élément, il valide.`;
     const autorisees = ['validationDG', ...(collection === 'bts' ? ['etat'] : [])];
@@ -237,7 +251,64 @@ export function controleProfil(user, collection, cur, next) {
   }
 
   if (collection === 'bts' && next?.etat === 'Clôturé' && cur?.etat !== 'Clôturé' && !p.cloture) return 'Votre profil ne permet pas de clôturer un OT.';
+  if (collection === 'bts' && p.valideOT) { const e = controleValidationOT(cur, next); if (e) return e; }
   return null;
+}
+
+// Validation d'un OT par le responsable maintenance : seul un OT clôturé se valide ; « À reprendre » exige un motif
+// et renvoie l'OT « À clôturer ».
+const changeValidation = (cur, next) => !!next?.validationDG && ['Validé', 'À reprendre'].includes(next.validationDG.etat)
+  && JSON.stringify(next.validationDG) !== JSON.stringify(cur?.validationDG);
+function controleValidationOT(cur, next) {
+  if (!cur || !next || !changeValidation(cur, next)) return null;
+  const v = next.validationDG;
+  if (v.etat === 'Validé' && !(cur.etat === 'Clôturé' && next.etat === 'Clôturé')) return 'Seul un OT clôturé peut être validé.';
+  if (v.etat === 'À reprendre') {
+    if (!String(v.motif || '').trim()) return 'Motif obligatoire pour « À reprendre ».';
+    if (!(cur.etat === 'Clôturé' && next.etat === 'À clôturer')) return 'Un OT à reprendre revient « À clôturer ».';
+  }
+  return null;
+}
+
+/* ───── Demandes d'expertise / d'assistance ───── */
+// { code, unit, system, type: 'Expertise' | 'Assistance', objet, probleme, eq?, ot?, urgence, etat, demandeur, le,
+//   reponse?, reponduPar?, reponduLe?, historique: [...] }
+// États : Envoyée → En cours (prise en charge par l'expert DG) → Traitée ; le demandeur peut l'annuler tant qu'elle est « Envoyée ».
+export const TYPES_DEMANDE = ['Expertise', 'Assistance'];
+export const ETATS_DEMANDE = ['Envoyée', 'En cours', 'Traitée', 'Annulée'];
+// rubriques que l'expert DG peut modifier (les documents eux-mêmes sont contrôlés à l'envoi : depotDemandeRefuse)
+const CHAMPS_REPONSE = ['etat', 'reponse', 'reponduPar', 'reponduLe', 'historique', 'priseEnCharge', 'fichiers'];
+function controleDemande(user, p, cur, next) {
+  const nom = nomProfil(user.role);
+  if (next) {
+    if (!TYPES_DEMANDE.includes(next.type)) return 'Type de demande invalide (expertise ou assistance).';
+    if (!ETATS_DEMANDE.includes(next.etat)) return 'État de demande invalide.';
+    if (!String(next.probleme || '').trim()) return 'Décrivez le problème.';
+  }
+  if (p.valide) {                                             // expert DG : prise en charge et réponse seulement
+    if (!cur || !next) return `Profil ${nom} : il répond aux demandes, il ne les crée ni ne les supprime.`;
+    if (!memes(sans(cur, CHAMPS_REPONSE), sans(next, CHAMPS_REPONSE))) return `Profil ${nom} : seule la réponse peut être modifiée.`;
+    if (['Traitée', 'Annulée'].includes(cur.etat) && cur.etat !== next.etat) return 'Demande close : elle ne peut plus changer d\'état.';
+    if (next.etat === 'Annulée' || (next.etat === 'Envoyée' && cur.etat !== 'Envoyée')) return 'Seul le demandeur annule une demande.';
+    if (next.etat === 'Traitée' && !String(next.reponse || '').trim()) return 'Réponse obligatoire pour clore la demande.';
+    return null;
+  }
+  if (!p.demandes) return `Profil ${nom} : les demandes d'expertise / d'assistance sont émises par le chargé ou le responsable maintenance.`;
+  if (!cur) return next.etat === 'Envoyée' ? null : 'Une nouvelle demande est « Envoyée ».';
+  if (!next) return cur.etat === 'Envoyée' ? null : 'Demande prise en charge par la DG : elle ne peut plus être supprimée.';
+  if (!memes(sans(cur, CHAMPS_REPONSE), sans(next, CHAMPS_REPONSE)) && cur.etat !== 'Envoyée') return 'Demande prise en charge par la DG : elle ne peut plus être modifiée.';
+  if (!memes(pick(cur, ['reponse', 'reponduPar', 'reponduLe']), pick(next, ['reponse', 'reponduPar', 'reponduLe']))) return 'La réponse est rédigée par l\'expert DG.';
+  if (cur.etat !== next.etat && !(cur.etat === 'Envoyée' && next.etat === 'Annulée')) return 'Le demandeur peut seulement annuler une demande encore « Envoyée ».';
+  return null;
+}
+// Dépôt / retrait d'un rapport joint à une demande : le demandeur tant qu'elle est « Envoyée », l'expert DG tant qu'elle
+// n'est pas close (pièce jointe à sa réponse).
+export function depotDemandeRefuse(user, rec) {
+  if (estSuper(user)) return null;
+  const etat = rec?.data?.etat;
+  if (peutRepondreDemandes(user)) return ['Traitée', 'Annulée'].includes(etat) ? 'Demande close : pièces jointes non modifiables.' : null;
+  if (!peutDemander(user)) return 'Votre profil ne permet pas de joindre un rapport à une demande.';
+  return etat === 'Envoyée' ? null : 'Demande prise en charge par la DG : pièces jointes non modifiables.';
 }
 
 /*
@@ -249,10 +320,13 @@ export function controleProfil(user, collection, cur, next) {
 // (on ne peut pas se « valider » soi-même ; une saisie qui ne change rien garde la validation existante).
 export function ajusterValidation(user, collection, cur, next, maintenant = new Date().toISOString()) {
   const ignores = VALIDABLES[collection];
-  if (!ignores || !next || peutValider(user)) return next;
+  if (!ignores || !next) return next;
+  if (collection === 'bts' ? estSuper(user) : peutValider(user)) return next;
   const aValider = { etat: 'À valider', depuis: maintenant, par: user?.id || '' };
   const garder = (d) => { const { validationDG, ...reste } = d; void validationDG; return cur && cur.validationDG !== undefined ? { ...reste, validationDG: cur.validationDG } : reste; };
   if (collection === 'bts') {
+    // responsable maintenance : sa validation (ou sa demande de reprise) est horodatée et signée par le serveur
+    if (peutValiderOT(user) && changeValidation(cur, next)) return { ...next, validationDG: { ...next.validationDG, par: user?.nom || next.validationDG.par || user?.id || '', parId: user?.id || '', le: maintenant.slice(0, 16).replace('T', ' ') } };
     const cloture = next.etat === 'Clôturé' && cur?.etat !== 'Clôturé';
     return cloture ? { ...next, validationDG: aValider } : garder(next);
   }

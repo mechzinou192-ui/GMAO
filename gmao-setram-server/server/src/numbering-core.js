@@ -15,6 +15,9 @@ export const SEQUENCES = {
   planning:     { collection: 'planning',   prefix: 'PREV',    perUnit: true,  yearly: false, pad: 4 },
   dss:          { collection: 'dss',        prefix: 'DS',      perUnit: false, yearly: true,  pad: 4 },
   rapports:     { collection: 'rapports',   prefix: 'RAP',     perUnit: true,  yearly: true,  pad: 3 },
+  // demandes d'expertise (DEX-ALG-2026-001) et d'assistance (DAS-ALG-2026-001) adressées à l'expert DG
+  'demandes:EXP': { collection: 'demandes', prefix: 'DEX',   perUnit: true,  yearly: true,  pad: 3 },
+  'demandes:ASS': { collection: 'demandes', prefix: 'DAS',   perUnit: true,  yearly: true,  pad: 3 },
   bs:           { collection: 'bs',         prefix: 'BS',      perUnit: false, yearly: true,  pad: 4 },
   brs:          { collection: 'brs',        prefix: 'BR',      perUnit: false, yearly: true,  pad: 4 },
   decharges:    { collection: 'decharges',  prefix: 'DCH',     perUnit: false, yearly: true,  pad: 4 },

@@ -192,7 +192,7 @@ export function kpiRH(corr,prev,per,normeBase,chargeRAM){
  const norme=normeBase*(per.days/30); // norme proratisée au nombre de jours de la période
  const map={};
  const add=(bt)=>{ if(!bt) return; (bt.intervenants||[]).forEach(it=>{
-  const h=Number(it.temps)||0; const n=it.nom||"Inconnu";
+  const h=(Number(it.temps)||0)+(Number(it.logistique)||0); const n=it.nom||"Inconnu";   // charge = intervention + logistique
   const t=map[n]||(map[n]={technicien:n,fonction:it.fonction||"",chargeReelle:0,nbInterventions:0});
   t.chargeReelle+=h; t.nbInterventions++;
  });};

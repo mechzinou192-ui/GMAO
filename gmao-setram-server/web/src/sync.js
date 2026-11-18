@@ -25,6 +25,7 @@ const BASE = {
   compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   pieces:       { id: byCode },
   rapports:     { id: byCode, newestFirst: true, meta: (r) => ({ unit: r.unit, system: null }) },
+  demandes:     { id: byCode, newestFirst: true, meta: (d) => ({ unit: d.unit, system: d.system }) },
   profils:      { id: (p) => p.nom },
   dss:          { id: byCode, newestFirst: true },
   bs:           { id: byCode, newestFirst: true },

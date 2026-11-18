@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import { q, audit } from './db.js';
 import { canRead, canWrite } from './rights.js';
-import { roleRapports } from './profils-core.js';
+import { roleRapports, depotDemandeRefuse } from './profils-core.js';
 import { detectDocumentOctets } from './fichiers-core.js';
 
 export const filesRouter = Router();     // monté derrière authRequired + mustNotChangePw
@@ -15,8 +15,8 @@ export const MAX_DOC_BYTES = 25 * 1024 * 1024;                  // rapports d'ac
 export const MAX_FILE_BYTES = MAX_DOC_BYTES;                     // limite de lecture du corps (la limite par type est vérifiée ensuite)
 export const MAX_FILES_PER_RECORD = 12;
 const MAX_DOCS_PAR_RAPPORT = 30;
-const ATTACHABLE = new Set(['dis', 'bts', 'rapports']);
-const DOCUMENTS = new Set(['rapports']);
+const ATTACHABLE = new Set(['dis', 'bts', 'rapports', 'demandes']);
+const DOCUMENTS = new Set(['rapports', 'demandes']);     // Excel / Word / PDF (pas de photos)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 // Le type du fichier est déterminé par son CONTENU (signature), jamais par ce qu'annonce le navigateur.
@@ -37,7 +37,8 @@ const EXT = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'ap
 
 // Rapport d'activité : seuls l'UO (rôle « uo ») et le super administrateur déposent ou retirent des fichiers,
 // et seulement tant que le rapport est en brouillon ou à corriger.
-function depotRapportRefuse(user, rec) {
+function depotRapportRefuse(user, rec, collection = 'rapports') {
+  if (collection === 'demandes') return depotDemandeRefuse(user, rec);
   const role = roleRapports(user);
   if (role !== 'uo' && role !== 'admin') return 'Seule l\'UO joint les fichiers de son rapport.';
   if (role === 'uo' && !['Brouillon', 'À corriger'].includes(rec.data?.etat)) return 'Rapport entre les mains de la DG : fichiers non modifiables.';
@@ -66,7 +67,7 @@ async function load(req, res, need) {
   if (!f || !rec) { res.status(404).json({ error: 'Fichier introuvable.' }); return null; }
   const ok = need === 'write' ? canWrite(req.user, f.collection, rec.unit, rec.system) : canRead(req.user, f.collection, rec.unit, rec.system);
   if (!ok) { res.status(403).json({ error: "Vous n'avez pas accès à ce fichier." }); return null; }
-  if (need === 'write' && DOCUMENTS.has(f.collection)) { const refus = depotRapportRefuse(req.user, rec); if (refus) { res.status(403).json({ error: refus }); return null; } }
+  if (need === 'write' && DOCUMENTS.has(f.collection)) { const refus = depotRapportRefuse(req.user, rec, f.collection); if (refus) { res.status(403).json({ error: refus }); return null; } }
   return { f, rec };
 }
 
@@ -80,7 +81,7 @@ filesRouter.post('/', async (req, res) => {
   if (!rec) return res.status(404).json({ error: "Enregistrement introuvable (a-t-il bien été enregistré ?)." });
   if (!canWrite(req.user, collection, rec.unit, rec.system)) return res.status(403).json({ error: "Vous n'avez pas le droit d'ajouter une pièce jointe ici." });
   const doc = DOCUMENTS.has(collection);
-  if (doc) { const refus = depotRapportRefuse(req.user, rec); if (refus) return res.status(403).json({ error: refus }); }
+  if (doc) { const refus = depotRapportRefuse(req.user, rec, collection); if (refus) return res.status(403).json({ error: refus }); }
   const body = req.body;
   if (!Buffer.isBuffer(body) || body.length === 0) return res.status(400).json({ error: 'Aucun fichier reçu.' });
   if (!doc && body.length > MAX_IMAGE_BYTES) return res.status(413).json({ error: 'Fichier ou envoi trop volumineux.' });

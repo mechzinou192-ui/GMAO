@@ -46,7 +46,7 @@ export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date
   return `<tr><td class="n" style="width:24px">${i+1}</td><td>${case_}${esc(t.lib)}</td><td style="width:70px">${r==="OK"?"OK":r==="NOK"?"Non OK":""}</td><td style="width:34%"><div class="cmt">${esc(t.com||"")}</div></td></tr>`;
  }).join(""):`<tr><td colspan="4">Aucune tâche définie.</td></tr>`;
  const inter=bt.intervenants||[];
- const lignesInter=inter.length?inter.map(it=>`<tr><td>${esc(it.nom)}</td><td>${esc(it.fonction||"")}</td><td class="n">${esc(it.temps)} h</td><td class="n">${nb(it.taux)} DA/h</td><td class="n">${nb((Number(it.temps)||0)*(Number(it.taux)||0))} DA</td></tr>`).join("")
+ const lignesInter=inter.length?inter.map(it=>`<tr><td>${esc(it.nom)}</td><td>${esc(it.fonction||"")}</td><td class="n">${esc(it.temps)} h${Number(it.logistique)?" + "+esc(it.logistique)+" h log.":""}</td><td class="n">${nb(it.taux)} DA/h</td><td class="n">${nb(((Number(it.temps)||0)+(Number(it.logistique)||0))*(Number(it.taux)||0))} DA</td></tr>`).join("")
   :'<tr class="vide"><td></td><td></td><td></td><td></td><td></td></tr>'.repeat(3);
  const matieres=["pieces","outillage","consommables"].flatMap(cat=>(bt[cat]||[]).map(it=>{
   const p=pieces.find(x=>x.code===it.code);

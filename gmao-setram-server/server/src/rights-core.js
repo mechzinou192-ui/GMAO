@@ -34,6 +34,8 @@ export const COLLECTIONS = {
   organismes:   { volet: 8, shared: true, readVolets: [8, 6] },
   // rapports d'activité maintenance des UO (volet 7) : préparés par l'UO, revus et validés par la DG
   rapports:     { volet: 7, readVolets: [7], writeVolets: [7] },
+  // demandes d'expertise / d'assistance (onglet Validation) : chargé / responsable maintenance → expert DG
+  demandes:     { volet: 2, readVolets: [2] },
   // profils créés par le super administrateur (organigramme) : lisibles par tous, modifiables par le super admin seul
   profils:      { volet: 0, shared: true, readAll: true },
   systemes:     { volet: 0, shared: true, readAll: true },

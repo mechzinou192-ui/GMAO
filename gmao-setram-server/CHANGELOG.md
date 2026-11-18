@@ -1,5 +1,23 @@
 # Journal des modifications
 
+## Non publié — OT : temps logistique par intervenant ; validation des OT par le responsable maintenance ; demandes d'expertise / d'assistance
+- **OT — intervenants** : « saisissez la durée d'intervention et temps logistique de chacun (h) ». Chaque intervenant a
+  deux saisies (intervention, logistique) ; coût main-d'œuvre = (intervention + logistique) × taux, repris dans la fiche,
+  l'impression du bon de travail et la charge RH des indicateurs. Les OT existants (sans temps logistique) restent identiques.
+- **Validation des OT clôturés** : faite par le **responsable maintenance** (profils « Responsable système » et
+  « Administrateur UO », sur leur périmètre), et non plus par l'expert DG. Le serveur n'accepte « Validé » que sur un OT
+  clôturé, exige un motif pour « À reprendre » (l'OT revient « À clôturer », le chargé est prévenu) et signe la validation
+  (nom, identifiant, date). L'expert DG garde la validation des référentiels (équipements, plans préventifs, sous-systèmes).
+  Nouvelle capacité de profil « Valide les OT clôturés » (Administration → Profils).
+- **Demandes d'expertise et d'assistance** (onglet « Validation ») : le chargé ou le responsable maintenance choisit le type,
+  l'unité, le système (et au besoin l'équipement / l'OT lié), décrit son problème et joint son rapport **PDF, Word ou Excel**
+  (reconnus par leur contenu ; fichiers à macros et anciens .doc / .xls refusés). Numéros DEX-ALG-2026-001 / DAS-ALG-2026-001.
+  L'expert DG du système est prévenu, prend en charge, répond (avec ses propres documents si besoin) et clôt ; le demandeur
+  est prévenu à chaque étape. Le demandeur peut modifier / annuler tant que la demande n'est pas prise en charge.
+  Nouvelle collection `demandes` (table `records` existante : aucune migration de base). Capacité de profil « Émet des
+  demandes d'expertise / d'assistance ».
+- `server/public/` et `web/dist-demo/` recompilés.
+
 ## Non publié — rapports d'activité : nouveaux statuts, suppression
 - **Statuts du circuit de validation** (les codes enregistrés ne changent pas : aucune migration) :
   Brouillon → **Envoyé aux experts DG pour validation** → **En cours d'analyse par les experts DG** (dès qu'un expert
