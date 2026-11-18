@@ -88,15 +88,17 @@ export function DIDetail({di,bt,onGenererBT,onOpenBT,onStatut,chemin=[]}){
 }
 
 /*
- * Choix du nœud en cascade : système → sous-système → équipement → sous-équipement → sous-sous-équipement.
- * La DI porte sur le nœud le plus bas choisi ; « niveaux » = niveaux où le profil peut créer une DI
- * (réglés par le super administrateur dans Administration › Profils ; le serveur revérifie).
+ * Choix de l'équipement : un seul champ « Équipement » qui affiche uniquement le code GMAO et le nom de l'équipement
+ * (plus de cascade système → sous-système → sous-équipement…). La DI porte alors sur l'équipement entier.
+ * Exception : une DI lancée depuis l'arborescence sur un système, un sous-système, un sous-équipement ou un
+ * sous-sous-équipement garde ce nœud, affiché en lecture seule.
+ * « niveaux » = niveaux où le profil peut créer une DI (réglés par le super administrateur dans Administration › Profils ;
+ * le serveur revérifie).
  */
 export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeStruct={},unit,niveaux=CLES_NIVEAUX_DI}){
  const dateCreation=useMemo(()=>new Date().toISOString().slice(0,16).replace("T"," "),[]);
  const pre=prefill?.eq?equipements.find(e=>e.code===prefill.eq):null;
  const unite=unit||(equipements[0]&&equipements[0].unit)||"";
- // systèmes proposés : ceux de la liste fournie, sinon ceux des équipements
  const systemes=systemsList?systemsList.filter(([c])=>c!=="MESURE"&&c!=="CTRL"):[...new Set(equipements.map(e=>e.system))].map(c=>[c,""]);
  const sousSystemes=(sys)=>{
   const l=(treeStruct[sys]||[]).map(x=>({code:x.code,nom:x.sub}));
@@ -104,6 +106,8 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
   return l;
  };
  const preSeg=String(prefill?.eq||"").split(".");
+ // nœud imposé par l'arborescence (système, sous-système, sous-équipement, sous-sous-équipement) : affiché, non modifiable
+ const depuisArbo=!!(prefill&&(prefill.niveau==="systeme"||prefill.niveau==="sousSysteme"||prefill.se||prefill.ss));
  const [n,setN]=useState({
   sys:pre?pre.system:(prefill?.niveau==="systeme"||prefill?.niveau==="sousSysteme"?preSeg[0]:""),
   sub:pre?pre.subCode:(prefill?.niveau==="sousSysteme"?preSeg[2]:""),
@@ -119,46 +123,46 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
  const ssCur=seCur&&(seCur.sousSousEquip||[]).find(y=>y.code===n.ss);
  const niveau=n.ss?"sousSousEquipement":n.se?"sousEquipement":n.eq?"equipement":n.sub?"sousSysteme":n.sys?"systeme":null;
  const niveauOk=niveau&&niveaux.includes(niveau);
- const choisir=(patch)=>{
-  const x={...n,...patch};
-  setN(x);setErr("");
-  if("eq" in patch){const e=equipements.find(y=>y.code===x.eq); setF(v=>({...v,emplacement:e?e.emplacement||"":""})); setFromFiche(!!(e&&e.emplacement));}
+ const choisirEquipement=(code)=>{
+  const e=equipements.find(y=>y.code===code);
+  setN(e?{sys:e.system,sub:e.subCode,eq:e.code,se:"",ss:""}:{sys:"",sub:"",eq:"",se:"",ss:""});
+  setErr("");
+  setF(v=>({...v,emplacement:e?e.emplacement||"":""})); setFromFiche(!!(e&&e.emplacement));
  };
- const eqsVisibles=equipements.filter(e=>(!n.sys||e.system===n.sys)&&(!n.sub||e.subCode===n.sub));
+ // code GMAO et désignation du nœud visé
+ const noeud=()=>{
+  if(niveau==="systeme") return {eq:codeSysteme(n.sys,unite),nom:(systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys};
+  if(niveau==="sousSysteme"){const s=sousSystemes(n.sys).find(x=>x.code===n.sub);return {eq:codeSousSysteme(n.sys,unite,n.sub),nom:((systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys)+" — "+(s&&s.nom||n.sub)};}
+  return {eq:cur.code,nom:cur.nom+(seCur?" — "+seCur.code+" "+seCur.nom:"")+(ssCur?" — "+ssCur.code+" "+ssCur.nom:"")};
+ };
  const sel="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
  const valider=()=>{
-  if(!niveau){setErr("Choisissez le nœud de l'arborescence concerné.");return;}
+  if(!niveau){setErr("Choisissez l'équipement concerné.");return;}
+  if(!f.designation.trim()){setErr("La désignation (description du constat) est obligatoire : la DI ne peut pas être créée sans elle.");return;}
   if(!niveauOk){setErr("Votre profil ne permet pas de créer une DI au niveau « "+libelleNiveau(niveau)+" ». Niveaux permis : "+(niveaux.map(libelleNiveau).join(", ")||"aucun")+".");return;}
-  let eq,nom;
-  if(niveau==="systeme"){eq=codeSysteme(n.sys,unite);nom=(systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys;}
-  else if(niveau==="sousSysteme"){eq=codeSousSysteme(n.sys,unite,n.sub);const s=sousSystemes(n.sys).find(x=>x.code===n.sub);nom=((systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys)+" — "+(s&&s.nom||n.sub);}
-  else {eq=cur.code;nom=cur.nom+(seCur?" — "+seCur.code+" "+seCur.nom:"")+(ssCur?" — "+ssCur.code+" "+ssCur.nom:"");}
-  onSubmit({eq,nom,se:niveau==="sousEquipement"||niveau==="sousSousEquipement"?n.se:"",ss:niveau==="sousSousEquipement"?n.ss:"",niveau,emplacement:f.emplacement,designation:f.designation,dateEvt:f.dateEvt,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType});
+  const {eq,nom}=noeud();
+  onSubmit({eq,nom,se:niveau==="sousEquipement"||niveau==="sousSousEquipement"?n.se:"",ss:niveau==="sousSousEquipement"?n.ss:"",niveau,emplacement:f.emplacement,designation:f.designation.trim(),dateEvt:f.dateEvt,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType});
  };
  return (<div>
-  {pre && <div className="text-xs text-sky-400 mb-2">Nœud préchargé depuis l'arborescence</div>}
   <Field label="Demandeur (automatique)"><Inp value={demandeur} disabled className="opacity-60"/></Field>
-  <div className="border border-slate-700 rounded-lg p-2 mt-2">
-   <div className="text-xs text-slate-400">Nœud concerné — du système au sous-sous-équipement (la DI porte sur le dernier niveau choisi)</div>
-   <div className="text-[11px] text-slate-500">Niveaux permis pour votre profil : {niveaux.map(libelleNiveau).join(", ")||"aucun"}</div>
-   <Field label="Système"><select aria-label="Système" value={n.sys} onChange={e=>choisir({sys:e.target.value,sub:"",eq:"",se:"",ss:""})} className={sel}><option value="">— Choisir un système —</option>{systemes.map(([c,nm])=><option key={c} value={c}>{c}{nm?" — "+nm:""}</option>)}</select></Field>
-   {n.sys && <Field label="Sous-système"><select aria-label="Sous-système" value={n.sub} onChange={e=>choisir({sub:e.target.value,eq:"",se:"",ss:""})} className={sel}><option value="">— Système entier —</option>{sousSystemes(n.sys).map(x=><option key={x.code} value={x.code}>{codeSousSysteme(n.sys,unite,x.code)}{x.nom?" — "+x.nom:""}</option>)}</select></Field>}
-   {<Field label={n.sub?"Équipement":"Équipement (accès direct : remplit le système et le sous-système)"}><select aria-label="Équipement" value={n.eq} onChange={e=>{const x=equipements.find(y=>y.code===e.target.value); choisir(x?{sys:x.system,sub:x.subCode,eq:x.code,se:"",ss:""}:{eq:"",se:"",ss:""});}} className={sel}><option value="">{n.sub?"— Sous-système entier —":"— Choisir un équipement —"}</option>{eqsVisibles.map(e=><option key={e.code} value={e.code}>{e.code} — {e.nom}</option>)}</select></Field>}
-   {cur && (cur.sousEquip||[]).length>0 && <Field label="Sous-équipement concerné (optionnel)"><select value={n.se||""} onChange={e=>choisir({se:e.target.value,ss:""})} className={sel}><option value="">— Équipement entier —</option>{cur.sousEquip.map(x=><option key={x.code} value={x.code}>{x.code} — {x.nom}</option>)}</select></Field>}
-   {seCur && (seCur.sousSousEquip||[]).length>0 && <Field label="Sous-sous-équipement concerné (optionnel)"><select value={n.ss||""} onChange={e=>choisir({ss:e.target.value})} className={sel}><option value="">— Sous-équipement entier —</option>{seCur.sousSousEquip.map(y=><option key={y.code} value={y.code}>{y.code} — {y.nom}</option>)}</select></Field>}
-   {niveau && <div className={"text-xs mt-2 "+(niveauOk?"text-emerald-400":"text-rose-300")}>{niveauOk?"✓":"✕"} DI au niveau « {libelleNiveau(niveau)} »{niveauOk?"":" : non autorisé pour votre profil, descendez dans l'arborescence"}</div>}
-  </div>
+  {depuisArbo
+   ? <div className="border border-slate-700 rounded-lg p-2 mt-2" data-testid="noeud-precharge">
+      <div className="text-xs text-sky-400">Nœud préchargé depuis l'arborescence</div>
+      <div className="text-sm text-slate-100 mt-1">{niveau?noeud().eq+" — "+noeud().nom:"—"}</div>
+     </div>
+   : <Field label="Équipement (code GMAO)"><select aria-label="Équipement" value={n.eq} onChange={e=>choisirEquipement(e.target.value)} className={sel}><option value="">— Choisir l'équipement (code GMAO) —</option>{equipements.map(e=><option key={e.code} value={e.code}>{e.code} — {e.nom}</option>)}</select></Field>}
+  {niveau && !niveauOk && <div className="text-xs mt-2 text-rose-300">✕ Votre profil ne permet pas de créer une DI au niveau « {libelleNiveau(niveau)} » (niveaux permis : {niveaux.map(libelleNiveau).join(", ")||"aucun"}).</div>}
   <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement"}>
-   <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={niveau?"À saisir":"Choisissez d'abord le nœud"}/>
+   <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={niveau?"À saisir":"Choisissez d'abord l'équipement"}/>
   </Field>
-  <Field label="Désignation (description du constat)"><Inp value={f.designation} onChange={e=>setF({...f,designation:e.target.value})}/></Field>
+  <Field label="Désignation (description du constat) *"><Inp value={f.designation} onChange={e=>{setF({...f,designation:e.target.value});setErr("");}} placeholder="Obligatoire : décrire le constat"/></Field>
   <Field label="Type de maintenance">
    <select value={typeM} onChange={e=>setTypeM(e.target.value)} className={sel}><option>Corrective</option><option>Préventive</option></select>
   </Field>
   {typeM==="Corrective" && <Field label="Nature de la maintenance corrective">
    <select value={sousType} onChange={e=>setSousType(e.target.value)} className={sel}><option>Palliative</option><option>Curative</option></select>
   </Field>}
-  <Field label="Date et heure de l'événement"><input type="datetime-local" value={f.dateEvt.replace(" ","T")} onChange={e=>setF({...f,dateEvt:e.target.value.replace("T"," ")})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 mt-1"/></Field>
+  <Field label="Date et heure de l'événement"><input type="datetime-local" value={f.dateEvt.replace(" ","T")} onChange={e=>setF({...f,dateEvt:e.target.value.replace(" ","T")})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 mt-1"/></Field>
   <Field label="Date et heure de création (automatique)"><Inp value={dateCreation} disabled className="opacity-60"/></Field>
   <Field label="Perturbation exploitation">
    <select value={perturb} onChange={e=>setPerturb(e.target.value)} className={sel}><option>Non</option><option>Oui</option></select>
