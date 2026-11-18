@@ -17,7 +17,7 @@ import {AdminPage} from "./pages/Administration.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
-import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire} from "../../server/src/profils-core.js";
+import {peutCloturer,peutCreerOT,peutValider,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
 import {cheminDI} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
@@ -711,6 +711,7 @@ const [notice,setNotice]=useState(null);
      unitesUO={sa?UNITS:unitsOk.filter(u=>(session.droits[u]?.volets||[]).includes(VOLET_RAPPORTS)&&roleRapports(session)==="uo")}
      ouvert={rapportOuvert} setOuvert={setRapportOuvert}
      onSave={(r)=>setRapports(l=>l.map(x=>x.code===r.code?r:x))}
+     peutSupprimerTout={peutSupprimerRapports(session)} onSupprimer={(r)=>setRapports(l=>l.filter(x=>x.code!==r.code))}
      onCreer={async(f)=>{const nums=await numeros("rapports",{unit:f.unit}); if(!nums) return null; const code=nums[0];
       setRapports(l=>[{code,unit:f.unit,titre:f.titre,periode:f.periode,fichiers:[],etat:"Brouillon"},...l]); return code;}}/>}
    {tab===VALIDATION && <ValidationDG user={user} bts={bts} equipements={equipements} planning={planning} treeStruct={treeStruct}

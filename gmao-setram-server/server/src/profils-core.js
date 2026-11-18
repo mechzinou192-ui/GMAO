@@ -20,6 +20,7 @@ export const TOUS_SYSTEMES = '*';
 //   toutesUnites / tousSystemes   périmètre proposé à la création du compte
 //   delegationComptes             peut recevoir du super admin la main sur les comptes de son unité
 //   delegable                     peut être attribué par un administrateur UO délégué
+//   supprimerRapports             peut supprimer un rapport d'activité (à tout statut) : donné par le super administrateur
 //   niveauxDI                     niveaux de l'arborescence où le profil peut créer des DI (absent = tous)
 //   actions                       par module : actions permises { "<volet>": ["creer","modifier","supprimer"] }
 //                                 (module absent = toutes les actions ; décidé par le super administrateur)
@@ -91,7 +92,7 @@ export function normaliserActions(v) {
 // Opération demandée d'après les données avant / après (null = création / suppression)
 export const operation = (cur, next) => (!cur ? 'creer' : !next ? 'supprimer' : 'modifier');
 
-const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI'];
+const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI', 'supprimerRapports'];
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
@@ -102,6 +103,7 @@ export function normaliserProfil(d) {
   if (niv) o.niveauxDI = niv; else delete o.niveauxDI;
   const act = normaliserActions(o.actions);
   if (act) o.actions = act; else delete o.actions;
+  if (o.supprimerRapports === true) o.supprimerRapports = true; else delete o.supprimerRapports;
   return o;
 }
 export function definirProfilsPersonnalises(liste) {
@@ -113,6 +115,7 @@ export function definirProfilsPersonnalises(liste) {
     if (niv) reglage.niveauxDI = niv;
     const act = normaliserActions(d.actions);
     if (act) reglage.actions = act;
+    if (d.supprimerRapports === true) reglage.supprimerRapports = true;
     const vol = normaliserVolets(d.volets);
     if (vol) {
       const tous = [...new Set([...PROFILS[d.nom].volets, ...vol])].sort();
@@ -157,6 +160,9 @@ function refusAction(user, collection, op) {
   const v = (def.writeVolets || [def.volet]).find((x) => profilDe(user).volets.includes(x));
   return `Profil ${nomProfil(user.role)} : ${LIBELLES_OP[op]} non autorisée dans le module « ${NOMS_VOLETS[v] || collection} » (réglage du super administrateur).`;
 }
+// Suppression d'un rapport d'activité : le super administrateur seul, ou un profil auquel il en a donné la main
+// (Administration → Profils → « Peut supprimer les rapports d'activité »). Contrôlé par le serveur.
+export const peutSupprimerRapports = (user) => !!(user && (estSuper(user) || catalogue()[nomProfil(user.role)]?.supprimerRapports));
 export const roleRapports = (user) => (estSuper(user) ? 'admin' : profilDe(user)?.rapports || null);
 
 // Collections soumises à la validation DG, et rubriques « de fonctionnement » qui ne la remettent pas en cause
@@ -181,7 +187,10 @@ export function controleProfil(user, collection, cur, next) {
   if (!user || estSuper(user)) return null;
   // organigramme : systèmes et profils réservés au super administrateur de la DG
   if (collection === 'systemes' || collection === 'profils') return 'Réservé au super administrateur (organigramme et systèmes).';
-  if (collection === 'rapports') return controleRapport(roleRapports(user), user, cur, next);
+  if (collection === 'rapports') {
+    if (cur && !next && peutSupprimerRapports(user)) return null;     // suppression : main donnée par le super administrateur
+    return controleRapport(roleRapports(user), user, cur, next);
+  }
   const nom = nomProfil(user.role);
   const p = catalogue()[nom];
   if (!p) return null;                                        // ancien compte sans profil reconnu : droits par volets seulement

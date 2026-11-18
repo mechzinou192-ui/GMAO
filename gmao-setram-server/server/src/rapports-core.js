@@ -8,6 +8,19 @@
 //             revues:{ [tour]: { [idExpert]: { nom, erreurs, commentaire, terminee, le } } },
 //             decision:{ etat, par, le, motif }, historique:[{ le, par, action, detail }] }
 export const ETATS_RAPPORT = ['Brouillon', 'Envoyé', 'À valider DG', 'À corriger', 'Clôturé'];
+
+// Libellés affichés (les codes ci-dessus restent ceux enregistrés en base : aucune migration).
+//   Envoyé        → « Envoyé aux experts DG pour validation » tant qu'aucun expert n'a commencé son analyse,
+//                   puis « En cours d'analyse par les experts DG » dès qu'un expert la commence
+//   À valider DG  → « En attente de validation du responsable ingénierie DG » (dernier expert terminé)
+//   À corriger    → « Envoyé à l'UO pour correction » (autant de tours que nécessaire)
+export const LIB_ENVOYE = 'Envoyé aux experts DG pour validation';
+export const LIB_EN_ANALYSE = 'En cours d\'analyse par les experts DG';
+export const LIB_ATTENTE_RESP = 'En attente de validation du responsable ingénierie DG';
+export const LIB_A_CORRIGER = 'Envoyé à l\'UO pour correction';
+export const LIBELLES_ETAT = { 'Brouillon': 'Brouillon', 'Envoyé': LIB_ENVOYE, 'À valider DG': LIB_ATTENTE_RESP, 'À corriger': LIB_A_CORRIGER, 'Clôturé': 'Clôturé' };
+// Statuts affichés, dans l'ordre du circuit (filtres, compteurs)
+export const ETATS_AFFICHES = ['Brouillon', LIB_ENVOYE, LIB_EN_ANALYSE, LIB_ATTENTE_RESP, LIB_A_CORRIGER, 'Clôturé'];
 const MODIFIABLE_UO = ['Brouillon', 'À corriger'];
 const CHAMPS_UO = ['titre', 'periode', 'fichiers', 'commentaireUO'];
 
@@ -18,6 +31,10 @@ const memes = (a, b) => JSON.stringify(trie(a)) === JSON.stringify(trie(b));
 export const revuesDuTour = (r) => (r?.revues || {})[String(r?.tour || 1)] || {};
 export const totalErreurs = (r) => Object.values(revuesDuTour(r)).reduce((s, x) => s + (Number(x.erreurs) || 0), 0);
 export const aDesRemarques = (r) => totalErreurs(r) > 0 || Object.values(revuesDuTour(r)).some((x) => String(x.commentaire || '').trim());
+// Un expert a-t-il commencé son analyse dans le tour en cours ? (une revue enregistrée, même sans erreur)
+export const analyseCommencee = (r) => Object.keys(revuesDuTour(r)).length > 0;
+// Statut affiché d'un rapport (voir LIBELLES_ETAT)
+export const libelleEtatRapport = (r) => (r?.etat === 'Envoyé' && analyseCommencee(r) ? LIB_EN_ANALYSE : LIBELLES_ETAT[r?.etat] || r?.etat || '');
 export const revuesTerminees = (r) => (r?.attendus || []).length > 0 && (r.attendus || []).every((id) => revuesDuTour(r)[id]?.terminee);
 
 /*
@@ -84,22 +101,23 @@ export function ajusterRapport(user, cur, next, { experts = [], maintenant = new
   out.etat = next.etat || avant || 'Brouillon';
   if (!cur) trace('Création');
   if (out.etat === 'Envoyé' && avant !== 'Envoyé') {
-    if (avant === 'À corriger') { out.tour = (cur.tour || 1) + 1; trace('Correction renvoyée à la DG', `tour ${out.tour}`); }
-    else trace('Envoyé à la DG');
+    if (avant === 'À corriger') { out.tour = (cur.tour || 1) + 1; trace('Correction renvoyée aux experts DG pour validation', `tour ${out.tour}`); }
+    else trace('Envoyé aux experts DG pour validation');
     out.attendus = experts.map((e) => e.id);
   }
   if (out.etat === 'À valider DG' && avant === 'Envoyé' && !revuesTerminees(out)) out.etat = 'Envoyé';   // pas avant la dernière revue
   if (out.etat === 'Envoyé') {
     // une revue terminée dans ce tour : trace ; toutes terminées : à valider par le responsable DG
     const t = String(out.tour);
+    for (const [id, rv] of Object.entries(out.revues[t] || {})) if (!((cur?.revues || {})[t] || {})[id]) trace(`Analyse commencée (${rv.nom || id})`);
     for (const [id, rv] of Object.entries(out.revues[t] || {})) if (rv.terminee && !((cur?.revues || {})[t] || {})[id]?.terminee) trace(`Revue terminée (${rv.nom || id})`, `${Number(rv.erreurs) || 0} erreur(s)`);
-    if (revuesTerminees(out)) { out.etat = 'À valider DG'; trace('Revues terminées : à valider par le responsable DG'); }
+    if (revuesTerminees(out)) { out.etat = 'À valider DG'; trace('Dernière revue terminée : en attente de validation du responsable ingénierie DG'); }
   }
   if (avant === 'À valider DG' && out.etat !== avant && (out.etat === 'Clôturé' || out.etat === 'À corriger')) {
     out.decision = { etat: out.etat, par: qui, le: maintenant, ...(next.decision?.motif ? { motif: String(next.decision.motif).slice(0, 2000) } : {}) };
-    trace(out.etat === 'Clôturé' ? 'Clôturé par le responsable DG' : 'Renvoyé à l\'UO pour correction', out.decision.motif);
+    trace(out.etat === 'Clôturé' ? 'Clôturé par le responsable DG' : 'Envoyé à l\'UO pour correction', out.decision.motif);
   }
-  if (avant && avant !== out.etat && !out.historique.some((h) => h.le === maintenant)) trace(`Statut : ${avant} → ${out.etat}`);
+  if (avant && avant !== out.etat && !out.historique.some((h) => h.le === maintenant)) trace(`Statut : ${LIBELLES_ETAT[avant] || avant} → ${LIBELLES_ETAT[out.etat] || out.etat}`);
   return out;
 }
 
@@ -107,9 +125,9 @@ export function ajusterRapport(user, cur, next, { experts = [], maintenant = new
 export function evenementsRapport(cur, next, auteur) {
   if (!next || cur?.etat === next.etat) return [];
   const obj = `Rapport ${next.code}${next.titre ? ' — ' + next.titre : ''} (${next.unit || ''})`;
-  if (next.etat === 'Envoyé') return [{ type: 'rapport_a_revoir', ids: next.attendus || [], texte: `${obj} à revoir${(next.tour || 1) > 1 ? ' (correction, tour ' + next.tour + ')' : ''}` }];
-  if (next.etat === 'À valider DG') return [{ type: 'rapport_a_valider', capaciteRapports: 'responsable', texte: `${obj} : revues des experts terminées (${totalErreurs(next)} erreur(s)), à valider` }];
-  if (next.etat === 'À corriger') return [{ type: 'rapport_a_corriger', capaciteRapports: 'uo', texte: `${obj} à corriger (DG${auteur?.nom ? ' — ' + auteur.nom : ''})` }];
+  if (next.etat === 'Envoyé') return [{ type: 'rapport_a_revoir', ids: next.attendus || [], texte: `${obj} envoyé aux experts DG pour validation${(next.tour || 1) > 1 ? ' (correction, tour ' + next.tour + ')' : ''}` }];
+  if (next.etat === 'À valider DG') return [{ type: 'rapport_a_valider', capaciteRapports: 'responsable', texte: `${obj} : dernier expert DG terminé (${totalErreurs(next)} erreur(s)), en attente de votre validation (responsable ingénierie DG)` }];
+  if (next.etat === 'À corriger') return [{ type: 'rapport_a_corriger', capaciteRapports: 'uo', texte: `${obj} envoyé à l'UO pour correction (DG${auteur?.nom ? ' — ' + auteur.nom : ''})` }];
   if (next.etat === 'Clôturé') return [{ type: 'rapport_cloture', capaciteRapports: 'uo', texte: `${obj} validé et clôturé par la DG` }];
   return [];
 }

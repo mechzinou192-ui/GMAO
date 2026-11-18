@@ -4,7 +4,7 @@
 import React,{useMemo,useState} from "react";
 import {api} from "../api.js";
 import {flushAll} from "../sync.js";
-import {ETATS_RAPPORT,revuesDuTour,totalErreurs,aDesRemarques} from "../../../server/src/rapports-core.js";
+import {ETATS_RAPPORT,ETATS_AFFICHES,LIBELLES_ETAT,libelleEtatRapport,LIB_EN_ANALYSE,revuesDuTour,totalErreurs,aDesRemarques} from "../../../server/src/rapports-core.js";
 import {Badge,Btn,Card,Field,Inp,KPI,Modal} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
@@ -23,7 +23,7 @@ function Revues({r}){
     <td className="text-xs text-slate-300 whitespace-pre-wrap max-w-md">{x?.commentaire||""}</td><td>{x?.terminee?<Badge t="Terminé"/>:<span className="text-xs text-amber-400">en attente</span>}</td></tr>;})}</tbody></table></div>;});
 }
 
-function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer}){
+function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer,peutSupprimer,onSupprimer}){
  const [err,setErr]=useState(""); const [envoi,setEnvoi]=useState(false);
  const tour=String(r.tour||1);
  const maRevue=(r.revues?.[tour]||{})[userId]||{erreurs:0,commentaire:""};
@@ -57,11 +57,14 @@ function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer}){
   sauver({...r,revues:{...(r.revues||{}),[tour]:{...(r.revues?.[tour]||{}),[userId]:{nom:userNom,erreurs:n,commentaire:commentaire.trim(),terminee,le:new Date().toISOString().slice(0,16).replace("T"," ")}}}});
  };
  const remarques=aDesRemarques(r);
+ const commencer=()=>sauver({...r,revues:{...(r.revues||{}),[tour]:{...(r.revues?.[tour]||{}),[userId]:{nom:userNom,erreurs:0,commentaire:"",terminee:false,le:new Date().toISOString().slice(0,16).replace("T"," ")}}}});
+ const debute=!!(r.revues?.[tour]||{})[userId];
+ const supprimerRapport=()=>{ if(window.confirm("Supprimer définitivement le rapport "+r.code+" ("+r.unit+") ? Cette action est tracée dans le journal d'audit.")) onSupprimer(r); };
  return (<Modal title={"Rapport "+r.code+" — "+r.unit} onClose={onFermer} wide>
   <div className="space-y-4 text-sm" data-testid="fiche-rapport">
-   <div className="flex flex-wrap gap-x-5 gap-y-1 items-center"><Badge t={r.etat}/><span><b>{r.titre}</b></span><span className="text-slate-400">Période : {moisLib(r.periode)}</span><span className="text-slate-400">Tour de revue : {r.tour||1}</span>
+   <div className="flex flex-wrap gap-x-5 gap-y-1 items-center"><Badge t={libelleEtatRapport(r)}/><span><b>{r.titre}</b></span><span className="text-slate-400">Période : {moisLib(r.periode)}</span><span className="text-slate-400">Tour de revue : {r.tour||1}</span>
     {r.etat!=="Brouillon"&&<span className="text-slate-400">Erreurs (tour en cours) : <b className={totalErreurs(r)?"text-rose-400":"text-emerald-400"}>{totalErreurs(r)}</b></span>}</div>
-   {r.decision&&r.decision.etat==="À corriger"&&r.etat==="À corriger"&&<div className="rounded-lg border border-rose-600 bg-rose-900/30 px-3 py-2 text-xs text-rose-200"><b>À corriger</b> — renvoyé par {r.decision.par} le {fr(r.decision.le)}{r.decision.motif?" : "+r.decision.motif:""}</div>}
+   {r.decision&&r.decision.etat==="À corriger"&&r.etat==="À corriger"&&<div className="rounded-lg border border-rose-600 bg-rose-900/30 px-3 py-2 text-xs text-rose-200"><b>Envoyé à l'UO pour correction</b> — par {r.decision.par} le {fr(r.decision.le)}{r.decision.motif?" : "+r.decision.motif:""}</div>}
 
    <Card><div className="flex items-center justify-between flex-wrap gap-2"><div className="font-semibold text-slate-100">Fichiers du rapport</div>
      {uoPeut&&<label className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-100 cursor-pointer">{envoi?"Envoi…":"+ Joindre Excel / Word / PDF"}<input type="file" multiple accept={ACCEPT} className="hidden" onChange={deposer} aria-label="Joindre des fichiers au rapport"/></label>}</div>
@@ -78,7 +81,10 @@ function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer}){
      <Btn onClick={()=>{ if(!(r.fichiers||[]).length){setErr("Joignez au moins un fichier avant d'envoyer.");return;} sauver({...r,commentaireUO:commentaireUO.trim(),etat:"Envoyé"}); }}>{r.etat==="À corriger"?"Correction terminée — renvoyer aux experts":"Envoyer à la DG"}</Btn>
     </div></Card>}
 
-   {expertPeut&&<Card><div className="font-semibold text-slate-100 mb-1">Ma revue (tour {tour})</div>
+   {expertPeut&&!debute&&<Card><div className="font-semibold text-slate-100 mb-1">Ma revue (tour {tour})</div>
+    <div className="text-xs text-slate-400">Le rapport vous a été envoyé pour validation. Commencez votre analyse : le statut passe à « {LIB_EN_ANALYSE} ».</div>
+    <div className="flex justify-end mt-2"><Btn onClick={commencer}>Commencer l'analyse</Btn></div></Card>}
+   {expertPeut&&debute&&<Card><div className="font-semibold text-slate-100 mb-1">Ma revue (tour {tour})</div>
     <div className="grid sm:grid-cols-4 gap-3">
      <Field label="Nombre d'erreurs"><Inp type="number" min="0" value={erreurs} onChange={e=>setErreurs(e.target.value)} aria-label="Nombre d'erreurs"/></Field>
      <div className="sm:col-span-3"><Field label="Commentaire"><textarea aria-label="Commentaire de revue" value={commentaire} onChange={e=>setCommentaire(e.target.value)} rows="3" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1" placeholder="Erreurs relevées, données à vérifier…"/></Field></div>
@@ -86,20 +92,24 @@ function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer}){
     <div className="flex justify-end gap-2 mt-2"><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>revue(false)}>Enregistrer</Btn><Btn onClick={()=>revue(true)}>Terminer ma revue</Btn></div>
    </Card>}
 
-   {respPeut&&<Card><div className="font-semibold text-slate-100 mb-1">Décision du responsable DG</div>
+   {respPeut&&<Card><div className="font-semibold text-slate-100 mb-1">Décision du responsable ingénierie DG</div>
     <div className="text-xs text-slate-400">{remarques?"Des erreurs ou des commentaires ont été relevés : le rapport doit être renvoyé à l'UO pour correction.":"Aucune erreur ni commentaire : le rapport peut être clôturé."}</div>
     <Field label="Motif / consignes pour l'UO"><textarea aria-label="Motif de renvoi" value={motif} onChange={e=>setMotif(e.target.value)} rows="2" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1"/></Field>
     <div className="flex justify-end gap-2 mt-2">
-     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white" onClick={()=>sauver({...r,etat:"À corriger",decision:{motif:motif.trim()}})}>Renvoyer à l'UO pour correction</Btn>
+     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white" onClick={()=>sauver({...r,etat:"À corriger",decision:{motif:motif.trim()}})}>Envoyer à l'UO pour correction</Btn>
      <Btn cls={remarques?"bg-slate-700 text-slate-500 cursor-not-allowed":"bg-emerald-600 hover:bg-emerald-500 text-white"} onClick={()=>{ if(!remarques) sauver({...r,etat:"Clôturé"}); }}>Valider et clôturer</Btn>
     </div></Card>}
 
    <Card><div className="font-semibold text-slate-100">Revues des experts DG</div><Revues r={r}/></Card>
 
    {sa&&<Card><div className="font-semibold text-amber-300 mb-1">Statut (super administrateur)</div>
-    <div className="flex gap-2 items-center flex-wrap"><select aria-label="Statut du rapport" value={statut} onChange={e=>setStatut(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">{ETATS_RAPPORT.map(x=><option key={x}>{x}</option>)}</select>
+    <div className="flex gap-2 items-center flex-wrap"><select aria-label="Statut du rapport" value={statut} onChange={e=>setStatut(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">{ETATS_RAPPORT.map(x=><option key={x} value={x}>{LIBELLES_ETAT[x]}</option>)}</select>
      <Btn cls="bg-amber-600 hover:bg-amber-500 text-white" onClick={()=>statut!==r.etat&&sauver({...r,etat:statut})}>Appliquer</Btn>
      <span className="text-xs text-slate-400">Tracé dans l'historique du rapport et le journal d'audit.</span></div></Card>}
+
+   {peutSupprimer&&<Card><div className="font-semibold text-rose-300 mb-1">Suppression</div>
+    <div className="flex items-center justify-between gap-2 flex-wrap"><span className="text-xs text-slate-400">{sa?"Vous pouvez supprimer ce rapport (super administrateur).":"Le super administrateur vous a donné la main pour supprimer les rapports."} Les fichiers joints ne seront plus accessibles depuis l'application.</span>
+     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white" onClick={supprimerRapport}>Supprimer ce rapport</Btn></div></Card>}
 
    <Card><div className="font-semibold text-slate-100 mb-1">Historique</div>
     <ul className="text-xs space-y-0.5">{[...(r.historique||[])].reverse().map((h,i)=><li key={i}><span className="text-slate-500">{fr(h.le)}</span> — {h.action}{h.detail?" ("+h.detail+")":""} <span className="text-slate-500">· {h.par}</span></li>)}</ul></Card>
@@ -108,25 +118,26 @@ function FicheRapport({r,role,userId,userNom,sa,onSave,onFermer}){
  </Modal>);
 }
 
-export function RapportsPage({rapports,role,userId,userNom,sa,unitesUO,ouvert,setOuvert,onSave,onCreer}){
+export function RapportsPage({rapports,role,userId,userNom,sa,unitesUO,ouvert,setOuvert,onSave,onCreer,peutSupprimerTout=false,onSupprimer}){
  const [fUnite,setFUnite]=useState(""); const [fEtat,setFEtat]=useState("");
  const [nouveau,setNouveau]=useState(null);
  const unites=useMemo(()=>[...new Set(rapports.map(r=>r.unit))].sort(),[rapports]);
  const aFaire=(r)=>(role==="expert"&&r.etat==="Envoyé"&&(r.attendus||[]).includes(userId)&&!revuesDuTour(r)[userId]?.terminee)
   ||(role==="responsable"&&r.etat==="À valider DG")||(role==="uo"&&["Brouillon","À corriger"].includes(r.etat));
- const liste=rapports.filter(r=>(!fUnite||r.unit===fUnite)&&(!fEtat||r.etat===fEtat)).sort((a,b)=>(aFaire(b)-aFaire(a))||String(b.periode).localeCompare(String(a.periode)));
- const nb=(e)=>rapports.filter(r=>r.etat===e).length;
+ const liste=rapports.filter(r=>(!fUnite||r.unit===fUnite)&&(!fEtat||libelleEtatRapport(r)===fEtat)).sort((a,b)=>(aFaire(b)-aFaire(a))||String(b.periode).localeCompare(String(a.periode)));
+ const nb=(e)=>rapports.filter(r=>libelleEtatRapport(r)===e).length;
+ const peutSupprimer=(r)=>!!onSupprimer&&(peutSupprimerTout||(role==="uo"&&r.etat==="Brouillon"));
  const courant=ouvert&&rapports.find(r=>r.code===ouvert);
  const moisDernier=(()=>{const d=new Date(); d.setMonth(d.getMonth()-1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
  return (<div className="space-y-5" data-testid="rapports-page">
-  <KPI items={[["À traiter par vous",rapports.filter(aFaire).length,"text-sky-400"],["En revue (experts)",nb("Envoyé"),"text-amber-400"],["À valider DG",nb("À valider DG"),"text-amber-400"],["À corriger (UO)",nb("À corriger"),"text-rose-400"],["Clôturés",nb("Clôturé"),"text-emerald-400"]]}/>
+  <KPI items={[["À traiter par vous",rapports.filter(aFaire).length,"text-sky-400"],["Envoyés aux experts",nb(ETATS_AFFICHES[1]),"text-sky-400"],["En cours d'analyse",nb(ETATS_AFFICHES[2]),"text-amber-400"],["Attente responsable ingénierie DG",nb(ETATS_AFFICHES[3]),"text-amber-400"],["Envoyés à l'UO (correction)",nb(ETATS_AFFICHES[4]),"text-rose-400"],["Clôturés",nb("Clôturé"),"text-emerald-400"]]}/>
   <Card>
    <div className="flex justify-between items-center flex-wrap gap-2 mb-2">
     <div><h2 className="font-semibold text-slate-100">Rapports d'activité maintenance</h2>
-     <div className="text-xs text-slate-500">UO → experts DG (erreurs, commentaire) → responsable DG : clôture, ou correction par l'UO et nouvelle revue.</div></div>
+     <div className="text-xs text-slate-500">UO → experts DG (analyse : erreurs, commentaire) → responsable ingénierie DG : clôture, ou renvoi à l'UO pour correction puis nouveau tour.</div></div>
     <div className="flex gap-2 flex-wrap">
      <select aria-label="Filtrer par unité" value={fUnite} onChange={e=>setFUnite(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"><option value="">Toutes les unités</option>{unites.map(u=><option key={u}>{u}</option>)}</select>
-     <select aria-label="Filtrer par état" value={fEtat} onChange={e=>setFEtat(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"><option value="">Tous les états</option>{ETATS_RAPPORT.map(x=><option key={x}>{x}</option>)}</select>
+     <select aria-label="Filtrer par état" value={fEtat} onChange={e=>setFEtat(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm"><option value="">Tous les états</option>{ETATS_AFFICHES.map(x=><option key={x}>{x}</option>)}</select>
      {(role==="uo"||sa)&&unitesUO.length>0&&<Btn onClick={()=>setNouveau({unit:unitesUO[0],periode:moisDernier,titre:""})}><span className="flex items-center gap-1">{I.plus} Nouveau rapport</span></Btn>}
     </div>
    </div>
@@ -136,7 +147,7 @@ export function RapportsPage({rapports,role,userId,userNom,sa,unitesUO,ouvert,se
     <tbody>{liste.map(r=>{const rv=revuesDuTour(r); const fini=(r.attendus||[]).filter(id=>rv[id]?.terminee).length;
      return <tr key={r.code} onClick={()=>setOuvert(r.code)} className={"border-t border-slate-700 cursor-pointer hover:bg-slate-700/30"+(aFaire(r)?" font-semibold":"")} data-testid={"rapport-"+r.code}>
       <td className="py-1.5 text-sky-400">{r.code}{aFaire(r)&&<span className="ml-1 text-[10px] text-sky-300 uppercase">à traiter</span>}</td><td>{r.unit}</td><td>{moisLib(r.periode)}</td><td className="max-w-xs truncate">{r.titre}</td>
-      <td>{r.tour||1}</td><td>{(r.attendus||[]).length?fini+"/"+r.attendus.length:"—"}</td><td>{r.etat==="Brouillon"?"—":totalErreurs(r)}</td><td><Badge t={r.etat}/></td></tr>;})}</tbody>
+      <td>{r.tour||1}</td><td>{(r.attendus||[]).length?fini+"/"+r.attendus.length:"—"}</td><td>{r.etat==="Brouillon"?"—":totalErreurs(r)}</td><td><Badge t={libelleEtatRapport(r)}/></td></tr>;})}</tbody>
    </table></div>}
   </Card>
   {nouveau&&<Modal title="Nouveau rapport d'activité" onClose={()=>setNouveau(null)}>
@@ -146,6 +157,6 @@ export function RapportsPage({rapports,role,userId,userNom,sa,unitesUO,ouvert,se
    <div className="text-xs text-slate-500 mt-2">Le rapport est créé en brouillon : joignez ensuite vos fichiers Excel et Word, puis envoyez-le à la DG.</div>
    <div className="flex justify-end mt-3"><Btn onClick={async()=>{const code=await onCreer({...nouveau,titre:nouveau.titre.trim()||"Rapport d'activité maintenance — "+moisLib(nouveau.periode)}); setNouveau(null); if(code) setOuvert(code);}}>Créer le brouillon</Btn></div>
   </Modal>}
-  {courant&&<FicheRapport key={courant.code+"-"+(courant.tour||1)+"-"+courant.etat} r={courant} role={role} userId={userId} userNom={userNom} sa={sa} onSave={onSave} onFermer={()=>setOuvert(null)}/>}
+  {courant&&<FicheRapport key={courant.code+"-"+(courant.tour||1)+"-"+libelleEtatRapport(courant)} r={courant} role={role} userId={userId} userNom={userNom} sa={sa} onSave={onSave} onFermer={()=>setOuvert(null)} peutSupprimer={peutSupprimer(courant)} onSupprimer={(r)=>{onSupprimer(r); setOuvert(null);}}/>}
  </div>);
 }

@@ -1,5 +1,15 @@
 # Journal des modifications
 
+## Non publié — rapports d'activité : nouveaux statuts, suppression
+- **Statuts du circuit de validation** (les codes enregistrés ne changent pas : aucune migration) :
+  Brouillon → **Envoyé aux experts DG pour validation** → **En cours d'analyse par les experts DG** (dès qu'un expert
+  clique « Commencer l'analyse ») → **En attente de validation du responsable ingénierie DG** (dernier expert terminé ;
+  le responsable DG est notifié) → **Clôturé**, ou **Envoyé à l'UO pour correction** puis nouveau tour, autant de fois que nécessaire.
+- **Suppression d'un rapport** : bouton « Supprimer ce rapport » dans la fiche (confirmation, tracé dans le journal d'audit).
+  Réservé au super administrateur, et aux profils auxquels il donne la main (Administration → Profils →
+  « Peut supprimer les rapports d'activité », profils de base comme personnalisés). Contrôlé par le serveur.
+- `server/public/` et `web/dist-demo/` recompilés.
+
 ## Non publié — droits créer / modifier / supprimer par profil
 - **Nouveau** : dans Administration → Profils, le super administrateur règle, profil par profil et module par module, qui peut
   créer, modifier ou supprimer (grille « Droits par module »). Contrôlé par le serveur à chaque enregistrement et suppression.

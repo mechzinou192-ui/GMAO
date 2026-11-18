@@ -12,6 +12,7 @@ process.env.LOG_LEVEL ||= 'error'; process.env.RATE_LIMIT_GLOBAL_MAX ||= '100000
 
 const { migrate, q, pool } = await import('../src/db.js');
 const { buildApp, ensureAdmin } = await import('../src/index.js');
+const { libelleEtatRapport } = await import('../src/rapports-core.js');
 
 await q('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
 await migrate();
@@ -937,17 +938,26 @@ test('rapports d\'activité : UO -> experts DG (erreurs, commentaire) -> respons
   assert.deepEqual(r.body.data.attendus.sort(), ['r.exp1', 'r.exp2']);
   const notifs = async (c) => (await c.call('GET', '/notifications')).body.items;
   assert.ok(await attendreQue(async () => (await notifs(e1)).some((n) => n.type === 'rapport_a_revoir' && n.recordId === id)));
+  assert.equal(libelleEtatRapport(r.body.data), 'Envoyé aux experts DG pour validation');
   assert.equal((await upload(uo, { collection: 'rapports', recordId: id, name: 'tard.xlsx' }, XLSX, 'application/octet-stream')).status, 403);   // entre les mains de la DG
   assert.equal((await ecrire(uo, { ...(await lire()).data, titre: 'modifié' })).status, 403);
   // 3. revues : chacun la sienne ; le responsable DG ne décide qu'après toutes les revues
   cur = (await lire()).data;
   assert.equal((await ecrire(e1, { ...cur, revues: { 1: { 'r.exp2': { erreurs: 0, terminee: true } } } })).status, 403);
+  // l'expert 1 commence son analyse (sans la terminer) : « En cours d'analyse par les experts DG »
+  r = await ecrire(e1, { ...cur, revues: { 1: { 'r.exp1': { nom: 'Expert 1', erreurs: 0, commentaire: '', terminee: false } } } });
+  assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Envoyé');
+  assert.equal(libelleEtatRapport(r.body.data), 'En cours d\'analyse par les experts DG');
+  assert.ok(r.body.data.historique.some((x) => x.action === 'Analyse commencée (Expert 1)'));
+  cur = (await lire()).data;
   r = await ecrire(e1, { ...cur, revues: { 1: { 'r.exp1': { nom: 'Expert 1', erreurs: 2, commentaire: 'MTBF CFO faux ; OT non clôturés comptés', terminee: true } } } });
   assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Envoyé');
+  assert.equal(libelleEtatRapport(r.body.data), 'En cours d\'analyse par les experts DG');   // le 2e expert n'a pas fini
   cur = (await lire()).data;
   assert.equal((await ecrire(rdg, { ...cur, etat: 'Clôturé' })).status, 403);
   r = await ecrire(e2, { ...cur, revues: { 1: { ...cur.revues[1], 'r.exp2': { nom: 'Expert 2', erreurs: 0, commentaire: '', terminee: true } } } });
   assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'À valider DG');
+  assert.equal(libelleEtatRapport(r.body.data), 'En attente de validation du responsable ingénierie DG');
   assert.ok(await attendreQue(async () => (await notifs(rdg)).some((n) => n.type === 'rapport_a_valider' && /2 erreur/.test(n.texte))));
   // 4. responsable DG : clôture refusée (erreurs) ; renvoi pour correction -> l'UO est notifiée
   cur = (await lire()).data;
@@ -955,6 +965,7 @@ test('rapports d\'activité : UO -> experts DG (erreurs, commentaire) -> respons
   assert.equal(r.status, 403); assert.match(r.body.error.message, /renvoyez le rapport/);
   r = await ecrire(rdg, { ...cur, etat: 'À corriger', decision: { motif: 'Corriger le MTBF CFO' } });
   assert.equal(r.status, 200); assert.equal(r.body.data.decision.etat, 'À corriger');
+  assert.equal(libelleEtatRapport(r.body.data), 'Envoyé à l\'UO pour correction');
   assert.ok(await attendreQue(async () => (await notifs(uo)).some((n) => n.type === 'rapport_a_corriger')));
   // 5. l'UO corrige (nouveau fichier) et renvoie : tour 2, les experts sont de nouveau notifiés et revoient
   const f3 = await upload(uo, { collection: 'rapports', recordId: id, name: 'Rapport_v2.xlsx' }, XLSX, 'application/octet-stream');
@@ -973,12 +984,23 @@ test('rapports d\'activité : UO -> experts DG (erreurs, commentaire) -> respons
   r = await ecrire(rdg, { ...cur, etat: 'Clôturé' });
   assert.equal(r.status, 200); assert.equal(r.body.data.etat, 'Clôturé');
   const h = r.body.data.historique.map((x) => x.action);
-  assert.ok(h.includes('Envoyé à la DG') && h.includes('Correction renvoyée à la DG') && h.includes('Clôturé par le responsable DG'));
+  assert.ok(h.includes('Envoyé aux experts DG pour validation') && h.includes('Correction renvoyée aux experts DG pour validation') && h.includes('Clôturé par le responsable DG'));
   assert.ok(await attendreQue(async () => (await notifs(uo)).some((n) => n.type === 'rapport_cloture')));
   // super administrateur : statut modifiable à la main (réouverture)
   r = await admin.call('PUT', `/data/rapports/${id}`, { data: { ...r.body.data, etat: 'À corriger' }, unit: U, version: r.body.version });
   assert.equal(r.status, 200);
-  assert.ok(r.body.data.historique.some((x) => x.action === 'Statut : Clôturé → À corriger'));
+  assert.ok(r.body.data.historique.some((x) => x.action === 'Statut : Clôturé → Envoyé à l\'UO pour correction'));
+
+  // suppression : réservée au super administrateur, sauf main donnée à un profil par le super administrateur
+  const del = (c) => c.call('DELETE', `/data/rapports/${id}`);
+  assert.equal((await del(e1)).status, 403);                                     // expert : non
+  assert.equal((await del(rdg)).status, 403);                                    // responsable DG : non, tant que la main n'est pas donnée
+  assert.equal((await del(uo)).status, 403);                                     // UO : brouillon seulement
+  assert.equal((await admin.call('PUT', '/data/profils/Responsable%20DG', { data: { surcharge: true, supprimerRapports: true } })).status, 200);
+  assert.equal((await del(e1)).status, 403);                                     // le droit est donné au profil choisi, pas aux autres
+  assert.equal((await del(rdg)).status, 200);                                    // profil à qui la main est donnée : oui, à tout statut
+  assert.equal((await lire()), undefined);
+  assert.equal((await admin.call('DELETE', '/data/profils/Responsable%20DG')).status, 200);   // main retirée
 });
 
 // ───────────────────────── Mode démonstration ─────────────────────────
