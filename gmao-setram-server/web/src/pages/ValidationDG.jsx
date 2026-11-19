@@ -1,7 +1,7 @@
 // Validation :
 //  - le responsable maintenance (responsable système / administrateur UO) valide (ou fait reprendre, avec un motif)
 //    les OT clôturés de son périmètre ;
-//  - l'expert DG valide les référentiels (équipements, plans préventifs, sous-systèmes) de ses systèmes, toutes unités ;
+//  - l'expert DG valide les référentiels (arborescence en une seule validation, plans préventifs) de ses systèmes, toutes unités ;
 //  - les chargés et responsables maintenance adressent à l'expert DG des demandes d'expertise / d'assistance.
 // Le serveur contrôle chaque changement (profils-core.js) ; toute modification ultérieure par une unité remet
 // l'élément « À valider ».
@@ -51,24 +51,29 @@ export function ValidationDG({user,bts,equipements,planning,treeStruct,uniteDe,s
  const ots=bts.filter(b=>b.etat==="Clôturé"&&enAttente(b.validationDG))   // un OT « à reprendre » revient « À clôturer » : il réapparaît à sa nouvelle clôture
  .map(b=>({code:b.code,v:b.validationDG,unite:uniteDe(b.eq),systeme:systemeDe(b.eq),date:b.dateCloture||"",
   titre:b.eq+" — "+(b.nom||""),detail:[b.type,b.panne&&b.panne!=="-"?"Panne : "+b.panne:"",b.cause&&b.cause!=="-"?"Cause : "+b.cause:"",b.effet&&b.effet!=="-"?"Action : "+b.effet:""].filter(Boolean).join(" · "),obj:b}));
- const eqs=equipements.filter(e=>enAttente(e.validationDG)).map(e=>({code:e.code,v:e.validationDG,unite:e.unit,systeme:e.system,date:String(e.validationDG.depuis||"").slice(0,10),
-  titre:e.nom,detail:(e.sousEquip||[]).length?(e.sousEquip.length+" sous-équipement(s)"):"",obj:e}));
+ // Arborescence : UNE seule validation pour tout ce qui a été ajouté dans l'arbre, du sous-système jusqu'au sous-sous-équipement
+ // (valider un équipement valide aussi ses sous-équipements et sous-sous-équipements, qui en font partie).
+ const feuilles=(e)=>(e.sousEquip||[]).flatMap(se=>[{niveau:"Sous-équipement",code:se.code,nom:se.nom},...(se.sousSousEquip||[]).map(ss=>({niveau:"Sous-sous-équipement",code:ss.code,nom:ss.nom}))]);
+ const arboEq=equipements.filter(e=>enAttente(e.validationDG)).map(e=>({kind:"equipement",niveau:"Équipement",code:e.code,v:e.validationDG,unite:e.unit,systeme:e.system,date:String(e.validationDG.depuis||"").slice(0,10),
+  titre:"Équipement · "+e.nom,detail:feuilles(e).map(x=>x.niveau+" "+x.code+(x.nom?" — "+x.nom:"")).join(" ; "),obj:e}));
+ const arboSous=Object.entries(treeStruct||{}).flatMap(([sys,l])=>(l||[]).filter(s=>enAttente(s.validationDG)).map(s=>({kind:"sousSysteme",niveau:"Sous-système",code:sys+"."+s.code,v:s.validationDG,unite:"Toutes",systeme:sys,date:String(s.validationDG.depuis||"").slice(0,10),titre:"Sous-système · "+s.sub,obj:{sys,s}})));
+ const arbo=[...arboSous,...arboEq].sort((a,b)=>String(a.systeme).localeCompare(String(b.systeme))||String(a.code).localeCompare(String(b.code)));
  const plans=planning.filter(p=>enAttente(p.validationDG)).map(p=>({code:p.code,v:p.validationDG,unite:p.unit,systeme:p.sys,date:String(p.validationDG.depuis||"").slice(0,10),
   titre:p.eq+" — "+(p.nom||""),detail:[p.periode||(p.declenchement==="Compteur"?"Au compteur":""),(p.taches||[]).length+" tâche(s)",p.fmp?"FMP "+(p.fmp.ref||p.fmp.fichier||""):""].filter(Boolean).join(" · "),obj:p}));
- const sous=Object.entries(treeStruct||{}).flatMap(([sys,l])=>(l||[]).filter(s=>enAttente(s.validationDG)).map(s=>({code:sys+"."+s.code,v:s.validationDG,unite:"Toutes",systeme:sys,date:String(s.validationDG.depuis||"").slice(0,10),titre:s.sub,obj:{sys,s}})));
  const v=(etat,motif)=>({etat,par:user,le:maintenant(),...(motif?{motif}:{})});
  return (<div className="space-y-5" data-testid="validation-dg-page">
-  {(valideOT||valideRef)&&<KPI items={[...(valideOT?[["OT clôturés à valider",ots.length,"text-amber-400"]]:[]),...(valideRef?[["Équipements",eqs.length,"text-amber-400"],["Plans préventifs",plans.length,"text-amber-400"],["Sous-systèmes",sous.length,"text-amber-400"]]:[])]}/>}
+  {(valideOT||valideRef)&&<KPI items={[...(valideOT?[["OT clôturés à valider",ots.length,"text-amber-400"]]:[]),...(valideRef?[["Arborescence",arbo.length,"text-amber-400"],["Plans préventifs",plans.length,"text-amber-400"]]:[])]}/>}
   {valideOT&&<div className="text-xs text-slate-400">Validation des OT clôturés par le responsable maintenance, sur votre périmètre (unités et systèmes). « À reprendre » renvoie l'OT « À clôturer » avec votre motif ; le chargé du système est prévenu.</div>}
   {valideRef&&<div className="text-xs text-slate-400">Référentiels de vos systèmes, toutes unités. « À reprendre » renvoie l'élément à l'unité avec votre motif ; le chargé et le responsable du système sont prévenus. Toute modification faite ensuite par l'unité le remet « À valider ».</div>}
   {valideOT&&<Groupe titre="OT clôturés" liste={ots} vide="Aucun OT clôturé en attente de validation." onOuvrir={(e)=>onOuvrirOT(e.code)}
    onValider={(e)=>onSaveOT({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveOT({...e.obj,etat:"À clôturer",validationDG:v("À reprendre",m)})}/>}
   {demandesProps&&<DemandesExpertise {...demandesProps}/>}
-  {valideRef&&<><Groupe titre="Équipements" liste={eqs} vide="Aucun équipement en attente." onOuvrir={(e)=>onOuvrirEquip(e.obj)}
-   onValider={(e)=>onSaveEquip({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveEquip({...e.obj,validationDG:v("À reprendre",m)})}/>
+  {valideRef&&<><Groupe titre="Arborescence (sous-systèmes, équipements, sous-équipements, sous-sous-équipements)" liste={arbo} vide="Rien à valider dans l'arborescence."
+   onOuvrir={(e)=>e.kind==="equipement"?onOuvrirEquip(e.obj):null}
+   onValider={(e)=>e.kind==="equipement"?onSaveEquip({...e.obj,validationDG:v("Validé")}):onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("Validé")})}
+   onReprendre={(e,m)=>e.kind==="equipement"?onSaveEquip({...e.obj,validationDG:v("À reprendre",m)}):onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("À reprendre",m)})}/>
   <Groupe titre="Plans préventifs" liste={plans} vide="Aucun plan préventif en attente."
    onValider={(e)=>onSavePlan({...e.obj,validationDG:v("Validé")})} onReprendre={(e,m)=>onSavePlan({...e.obj,validationDG:v("À reprendre",m)})}/>
-  <Groupe titre="Sous-systèmes (arborescence)" liste={sous} vide="Aucun sous-système en attente."
-   onValider={(e)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("Validé")})} onReprendre={(e,m)=>onSaveSous(e.obj.sys,{...e.obj.s,validationDG:v("À reprendre",m)})}/></>}
+</>}
  </div>);
 }
