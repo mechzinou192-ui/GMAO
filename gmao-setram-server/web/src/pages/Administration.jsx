@@ -208,12 +208,13 @@ const CAPACITES=[
  ["supprimerRapports","Peut supprimer les rapports d'activité (main donnée par le super administrateur)"],
 ];
 const ROLES_RAPPORTS=[["","Aucun"],["uo","Prépare et envoie (UO)"],["expert","Revoit (expert DG)"],["responsable","Valide et clôture (responsable DG)"],["lecture","Consulte"]];
+const resumeNiveauxPlan=(n)=>!Array.isArray(n)?"Préventif : tous niveaux":n.length===0?"Préventif : aucun niveau":"Préventif : "+NIVEAUX_DI.filter(([k])=>n.includes(k)).map(([,l])=>l.toLowerCase()).join(", ");
 const resumeNiveaux=(n)=>!Array.isArray(n)?"DI : tous niveaux":n.length===0?"DI : aucun niveau":"DI : "+NIVEAUX_DI.filter(([k])=>n.includes(k)).map(([,l])=>l.toLowerCase()).join(", ");
 // Niveaux de l'arborescence (système → sous-sous-équipement) où le profil peut créer des DI
-function ChoixNiveauxDI({valeur,onChange}){
+function ChoixNiveauxDI({valeur,onChange,titre="Création des DI",testid="niveaux-di",objet="une DI"}){
  const tous=!Array.isArray(valeur); const n=tous?CLES_NIVEAUX_DI:valeur;
- return <div data-testid="niveaux-di"><div className="text-sm font-semibold text-slate-200 mb-1">Création des DI — niveaux de l'arborescence autorisés</div>
-  <div className="text-[11px] text-slate-500 mb-1">Le profil ne pourra créer une DI que sur les nœuds de ces niveaux (le serveur refuse les autres).</div>
+ return <div data-testid={testid}><div className="text-sm font-semibold text-slate-200 mb-1">{titre} — niveaux de l'arborescence autorisés</div>
+  <div className="text-[11px] text-slate-500 mb-1">Le profil ne pourra créer {objet} que sur les nœuds de ces niveaux : seuls ces nœuds apparaissent dans la liste du formulaire (le serveur refuse les autres).</div>
   <div className="space-y-1">{NIVEAUX_DI.map(([k,l],i)=><div key={k} style={{paddingLeft:i*14}}><Chk checked={n.includes(k)} onChange={()=>onChange(CLES_NIVEAUX_DI.filter(x=>x===k?!n.includes(k):n.includes(x)))}>{i>0?"└ ":""}{l}</Chk></div>)}</div>
   <div className="flex gap-3 mt-1 text-xs"><button type="button" className="underline text-slate-400" onClick={()=>onChange(undefined)}>Tous les niveaux</button><button type="button" className="underline text-slate-400" onClick={()=>onChange([])}>Aucun</button>{tous&&<span className="text-slate-500">(actuellement : tous)</span>}</div>
  </div>;
@@ -246,7 +247,7 @@ function ChoixModulesBase({base,valeur,onChange}){
   <div className="text-[11px] text-slate-500 mt-1">À l'enregistrement, les modules ajoutés sont donnés automatiquement à tous les comptes de ce profil, sur chacune de leurs unités (vous pouvez ensuite en retirer compte par compte).</div>
  </div>;
 }
-const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):"",resumeActions(p.actions)].filter(Boolean).join(" · ");
+const resumeProfil=(p)=>[p.volets.map(v=>VOLETS[v]?.split(" (")[0]).filter(Boolean).join(", "),...CAPACITES.filter(([k])=>k==="creerOT"?p.creerOT===false:p[k]).map(([k,l])=>k==="creerOT"?"ne crée pas d'OT":l.split(" (")[0].toLowerCase()),p.rapports?"rapports : "+(ROLES_RAPPORTS.find(r=>r[0]===p.rapports)||[])[1]:"",(p.volets||[]).includes(1)||p.diSeulement?resumeNiveaux(p.niveauxDI):"",(p.volets||[]).includes(3)&&Array.isArray(p.niveauxPlan)?resumeNiveauxPlan(p.niveauxPlan):"",resumeActions(p.actions)].filter(Boolean).join(" · ");
 export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const [sel,setSel]=useState(null); const [msg,setMsg]=useState(""); const [comptes,setComptes]=useState([]);
  useEffect(()=>{api.users().then(r=>setComptes(r.users||[])).catch(()=>{});},[]);
@@ -255,7 +256,7 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
  const perso=profilsPerso.filter(p=>!PROFILS[p.nom]);
  const surcharge=(nom)=>profilsPerso.find(p=>p.nom===nom);
  const [baseSel,setBaseSel]=useState(null);
- const enregistrerBase=()=>{const {nom,niveauxDI,volets,supprimerRapports}=baseSel; const actions=normaliserActions(baseSel.actions); const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||plus.length||actions||supprimerRapports?[...r,{nom,surcharge:true,...(supprimerRapports?{supprimerRapports:true}:{}),...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{}),...(actions?{actions}:{})}]:r;}); setBaseSel(null);};
+ const enregistrerBase=()=>{const {nom,niveauxDI,niveauxPlan,volets,supprimerRapports}=baseSel; const actions=normaliserActions(baseSel.actions); const origine=PROFILS[nom].volets; const plus=(volets||[]).filter(v=>!origine.includes(v)); setProfilsPerso(l=>{const r=l.filter(p=>p.nom!==nom); return Array.isArray(niveauxDI)||Array.isArray(niveauxPlan)||plus.length||actions||supprimerRapports?[...r,{nom,surcharge:true,...(supprimerRapports?{supprimerRapports:true}:{}),...(Array.isArray(niveauxDI)?{niveauxDI}:{}),...(Array.isArray(niveauxPlan)?{niveauxPlan}:{}),...(plus.length?{volets:[...new Set([...origine,...plus])].sort()}:{}),...(actions?{actions}:{})}]:r;}); setBaseSel(null);};
   const modulesPlus=(nom)=>(surcharge(nom)?.volets||[]).filter(v=>!PROFILS[nom].volets.includes(v));
  const nouveau=()=>{setSel({_new:true,nom:"",libelle:"",volets:[],creerOT:true});setMsg("");};
  const enregistrer=()=>{
@@ -275,12 +276,13 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
    {perso.map(p=><Card key={p.nom} cls={"cursor-pointer "+(sel&&sel.nom===p.nom&&!sel._new?"border-sky-500":"")}><div onClick={()=>{setSel({...p,volets:[...(p.volets||[])]});setBaseSel(null);setMsg("");}}>
     <b className="text-slate-100 text-sm">{p.nom}</b> <span className="text-xs text-sky-400">personnalisé</span><div className="text-xs text-slate-400 mt-1">{resumeProfil({volets:[],...p})}</div><div className="text-xs text-slate-500">{utilisateurs(p.nom)} compte(s)</div></div></Card>)}
    <div className="text-xs text-slate-400 font-medium mt-3">Profils de base (fixes)</div>
-   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,actions:surcharge(n)?.actions,supprimerRapports:!!surcharge(n)?.supprimerRapports,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}{surcharge(n)?.actions&&<div className="text-xs text-amber-300/80 mt-1">{resumeActions(surcharge(n).actions)}</div>}</div></Card>)}
+   {base.map(([n,p])=><Card key={n} cls={"cursor-pointer "+(baseSel&&baseSel.nom===n?"border-sky-500":"")}><div onClick={()=>{setBaseSel({nom:n,niveauxDI:surcharge(n)?.niveauxDI,niveauxPlan:surcharge(n)?.niveauxPlan,actions:surcharge(n)?.actions,supprimerRapports:!!surcharge(n)?.supprimerRapports,volets:[...new Set([...p.volets,...(surcharge(n)?.volets||[])])].sort()});setSel(null);setMsg("");}}><b className="text-slate-200 text-sm">{n}</b><div className="text-xs text-slate-500 mt-1">{p.libelle}</div>{(p.volets.includes(1)||p.diSeulement)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveaux(surcharge(n)?.niveauxDI)}</div>}{p.volets.includes(3)&&<div className="text-xs text-sky-400/80 mt-1">{resumeNiveauxPlan(surcharge(n)?.niveauxPlan)}</div>}{modulesPlus(n).length>0&&<div className="text-xs text-emerald-400/80 mt-1">+ modules : {modulesPlus(n).map(v=>VOLETS[v].split(" (")[0]).join(", ")}</div>}{surcharge(n)?.actions&&<div className="text-xs text-amber-300/80 mt-1">{resumeActions(surcharge(n).actions)}</div>}</div></Card>)}
   </div>
   <div className="md:col-span-2">{baseSel&&!sel?<Card cls="space-y-3">
     <div className="text-sm text-slate-200"><b>{baseSel.nom}</b> <span className="text-xs text-slate-500">profil de base — vous pouvez lui ajouter des modules, régler les niveaux de DI et ce qu'il peut créer, modifier ou supprimer</span></div>
     <ChoixModulesBase base={PROFILS[baseSel.nom]} valeur={baseSel.volets||[]} onChange={v=>setBaseSel(b=>({...b,volets:v}))}/>
     <ChoixNiveauxDI valeur={baseSel.niveauxDI} onChange={v=>setBaseSel(b=>({...b,niveauxDI:v}))}/>
+    {(baseSel.volets||[]).includes(3)&&<ChoixNiveauxDI titre="Création des plans préventifs" testid="niveaux-plan" objet="un plan préventif" valeur={baseSel.niveauxPlan} onChange={v=>setBaseSel(b=>({...b,niveauxPlan:v}))}/>}
     <ChoixActions volets={baseSel.volets||[]} valeur={baseSel.actions} onChange={v=>setBaseSel(b=>({...b,actions:v}))}/>
     {(baseSel.volets||[]).includes(7)&&<Chk checked={!!baseSel.supprimerRapports} onChange={()=>setBaseSel(b=>({...b,supprimerRapports:!b.supprimerRapports}))}>Peut supprimer les rapports d'activité (main donnée par le super administrateur)</Chk>}
     <div className="flex gap-2 justify-end"><Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setBaseSel(null)}>Annuler</Btn><Btn onClick={enregistrerBase}>Enregistrer</Btn></div>
@@ -296,6 +298,7 @@ export function EditeurProfils({profilsPerso,setProfilsPerso}){
      <div className="space-y-1">{CAPACITES.map(([k,l])=><Chk key={k} checked={k==="creerOT"?sel.creerOT!==false:!!sel[k]} onChange={()=>bascule(k)}>{l}</Chk>)}</div></div>
     <ChoixActions volets={sel.volets} valeur={sel.actions} onChange={v=>setSel(s=>({...s,actions:v}))}/>
     <ChoixNiveauxDI valeur={sel.niveauxDI} onChange={v=>setSel(s=>({...s,niveauxDI:v}))}/>
+    {(sel.volets||[]).includes(3)&&<ChoixNiveauxDI titre="Création des plans préventifs" testid="niveaux-plan" objet="un plan préventif" valeur={sel.niveauxPlan} onChange={v=>setSel(s=>({...s,niveauxPlan:v}))}/>}
     <Field label="Rôle dans les rapports d'activité"><select aria-label="Rôle rapports" value={sel.rapports||""} onChange={e=>setSel({...sel,rapports:e.target.value||undefined})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1">{ROLES_RAPPORTS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></Field>
     {msg&&<div className="text-sm text-rose-100 bg-rose-900/60 border border-rose-500 rounded-lg px-3 py-2">⚠ {msg}</div>}
     <div className="flex gap-2 justify-end">
