@@ -1,7 +1,8 @@
 // Arborescence technique, appareils de mesure, contrôles réglementaires, organismes.
 import React,{useState} from "react";
 import {ORG_DOM} from "../constantes.js";
-import {MAX_ETIQUETTES,imprimerEtiquettes} from "../etiquettes.js";
+import {MAX_ETIQUETTES,imprimerEtiquettesQr} from "../etiquettes.js";
+import {noeudsSelectionnables} from "../lib/arbre.js";
 import {exporterXlsx} from "../excel.js";
 import {expStatus} from "../lib/echeances.js";
 import {UNIT_ABBR} from "../lib/unites.js";
@@ -21,13 +22,22 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
  const fleche=(ouvert)=><span className="inline-block w-4 text-center text-slate-500">{ouvert?"▾":"▸"}</span>;
  const [tab,setTab]=useState(mode==="arbo"?"arbo":"mesure");
  const [ctx,setCtx]=useState(null);
+ // Étiquettes QR de TOUS les nœuds (système, sous-système, équipement, sous-équipement, sous-sous-équipement), ou de la branche ouverte
  const etiquettes=()=>{
   const si=openSub?parseInt(String(openSub).split("-").pop(),10):-1;
   const sub=openSys&&si>=0?((treeStruct[openSys]||[])[si]||null):null;
-  const l=equipements.filter(e=>e.unit===unit&&(!openSys||e.system===openSys)&&(!sub||e.subCode===sub.code)).sort((a,b)=>a.code.localeCompare(b.code));
+  const l=noeudsSelectionnables({equipements:equipements.filter(e=>e.unit===unit),systemsList,treeStruct,unit})
+   .filter(n=>(!openSys||n.sys===openSys)&&(!sub||n.sub===sub.code))
+   .map(n=>({code:n.code,nom:n.nom,emplacement:n.emplacement,niveau:libelleNiveau(n.niveau)}));
   if(!l.length) return;
-  if(l.length>MAX_ETIQUETTES && !window.confirm(l.length+" équipements : seules les "+MAX_ETIQUETTES+" premières étiquettes seront imprimées. Ouvrez un système ou un sous-système pour réduire la liste. Continuer ?")) return;
-  imprimerEtiquettes(l);
+  if(l.length>MAX_ETIQUETTES && !window.confirm(l.length+" nœuds : seules les "+MAX_ETIQUETTES+" premières étiquettes seront imprimées. Ouvrez un système ou un sous-système pour réduire la liste. Continuer ?")) return;
+  imprimerEtiquettesQr(l,{type:"eq",titre:"Étiquettes arborescence — scanner pour déclarer une anomalie"});
+ };
+ // Étiquettes QR du matériel : appareils de mesure ou contrôles réglementaires (onglet affiché)
+ const etiquettesMat=()=>{
+  const l=(tab==="ctrl"?ctrlList:mesureList).map(m=>({code:m.code,nom:m.nom,niveau:tab==="ctrl"?"Contrôle réglementaire":"Appareil de mesure"}));
+  if(!l.length) return;
+  imprimerEtiquettesQr(l,{type:"mat",titre:"Étiquettes matériel — scanner pour ouvrir la fiche",pied:"Scanner = ouvrir la fiche"});
  };
  const exportArbo=()=>{
   if(tab==="mesure") return exporterXlsx({fichier:"Appareils_de_Mesure",feuilles:[{nom:"Appareils de mesure",titre:"Appareils de Mesure & Métrologie",
@@ -61,6 +71,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
    {tab==="org" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddOrg}><span className="flex items-center gap-1">{I.plus} Ajouter un organisme</span></Btn>}
    {tab==="ctrl" && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={onAddCtrl}><span className="flex items-center gap-1">{I.plus} Ajouter un contrôle</span></Btn>}
    {tab==="arbo" && <Btn cls="bg-slate-700 hover:bg-slate-600 text-slate-100" onClick={etiquettes}>🏷 Étiquettes QR</Btn>}
+   {(tab==="mesure"||tab==="ctrl") && <Btn cls="bg-slate-700 hover:bg-slate-600 text-slate-100" onClick={etiquettesMat}>🏷 Étiquettes QR</Btn>}
    <ExportBtn onClick={exportArbo}/>
   </div>
 
