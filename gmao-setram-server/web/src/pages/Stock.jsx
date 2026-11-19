@@ -1,4 +1,5 @@
 // Gestion de stock : articles, achats, décharges, DS / BS / BR.
+import {imprimerEtiquettesQr} from "../etiquettes.js";
 import React,{useState} from "react";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ETATS_MANUELS,ExportBtn,Field,Inp,StatutManuel,fmtFourn,ouiNon} from "../ui/base.jsx";
@@ -62,6 +63,7 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
     </div>
     <div className="flex gap-2">
      <ExportBtn onClick={exportSection}/>
+     {CAT[section] && <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>{const l=pieces.filter(p=>p.categorie===CAT[section]).map(p=>({code:p.code,nom:p.nom,emplacement:p.ref?"Réf. "+p.ref:"",niveau:p.categorie})); if(l.length) imprimerEtiquettesQr(l,{type:"piece",titre:"Étiquettes stock — scanner pour ouvrir la fiche article",pied:"Scanner = ouvrir la fiche"});}}>🏷 Étiquettes QR</Btn>}
      {CAT[section] && <Btn cls="bg-emerald-700 hover:bg-emerald-600" onClick={()=>onAddPiece(CAT[section])}><span className="flex items-center gap-1">{I.plus} Ajouter {section==="pieces"?"une pièce":section==="outillage"?"un outillage":"un consommable"}</span></Btn>}
      {CAT[section] && <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>onNewAchat("")}><span className="flex items-center gap-1">{I.plus} Nouvel achat</span></Btn>}
      {(section==="outillage"||section==="consommables"||section==="decharges") && <Btn cls="bg-amber-700 hover:bg-amber-600" onClick={()=>onNewDecharge("")}><span className="flex items-center gap-1">{I.plus} Nouvelle décharge</span></Btn>}
