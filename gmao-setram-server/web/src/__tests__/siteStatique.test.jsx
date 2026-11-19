@@ -175,8 +175,8 @@ describe('application complète en mode site statique', () => {
     await seConnecter('Responsable maintenance');
     onglet(/Maintenance corrective/);
     fireEvent.click(await screen.findByText('Nouvelle DI'));
-    const select = await waitFor(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value.startsWith('CFO.ALG'))); if (!s) throw new Error('equipements'); return s; });
-    fireEvent.change(select, { target: { value: 'CFO.ALG.SST.01' } });
+    fireEvent.change(await screen.findByLabelText('Équipement'), { target: { value: 'CFO.ALG.SST.01' } });
+    fireEvent.click(await waitFor(() => { const b = [...document.querySelectorAll('[role=option] button')].find((x) => x.textContent.includes('CFO.ALG.SST.01') && !x.textContent.includes('CFO.ALG.SST.01.')); if (!b) throw new Error('equipements'); return b; }));
     const avant = Object.keys(apiSite._etat().records.dis).length;
     fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { Arbo } from '../pages/Arborescence.jsx';
 import { DIForm, DIDetail } from '../pages/DemandesIntervention.jsx';
 import { cheminDI, noeudsSelectionnables } from '../lib/arbre.js';
@@ -71,14 +71,14 @@ describe('formulaire DI en cascade', () => {
   });
   it('niveau non permis : le nœud n\'est même pas proposé dans la liste', () => {
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" niveaux={['sousSousEquipement']} demandeur="K" onSubmit={() => {}} />);
-    const options = [...screen.getByLabelText('Équipement').options].map((o) => o.textContent).filter(Boolean);
-    expect(options.filter((o) => o.includes(' · '))).toEqual(['Sous-sous-équipement · CFO.ALG.SST.01.01.01 — Rotor']);
+    const options = within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent);
+    expect(options).toHaveLength(1);
+    expect(options[0]).toContain('CFO.ALG.SST.01.01.01');
   });
   it('droit « sous-sous-équipement » seul : on choisit le sous-sous-équipement et la DI est créée à ce niveau', () => {
     const onSubmit = vi.fn();
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" niveaux={['sousSousEquipement']} demandeur="K" onSubmit={onSubmit} />);
-    const opt = [...screen.getByLabelText('Équipement').options].find((o) => o.textContent.includes(ss.code));
-    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: opt.value } });
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(ss.code));
     fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, se: se.code, ss: ss.code, niveau: 'sousSousEquipement' });
@@ -119,15 +119,21 @@ describe('formulaire DI : un seul champ Équipement (code GMAO + nom)', () => {
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={() => {}} />);
     expect(screen.queryByLabelText('Système')).toBeNull();
     expect(screen.queryByLabelText('Sous-système')).toBeNull();
-    const options = [...screen.getByLabelText('Équipement').options].map((o) => o.textContent);
-    expect(options).toEqual(expect.arrayContaining([
-      'Système · CFO.ALG — Courant fort', 'Sous-système · CFO.ALG.SST — Sous-station', 'Équipement · CFO.ALG.SST.01 — Transformateur',
-      'Sous-équipement · CFO.ALG.SST.01.01 — Moteur', 'Sous-sous-équipement · CFO.ALG.SST.01.01.01 — Rotor']));
+    const options = within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent);
+    expect(options).toHaveLength(5);
+    for (const code of ['CFO.ALG', 'CFO.ALG.SST', 'CFO.ALG.SST.01', 'CFO.ALG.SST.01.01', 'CFO.ALG.SST.01.01.01']) expect(options.some((o) => o.includes(code))).toBe(true);
+  });
+  it('recherche : taper quelques lettres réduit la liste', () => {
+    render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: 'rotor' } });
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(options[0].textContent).toContain('Rotor');
   });
   it('choisir un équipement crée une DI sur l\'équipement entier et reprend son emplacement', () => {
     const onSubmit = vi.fn();
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: eq.code } });
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(eq.code, { exact: true }));
     expect(screen.getByDisplayValue('Local 1')).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Fuite' } });
     fireEvent.click(screen.getByText('Créer la DI'));

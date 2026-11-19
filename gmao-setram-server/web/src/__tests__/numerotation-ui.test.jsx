@@ -32,12 +32,9 @@ async function ouvrirFormulaireDI() {
   render(<App />);
   fireEvent.click(await screen.findByText('Maintenance corrective', { selector: 'nav button' }));
   fireEvent.click(await screen.findByText('Nouvelle DI'));
-  const select = await waitFor(() => {
-    const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === EQ.code));
-    if (!s) throw new Error('liste des équipements absente');
-    return s;
-  });
-  fireEvent.change(select, { target: { value: EQ.code } });
+  const champ = await screen.findByLabelText('Équipement');
+  fireEvent.change(champ, { target: { value: EQ.code } });                                  // recherche par code
+  fireEvent.click(await waitFor(() => { const b = [...document.querySelectorAll('[role=option] button')].find((x) => x.textContent.includes(EQ.code)); if (!b) throw new Error('liste des équipements absente'); return b; }));
 }
 
 describe('Création d’une DI : le numéro vient du serveur', () => {
