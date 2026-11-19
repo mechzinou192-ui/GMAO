@@ -4,7 +4,7 @@ import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
-import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte} from "../lib/arbre.js";
+import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte,noeudsSelectionnables,libelleNoeud} from "../lib/arbre.js";
 import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 
 // Chemin du nœud (système → … → nœud visé), affiché code par code
@@ -123,11 +123,14 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
  const ssCur=seCur&&(seCur.sousSousEquip||[]).find(y=>y.code===n.ss);
  const niveau=n.ss?"sousSousEquipement":n.se?"sousEquipement":n.eq?"equipement":n.sub?"sousSysteme":n.sys?"systeme":null;
  const niveauOk=niveau&&niveaux.includes(niveau);
- const choisirEquipement=(code)=>{
-  const e=equipements.find(y=>y.code===code);
-  setN(e?{sys:e.system,sub:e.subCode,eq:e.code,se:"",ss:""}:{sys:"",sub:"",eq:"",se:"",ss:""});
+ // tous les nœuds de l'arborescence que le profil a le droit de viser (un seul champ, filtré par niveaux autorisés)
+ const noeuds=useMemo(()=>noeudsSelectionnables({equipements,systemsList:systemes,treeStruct,unit:unite,niveaux}),[equipements,systemsList,treeStruct,unite,niveaux]);
+ const cleCourante=niveau?(noeuds.find(x=>x.niveau===niveau&&x.sys===n.sys&&(x.sub||"")===(n.sub||"")&&x.eq===n.eq&&x.se===n.se&&x.ss===n.ss)||{}).cle||"":"";
+ const choisirEquipement=(cle)=>{
+  const x=noeuds.find(y=>y.cle===cle);
+  setN(x?{sys:x.sys,sub:x.sub,eq:x.eq,se:x.se,ss:x.ss}:{sys:"",sub:"",eq:"",se:"",ss:""});
   setErr("");
-  setF(v=>({...v,emplacement:e?e.emplacement||"":""})); setFromFiche(!!(e&&e.emplacement));
+  setF(v=>({...v,emplacement:x?x.emplacement||"":""})); setFromFiche(!!(x&&x.emplacement));
  };
  // code GMAO et désignation du nœud visé
  const noeud=()=>{
@@ -150,7 +153,7 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
       <div className="text-xs text-sky-400">Nœud préchargé depuis l'arborescence</div>
       <div className="text-sm text-slate-100 mt-1">{niveau?noeud().eq+" — "+noeud().nom:"—"}</div>
      </div>
-   : <Field label="Équipement (code GMAO)"><select aria-label="Équipement" value={n.eq} onChange={e=>choisirEquipement(e.target.value)} className={sel}><option value="">— Choisir l'équipement (code GMAO) —</option>{equipements.map(e=><option key={e.code} value={e.code}>{e.code} — {e.nom}</option>)}</select></Field>}
+   : <Field label="Équipement / nœud de l'arborescence (code GMAO)"><select aria-label="Équipement" value={cleCourante} onChange={e=>choisirEquipement(e.target.value)} className={sel}><option value="">{noeuds.length?"— Choisir dans l'arborescence (code GMAO) —":"Aucun nœud accessible avec votre profil"}</option>{noeuds.map(x=><option key={x.cle} value={x.cle}>{libelleNoeud(x)}</option>)}</select></Field>}
   {niveau && !niveauOk && <div className="text-xs mt-2 text-rose-300">✕ Votre profil ne permet pas de créer une DI au niveau « {libelleNiveau(niveau)} » (niveaux permis : {niveaux.map(libelleNiveau).join(", ")||"aucun"}).</div>}
   <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement"}>
    <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={niveau?"À saisir":"Choisissez d'abord l'équipement"}/>
