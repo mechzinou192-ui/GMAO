@@ -17,7 +17,7 @@ import {AdminPage} from "./pages/Administration.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
-import {peutCloturer,peutCreerOT,peutValider,peutValiderOT,peutDemander,peutRepondreDemandes,accesValidation,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
+import {peutCloturer,peutCreerOT,peutValider,peutValiderOT,peutDemander,peutRepondreDemandes,accesValidation,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,niveauxPlanAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
 import {cheminDI} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
@@ -58,6 +58,7 @@ export function GmaoApp({session,onLogout}){
  const lectureArbo=lecture||!!profilDe(session)?.diSeulement||(!fait(0,"creer")&&!fait(0,"modifier")&&!fait(0,"supprimer"));
  const arboCreer=!lectureArbo&&fait(0,"creer"), arboModif=!lectureArbo&&fait(0,"modifier"), arboSuppr=!lectureArbo&&fait(0,"supprimer");
  const creerDI=!lecture&&fait(1,"creer");   // Arborescence : consultation seule (le serveur refuse de toute façon l'écriture)
+ const niveauxPlan=niveauxPlanAutorises(session);   // niveaux de l'arborescence où ce profil peut créer un plan préventif
  const niveauxDI=creerDI?niveauxDIAutorises(session):[];   // niveaux de l'arborescence où ce profil peut créer une DI
  const diAu=(niv)=>tabOk(1)&&niveauxDI.includes(niv);   // bouton « Créer une DI » des fiches : module DI requis (comme le clic droit de l'arborescence)   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
@@ -906,7 +907,7 @@ const [notice,setNotice]=useState(null);
   </Modal>}
 
   {planModal && <Modal wide title={planModal.mode==="edit"?"Plan préventif — "+planModal.item.code:"Nouveau plan préventif"} onClose={()=>setPlanModal(null)}>
-   <PlanForm mode={planModal.mode} item={planModal.item} compteurs={visCompteurs} systemsList={systemsList} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} inter={interAll} pieces={pieces} onSubmit={unSeul(savePlan)}/>
+   <PlanForm mode={planModal.mode} item={planModal.item} compteurs={visCompteurs} systemsList={systemsList} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} treeStruct={treeStruct} unit={unit} niveaux={niveauxPlan} inter={interAll} pieces={pieces} onSubmit={unSeul(savePlan)}/>
    {planModal.mode==="edit" && <ZoneSuppression quoi={"le plan "+planModal.item.code} bloque={blocage.plan(planModal.item)} onSupprimer={()=>supprimer.plan(planModal.item.code)}/>}
   </Modal>}
 
