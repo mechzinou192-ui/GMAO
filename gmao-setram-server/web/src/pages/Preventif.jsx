@@ -1,5 +1,5 @@
 // Planning préventif : plans, plage de déclenchement, agenda, formulaire de plan.
-import React,{useState} from "react";
+import React,{useState,useMemo} from "react";
 import {exporterXlsx} from "../excel.js";
 import {imprimerHtml} from "../imprimer.js";
 import {esc} from "../lib/impression.js";
@@ -11,6 +11,8 @@ import {PERIODES,avancement,datesFuturesPlan,datesPlanDansPlage,isPeriodePlan,oc
 import {Badge,Btn,Card,ExportBtn,Field,HoraireConsignation,Inp,KPI,LienFMP,MateriauxSection,Modal,MultiInter,ProgressBar,Segment,SubTabs} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 import {CompteursPage,statutBadge} from "./Compteurs.jsx";
+import {noeudsSelectionnables,libelleNoeud} from "../lib/arbre.js";
+import {CLES_NIVEAUX_DI,niveauDI} from "../../../server/src/profils-core.js";
 
 export function Planning(props){
  const [vue,setVue]=useState("plans");
@@ -337,24 +339,33 @@ function VueAnnuelle({annee,rows,events,onJour}){
 }
 
 // Prochaines échéances d'un plan (12 mois) pour prévenir d'un congé sur une occurrence ultérieure
-export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,pieces,onSubmit}){
+export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,pieces,onSubmit,treeStruct={},unit="",niveaux=CLES_NIVEAUX_DI}){
  const isEdit=mode==="edit";
  const [cf,setCf]=useState(isEdit&&isCompteurPlan(item)?{declenchement:"Compteur",compteur:item.compteur||"",pas:String(item.pas||""),seuil:String(item.seuil||SEUIL_DEFAUT),valeurDernier:String(item.valeurDernier??"")}
   :{declenchement:"Calendrier",compteur:"",pas:"",seuil:String(SEUIL_DEFAUT),valeurDernier:""});
  const parCpt=cf.declenchement==="Compteur";
- const [f,setF]=useState(isEdit?{code:item.code,sys:item.sys,eq:item.eq,nom:item.nom,periode:item.periode,date:item.date,assignes:item.assignes||(item.assigne?[item.assigne]:[]),exc:!!item.exc,motifExc:item.motifExc||"",horaire:item.horaire||"Jour",consignation:item.consignation||"Non"}
-  :{code:null,sys:"",eq:"",nom:"",periode:"Mensuel",date:todayStr(),assignes:[],exc:false,motifExc:"",horaire:"Jour",consignation:"Non"});
+ const [f,setF]=useState(isEdit?{code:item.code,sys:item.sys,eq:item.eq,se:item.se||"",ss:item.ss||"",nom:item.nom,periode:item.periode,date:item.date,assignes:item.assignes||(item.assigne?[item.assigne]:[]),exc:!!item.exc,motifExc:item.motifExc||"",horaire:item.horaire||"Jour",consignation:item.consignation||"Non"}
+  :{code:null,sys:"",eq:"",se:"",ss:"",nom:"",periode:"Mensuel",date:todayStr(),assignes:[],exc:false,motifExc:"",horaire:"Jour",consignation:"Non"});
  const [taches,setTaches]=useState(isEdit?[...item.taches]:[]);
  const [outil,setOutil]=useState(isEdit?[...(item.outillage||[])]:[]);
  const [conso,setConso]=useState(isEdit?[...(item.consommables||[])]:[]);
  const [nt,setNt]=useState("");
  const [err,setErr]=useState("");
  const selCls="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
- const liste=equipements.filter(e=>e.system===f.sys);
+ // nœuds de l'arborescence du système choisi, limités aux niveaux que le profil peut viser
+ const noeuds=useMemo(()=>noeudsSelectionnables({equipements:equipements.filter(e=>e.system===f.sys),systemsList:systemsList.filter(([c])=>c===f.sys),treeStruct,unit,niveaux}),[equipements,systemsList,treeStruct,unit,niveaux,f.sys]);
+ const noeudCourant=f.eq?noeuds.find(x=>niveauDI({eq:f.eq,se:f.se,ss:f.ss})===x.niveau&&(x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code===f.eq:x.eq===f.eq&&x.se===(f.se||"")&&x.ss===(f.ss||""))):null;
+ const choisirNoeud=(cle)=>{
+  const x=noeuds.find(y=>y.cle===cle);
+  if(!x){setF({...f,eq:"",se:"",ss:"",nom:""});return;}
+  const e=equipements.find(y=>y.code===x.eq), se=e&&(e.sousEquip||[]).find(y=>y.code===x.se), ss=se&&(se.sousSousEquip||[]).find(y=>y.code===x.ss);
+  const nom=x.niveau==="systeme"||x.niveau==="sousSysteme"?x.nom:e.nom+(se?" — "+se.code+" "+se.nom:"")+(ss?" — "+ss.code+" "+ss.nom:"");
+  setF({...f,eq:x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code:x.eq,se:x.se,ss:x.ss,nom});
+ };
  function addT(){ if(!nt.trim()) return; setTaches(l=>[...l,nt.trim()]); setNt(""); }
  function valider(){
   if(!f.sys){setErr("Choisissez un système.");return;}
-  if(!f.eq){setErr("Choisissez un équipement.");return;}
+  if(!f.eq||!noeudCourant){setErr("Choisissez l'équipement (nœud de l'arborescence) concerné.");return;}
   if(taches.length===0){setErr("Ajoutez au moins une tâche à réaliser.");return;}
   if(parCpt){
    const c=compteurs.find(x=>x.code===cf.compteur);
@@ -373,18 +384,18 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
   if(enConge.length){setErr("Changez l'intervenant : "+enConge.map(x=>x.n+" est en congé "+libConge(x.c)).join(" ; ")+".");return;}
   onSubmit({mode,data:{...f,exc:!!nonOuvre(f.date)&&f.exc,motifExc:nonOuvre(f.date)&&f.exc?f.motifExc.trim():"",debut:undefined,fin:undefined,intervalle:undefined,auto:undefined,avance:undefined,termine:false,declenchement:undefined,compteur:undefined,pas:undefined,seuil:undefined,valeurDernier:undefined,taches,outillage:outil,consommables:conso}});
  }
- const cptsDispo=compteurs.filter(c=>c.eq===f.eq);
+ const cptsDispo=noeudCourant&&noeudCourant.niveau==="equipement"?compteurs.filter(c=>c.eq===f.eq):[];
  const cptSel=compteurs.find(c=>c.code===cf.compteur);
  return (<div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
    <Field label="Système">
-    <select value={f.sys} onChange={e=>setF({...f,sys:e.target.value,eq:"",nom:""})} className={selCls}>
+    <select value={f.sys} onChange={e=>setF({...f,sys:e.target.value,eq:"",se:"",ss:"",nom:""})} className={selCls}>
      <option value="">— Choisir un système —</option>{systemsList.map(([c,n])=><option key={c} value={c}>{c} — {n}</option>)}
     </select>
    </Field>
-   <Field label="Équipement">
-    <select value={f.eq} disabled={!f.sys} onChange={e=>{const q=liste.find(x=>x.code===e.target.value);setF({...f,eq:q?q.code:"",nom:q?q.nom:""});}} className={selCls}>
-     <option value="">{f.sys?"— Choisir un équipement —":"Choisissez d'abord le système"}</option>{liste.map(e=><option key={e.code} value={e.code}>{e.code} — {e.nom}</option>)}
+   <Field label="Équipement / nœud de l'arborescence">
+    <select aria-label="Nœud de l'arborescence" value={noeudCourant?noeudCourant.cle:""} disabled={!f.sys} onChange={e=>choisirNoeud(e.target.value)} className={selCls}>
+     <option value="">{f.sys?(noeuds.length?"— Choisir dans l'arborescence —":"Aucun nœud accessible avec votre profil"):"Choisissez d'abord le système"}</option>{noeuds.map(x=><option key={x.cle} value={x.cle}>{libelleNoeud(x)}</option>)}
     </select>
    </Field>
   </div>
