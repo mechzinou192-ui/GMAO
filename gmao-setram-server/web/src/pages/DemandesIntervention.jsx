@@ -4,7 +4,8 @@ import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
-import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte,noeudsSelectionnables,libelleNoeud} from "../lib/arbre.js";
+import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte,noeudsSelectionnables} from "../lib/arbre.js";
+import SelecteurNoeud from "../ui/SelecteurNoeud.jsx";
 import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 
 // Chemin du nœud (système → … → nœud visé), affiché code par code
@@ -153,7 +154,7 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
       <div className="text-xs text-sky-400">Nœud préchargé depuis l'arborescence</div>
       <div className="text-sm text-slate-100 mt-1">{niveau?noeud().eq+" — "+noeud().nom:"—"}</div>
      </div>
-   : <Field label="Équipement / nœud de l'arborescence (code GMAO)"><select aria-label="Équipement" value={cleCourante} onChange={e=>choisirEquipement(e.target.value)} className={sel}><option value="">{noeuds.length?"— Choisir dans l'arborescence (code GMAO) —":"Aucun nœud accessible avec votre profil"}</option>{noeuds.map(x=><option key={x.cle} value={x.cle}>{libelleNoeud(x)}</option>)}</select></Field>}
+   : <Field label="Équipement / nœud de l'arborescence (code GMAO)"><SelecteurNoeud ariaLabel="Équipement" noeuds={noeuds} cle={cleCourante} onChange={choisirEquipement} msgVide="Aucun nœud accessible avec votre profil"/></Field>}
   {niveau && !niveauOk && <div className="text-xs mt-2 text-rose-300">✕ Votre profil ne permet pas de créer une DI au niveau « {libelleNiveau(niveau)} » (niveaux permis : {niveaux.map(libelleNiveau).join(", ")||"aucun"}).</div>}
   <Field label={fromFiche?"Emplacement (repris automatiquement de la fiche équipement)":"Emplacement"}>
    <Inp value={f.emplacement} disabled={fromFiche} className={fromFiche?"opacity-60":""} onChange={e=>setF({...f,emplacement:e.target.value})} placeholder={niveau?"À saisir":"Choisissez d'abord l'équipement"}/>

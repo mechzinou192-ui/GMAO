@@ -11,7 +11,8 @@ import {PERIODES,avancement,datesFuturesPlan,datesPlanDansPlage,isPeriodePlan,oc
 import {Badge,Btn,Card,ExportBtn,Field,HoraireConsignation,Inp,KPI,LienFMP,MateriauxSection,Modal,MultiInter,ProgressBar,Segment,SubTabs} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 import {CompteursPage,statutBadge} from "./Compteurs.jsx";
-import {noeudsSelectionnables,libelleNoeud} from "../lib/arbre.js";
+import {noeudsSelectionnables} from "../lib/arbre.js";
+import SelecteurNoeud from "../ui/SelecteurNoeud.jsx";
 import {CLES_NIVEAUX_DI,niveauDI} from "../../../server/src/profils-core.js";
 
 export function Planning(props){
@@ -394,9 +395,7 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
     </select>
    </Field>
    <Field label="Équipement / nœud de l'arborescence">
-    <select aria-label="Nœud de l'arborescence" value={noeudCourant?noeudCourant.cle:""} disabled={!f.sys} onChange={e=>choisirNoeud(e.target.value)} className={selCls}>
-     <option value="">{f.sys?(noeuds.length?"— Choisir dans l'arborescence —":"Aucun nœud accessible avec votre profil"):"Choisissez d'abord le système"}</option>{noeuds.map(x=><option key={x.cle} value={x.cle}>{libelleNoeud(x)}</option>)}
-    </select>
+    <SelecteurNoeud noeuds={noeuds} cle={noeudCourant?noeudCourant.cle:""} disabled={!f.sys} onChange={choisirNoeud}/>
    </Field>
   </div>
   <div className="mt-2"><div className="text-xs text-slate-400">Déclenchement</div><Segment value={parCpt?"Compteur (km, heures…)":"Calendrier"} options={["Calendrier","Compteur (km, heures…)"]} onChange={v=>setCf({...cf,declenchement:v==="Calendrier"?"Calendrier":"Compteur"})}/></div>
