@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { Arbo } from '../pages/Arborescence.jsx';
 import { DIForm, DIDetail } from '../pages/DemandesIntervention.jsx';
-import { cheminDI } from '../lib/arbre.js';
+import { cheminDI, noeudsSelectionnables } from '../lib/arbre.js';
 import { controleProfil, definirProfilsPersonnalises, niveauDI, niveauxDIAutorises, catalogue } from '../../../server/src/profils-core.js';
 
 afterEach(() => { cleanup(); definirProfilsPersonnalises([]); });
@@ -69,14 +69,19 @@ describe('formulaire DI en cascade', () => {
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: 'CFO.ALG.SST', niveau: 'sousSysteme', se: '', ss: '' });
   });
-  it('niveau non permis : refus avec message, rien n\'est envoyé', () => {
+  it('niveau non permis : le nœud n\'est même pas proposé dans la liste', () => {
+    render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" niveaux={['sousSousEquipement']} demandeur="K" onSubmit={() => {}} />);
+    const options = [...screen.getByLabelText('Équipement').options].map((o) => o.textContent).filter(Boolean);
+    expect(options.filter((o) => o.includes(' · '))).toEqual(['Sous-sous-équipement · CFO.ALG.SST.01.01.01 — Rotor']);
+  });
+  it('droit « sous-sous-équipement » seul : on choisit le sous-sous-équipement et la DI est créée à ce niveau', () => {
     const onSubmit = vi.fn();
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" niveaux={['sousSousEquipement']} demandeur="K" onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: eq.code } });
+    const opt = [...screen.getByLabelText('Équipement').options].find((o) => o.textContent.includes(ss.code));
+    fireEvent.change(screen.getByLabelText('Équipement'), { target: { value: opt.value } });
     fireEvent.change(screen.getByPlaceholderText('Obligatoire : décrire le constat'), { target: { value: 'Constat de test' } });
     fireEvent.click(screen.getByText('Créer la DI'));
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain('ne permet pas de créer une DI au niveau « Équipement »');
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ eq: eq.code, se: se.code, ss: ss.code, niveau: 'sousSousEquipement' });
   });
 });
 
@@ -110,13 +115,14 @@ describe('arborescence : une flèche par niveau', () => {
 });
 
 describe('formulaire DI : un seul champ Équipement (code GMAO + nom)', () => {
-  it('aucune cascade : seuls « code — nom » des équipements sont proposés', () => {
+  it('aucune cascade : un seul champ listant tous les niveaux autorisés (système → sous-sous-équipement)', () => {
     render(<DIForm equipements={[eq]} systemsList={systemsList} treeStruct={treeStruct} unit="Alger" demandeur="K" onSubmit={() => {}} />);
     expect(screen.queryByLabelText('Système')).toBeNull();
     expect(screen.queryByLabelText('Sous-système')).toBeNull();
     const options = [...screen.getByLabelText('Équipement').options].map((o) => o.textContent);
-    expect(options).toContain('CFO.ALG.SST.01 — Transformateur');
-    expect(options.some((o) => o.includes(se.code))).toBe(false);
+    expect(options).toEqual(expect.arrayContaining([
+      'Système · CFO.ALG — Courant fort', 'Sous-système · CFO.ALG.SST — Sous-station', 'Équipement · CFO.ALG.SST.01 — Transformateur',
+      'Sous-équipement · CFO.ALG.SST.01.01 — Moteur', 'Sous-sous-équipement · CFO.ALG.SST.01.01.01 — Rotor']));
   });
   it('choisir un équipement crée une DI sur l\'équipement entier et reprend son emplacement', () => {
     const onSubmit = vi.fn();
@@ -143,5 +149,18 @@ describe('DI : la désignation est obligatoire', () => {
     fireEvent.click(screen.getByText('Créer la DI'));
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit.mock.calls[0][0].designation).toBe('Fuite d\'huile');
+  });
+});
+
+describe('préventif : niveaux autorisés (même principe que les DI)', () => {
+  it('noeudsSelectionnables ne renvoie que les niveaux permis', () => {
+    const l = noeudsSelectionnables({ ...ctx, unit: 'Alger', niveaux: ['equipement', 'sousEquipement'] });
+    expect(l.map((n) => n.niveau)).toEqual(['equipement', 'sousEquipement']);
+  });
+  it('le serveur refuse un plan à un niveau non autorisé et accepte le niveau permis', () => {
+    definirProfilsPersonnalises([{ nom: 'Chargé système', surcharge: true, niveauxPlan: ['sousSousEquipement'] }]);
+    const user = { role: 'Chargé système' };
+    expect(controleProfil(user, 'planning', null, { eq: eq.code, nom: 'x', taches: [] })).toMatch(/plan préventif non autorisée/);
+    expect(controleProfil(user, 'planning', null, { eq: eq.code, se: se.code, ss: ss.code, nom: 'x', taches: [] })).toBeNull();
   });
 });
