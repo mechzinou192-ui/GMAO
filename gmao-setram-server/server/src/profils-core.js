@@ -25,6 +25,7 @@ export const TOUS_SYSTEMES = '*';
 //   delegable                     peut être attribué par un administrateur UO délégué
 //   supprimerRapports             peut supprimer un rapport d'activité (à tout statut) : donné par le super administrateur
 //   niveauxDI                     niveaux de l'arborescence où le profil peut créer des DI (absent = tous)
+//   niveauxPlan                   niveaux de l'arborescence où le profil peut créer des plans préventifs (absent = tous)
 //   actions                       par module : actions permises { "<volet>": ["creer","modifier","supprimer"] }
 //                                 (module absent = toutes les actions ; décidé par le super administrateur)
 export const PROFILS = {
@@ -67,6 +68,12 @@ export function niveauxDIAutorises(user) {
   return p && Array.isArray(p.niveauxDI) ? p.niveauxDI : CLES_NIVEAUX_DI;
 }
 export const peutCreerDIAuNiveau = (user, niveau) => niveauxDIAutorises(user).includes(niveau);
+// Même réglage pour les plans préventifs : niveaux de l'arborescence où le profil peut créer un plan (absent = tous)
+export function niveauxPlanAutorises(user) {
+  const p = profilDe(user);
+  return p && Array.isArray(p.niveauxPlan) ? p.niveauxPlan : CLES_NIVEAUX_DI;
+}
+export const peutCreerPlanAuNiveau = (user, niveau) => niveauxPlanAutorises(user).includes(niveau);
 
 // Profils créés par le super administrateur (organigramme) : chargés depuis la collection « profils »
 let PERSONNALISES = {};
@@ -95,7 +102,7 @@ export function normaliserActions(v) {
 // Opération demandée d'après les données avant / après (null = création / suppression)
 export const operation = (cur, next) => (!cur ? 'creer' : !next ? 'supprimer' : 'modifier');
 
-const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'valideOT', 'demandes', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI', 'supprimerRapports'];
+const CLES = ['actions', 'volets', 'cloture', 'creerOT', 'diSeulement', 'saisieSeule', 'valide', 'valideOT', 'demandes', 'lectureSeule', 'rapports', 'toutesUnites', 'tousSystemes', 'delegationComptes', 'delegable', 'libelle', 'niveauxDI', 'niveauxPlan', 'supprimerRapports'];
 export function normaliserProfil(d) {
   const o = {};
   for (const k of CLES) if (d && d[k] !== undefined) o[k] = d[k];
@@ -104,6 +111,8 @@ export function normaliserProfil(d) {
   o.libelle = String(o.libelle || '').slice(0, 300);
   const niv = normaliserNiveaux(o.niveauxDI);
   if (niv) o.niveauxDI = niv; else delete o.niveauxDI;
+  const nivP = normaliserNiveaux(o.niveauxPlan);
+  if (nivP) o.niveauxPlan = nivP; else delete o.niveauxPlan;
   const act = normaliserActions(o.actions);
   if (act) o.actions = act; else delete o.actions;
   if (o.supprimerRapports === true) o.supprimerRapports = true; else delete o.supprimerRapports;
@@ -116,6 +125,8 @@ export function definirProfilsPersonnalises(liste) {
     const reglage = {};
     const niv = normaliserNiveaux(d.niveauxDI);
     if (niv) reglage.niveauxDI = niv;
+    const nivP = normaliserNiveaux(d.niveauxPlan);
+    if (nivP) reglage.niveauxPlan = nivP;
     const act = normaliserActions(d.actions);
     if (act) reglage.actions = act;
     if (d.supprimerRapports === true) reglage.supprimerRapports = true;
@@ -215,6 +226,13 @@ export function controleProfil(user, collection, cur, next) {
     const niv = niveauDI(next);
     const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '');
     if (change && !p.niveauxDI.includes(niv)) return `Profil ${nom} : création de DI non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxDI.map(libelleNiveau).join(', ') || 'aucun'}).`;
+  }
+
+  // Plan préventif : même contrôle (création, ou changement du nœud visé)
+  if (collection === 'planning' && next && Array.isArray(p.niveauxPlan)) {
+    const niv = niveauDI(next);
+    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '');
+    if (change && !p.niveauxPlan.includes(niv)) return `Profil ${nom} : création de plan préventif non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxPlan.map(libelleNiveau).join(', ') || 'aucun'}).`;
   }
 
   if (collection === 'demandes') return controleDemande(user, p, cur, next);
