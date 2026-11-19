@@ -2,7 +2,7 @@
 // Système (SYS.UNI) → sous-système (SYS.UNI.SOUS) → équipement (SYS.UNI.SOUS.01)
 //   → sous-équipement (….01.01) → sous-sous-équipement (….01.01.01)
 import {UNIT_ABBR} from "./unites.js";
-import {niveauDI} from "../../../server/src/profils-core.js";
+import {niveauDI,libelleNiveau} from "../../../server/src/profils-core.js";
 
 export const codeSysteme=(sys,unit)=>sys+"."+(UNIT_ABBR[unit]||unit);
 export const codeSousSysteme=(sys,unit,sub)=>codeSysteme(sys,unit)+"."+sub;
@@ -56,3 +56,47 @@ export function noeudDI(d,chemin){
  return {code,nom:d.ss||d.se?"":dernierMorceau};
 }
 export const noeudTexte=(d,chemin)=>{const n=noeudDI(d,chemin);return n.nom?n.code+" — "+n.nom:n.code;};
+
+/*
+ * Liste à plat de TOUS les nœuds de l'arborescence que l'on peut choisir dans un formulaire (DI, plan préventif),
+ * limitée aux niveaux autorisés au profil : système, sous-système, équipement, sous-équipement, sous-sous-équipement.
+ * Chaque nœud : { cle, niveau, sys, sub, eq, se, ss, code, nom, libelle, emplacement }.
+ *  - eq/se/ss : mêmes champs que ceux enregistrés dans une DI / un plan (eq = code du nœud pour système et sous-système) ;
+ *  - cle : valeur du <select> (le code de l'équipement pour le niveau équipement, préfixée pour les autres).
+ */
+export function noeudsSelectionnables({equipements=[],systemsList=[],treeStruct={},unit="",niveaux=["systeme","sousSysteme","equipement","sousEquipement","sousSousEquipement"]}={}){
+ const ok=(n)=>niveaux.includes(n);
+ const out=[];
+ const sys=systemsList.map(x=>x[0]).filter(c=>c!=="MESURE"&&c!=="CTRL");
+ const systemes=[...new Set([...sys,...equipements.map(e=>e.system)])].filter(Boolean);
+ const u=unit||(equipements[0]&&equipements[0].unit)||"";
+ for(const s of systemes){
+  const nomS=nomSysteme(s,systemsList);
+  if(ok("systeme")) out.push({cle:"systeme:"+s,niveau:"systeme",sys:s,sub:"",eq:"",se:"",ss:"",code:codeSysteme(s,u),nom:nomS,emplacement:""});
+  const subs=(treeStruct[s]||[]).map(x=>({code:x.code,nom:x.sub}));
+  equipements.filter(e=>e.system===s&&e.subCode&&!subs.some(x=>x.code===e.subCode)).forEach(e=>subs.push({code:e.subCode,nom:""}));
+  for(const sb of subs){
+   if(ok("sousSysteme")) out.push({cle:"sousSysteme:"+s+"."+sb.code,niveau:"sousSysteme",sys:s,sub:sb.code,eq:"",se:"",ss:"",code:codeSousSysteme(s,u,sb.code),nom:sb.nom,emplacement:""});
+   for(const e of equipements.filter(x=>x.system===s&&x.subCode===sb.code)){
+    if(ok("equipement")) out.push({cle:e.code,niveau:"equipement",sys:s,sub:sb.code,eq:e.code,se:"",ss:"",code:e.code,nom:e.nom,emplacement:e.emplacement||""});
+    for(const se of (e.sousEquip||[])){
+     if(ok("sousEquipement")) out.push({cle:"sousEquipement:"+e.code+"|"+se.code,niveau:"sousEquipement",sys:s,sub:sb.code,eq:e.code,se:se.code,ss:"",code:se.code,nom:se.nom,emplacement:e.emplacement||""});
+     for(const ss of (se.sousSousEquip||[]))
+      if(ok("sousSousEquipement")) out.push({cle:"sousSousEquipement:"+e.code+"|"+se.code+"|"+ss.code,niveau:"sousSousEquipement",sys:s,sub:sb.code,eq:e.code,se:se.code,ss:ss.code,code:ss.code,nom:ss.nom,emplacement:e.emplacement||""});
+    }
+   }
+  }
+  // équipements sans sous-système connu
+  for(const e of equipements.filter(x=>x.system===s&&!x.subCode)){
+   if(ok("equipement")) out.push({cle:e.code,niveau:"equipement",sys:s,sub:"",eq:e.code,se:"",ss:"",code:e.code,nom:e.nom,emplacement:e.emplacement||""});
+   for(const se of (e.sousEquip||[])){
+    if(ok("sousEquipement")) out.push({cle:"sousEquipement:"+e.code+"|"+se.code,niveau:"sousEquipement",sys:s,sub:"",eq:e.code,se:se.code,ss:"",code:se.code,nom:se.nom,emplacement:e.emplacement||""});
+    for(const ss of (se.sousSousEquip||[]))
+     if(ok("sousSousEquipement")) out.push({cle:"sousSousEquipement:"+e.code+"|"+se.code+"|"+ss.code,niveau:"sousSousEquipement",sys:s,sub:"",eq:e.code,se:se.code,ss:ss.code,code:ss.code,nom:ss.nom,emplacement:e.emplacement||""});
+   }
+  }
+ }
+ return out;
+}
+// Texte d'une option de liste : « Sous-équipement · CFO.ALG.SST.01.01 — Moteur »
+export const libelleNoeud=(n)=>libelleNiveau(n.niveau)+" · "+n.code+(n.nom?" — "+n.nom:"");
