@@ -8,7 +8,7 @@ import {CDC_ETATS,CONTRAT_SEUIL_MOIS,HAB_SEUIL_MOIS,contratInfo,habListe} from "
 import {FERIES_DEFAUT,congeAt,libConge} from "./lib/jours.js";
 import {kpiEqInfo,kpiUnitOf} from "./lib/kpi.js";
 import {buildBTPrev,datesPlanDansPlage,estOTPreventif,isPeriodePlan,occurrencesPlan,prochaineEcheance,tRes} from "./lib/preventif.js";
-import {codeDepuisAdresse} from "./lib/qr.js";
+import {cibleDepuisAdresse} from "./lib/qr.js";
 import {SYSTEMS_SEED,TREE_STRUCT_SEED} from "./lib/referentiels-defaut.js";
 import {UNITS,UNIT_ABBR} from "./lib/unites.js";
 import {reserverNumeros} from "./numbering.js";
@@ -18,7 +18,7 @@ import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
 import {peutCloturer,peutCreerOT,peutValider,peutValiderOT,peutDemander,peutRepondreDemandes,accesValidation,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,niveauxPlanAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
-import {cheminDI} from "./lib/arbre.js";
+import {cheminDI,noeudsSelectionnables} from "./lib/arbre.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
 import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SousSousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
@@ -361,18 +361,43 @@ async function declencherPlan(pl){
  }
 
 const [notice,setNotice]=useState(null);
- // Lien d'un QR code (?eq=CODE) : ouvre la déclaration d'une DI pour cet équipement, une seule fois
- const lienEq=useRef(typeof window!=="undefined"?codeDepuisAdresse(window.location.search):null);
+ // Lien d'un QR code, une seule fois :
+ //  ?eq=CODE    nœud de l'arborescence (système … sous-sous-équipement) : ouvre la déclaration d'une DI sur ce nœud
+ //  ?piece=CODE article du stock : ouvre sa fiche        ?mat=CODE  appareil de mesure / contrôle : ouvre sa fiche
+ const lienEq=useRef(typeof window!=="undefined"?cibleDepuisAdresse(window.location.search):null);
  useEffect(()=>{
-  const code=lienEq.current; if(!code||sEq!=="ready") return;
+  const cible=lienEq.current; if(!cible) return;
+  const pret=cible.type==="eq"?sEq==="ready":cible.type==="piece"?sPie==="ready":(sMes==="ready"&&sCtrl==="ready"&&sEq==="ready");
+  if(!pret) return;
   lienEq.current=null;
   try{ window.history.replaceState(null,"",window.location.pathname); }catch{ /* adresse non modifiable : sans importance */ }
   const avis=(t)=>{setNotice(t); setTimeout(()=>setNotice(null),9000);};
-  const e=equipements.find(x=>x.code===code);
-  if(!e) return avis("QR code : équipement « "+code+" » introuvable ou hors de vos droits d'accès.");
-  if(!sa && !((session.droits[e.unit]||{}).volets||[]).includes(1)) return avis("QR code "+code+" : vous n'avez pas le droit de créer une demande d'intervention pour cette unité.");
-  setUnit(e.unit); setTab(1); setDiModal({prefill:{eq:e.code,nom:e.nom}});
- },[sEq,equipements]);
+  const {type,code}=cible;
+  if(type==="piece"){
+   const pc=pieces.find(x=>x.code===code);
+   if(!pc) return avis("QR code : article « "+code+" » introuvable.");
+   if(!tabOk(4)) return avis("QR code "+code+" : vous n'avez pas accès au module Stock.");
+   setTab(4); setPieceModal(pc); return;
+  }
+  if(type==="mat"){
+   const m=mesureList.find(x=>x.code===code), c=!m&&ctrlList.find(x=>x.code===code);
+   if(!m&&!c) return avis("QR code : matériel « "+code+" » introuvable.");
+   if(!tabOk(MATERIAUX)) return avis("QR code "+code+" : vous n'avez pas accès au module Matériaux.");
+   setTab(MATERIAUX); if(m) setMesureModal({mode:"edit",item:m}); else setCtrlModal({mode:"edit",item:c}); return;
+  }
+  // nœud de l'arborescence : on le cherche dans toutes les unités accessibles
+  let noeud=null, unite=null;
+  for(const u of Object.keys(UNIT_ABBR)){
+   const n=noeudsSelectionnables({equipements:equipements.filter(e=>e.unit===u),systemsList,treeStruct,unit:u}).find(x=>x.code===code);
+   if(n){noeud=n;unite=u;break;}
+  }
+  if(!noeud||!(sa||sysOk(noeud.sys))) return avis("QR code : nœud « "+code+" » introuvable ou hors de vos droits d'accès.");
+  if(!sa && !((session.droits[unite]||{}).volets||[]).includes(1)) return avis("QR code "+code+" : vous n'avez pas le droit de créer une demande d'intervention pour cette unité.");
+  const e=equipements.find(x=>x.code===noeud.eq), se=e&&(e.sousEquip||[]).find(x=>x.code===noeud.se), ss=se&&(se.sousSousEquip||[]).find(x=>x.code===noeud.ss);
+  const prefill=noeud.niveau==="systeme"||noeud.niveau==="sousSysteme"?{eq:noeud.code,nom:noeud.nom,niveau:noeud.niveau}
+   :{eq:e.code,nom:e.nom+(se?" — "+se.code+" "+se.nom:"")+(ss?" — "+ss.code+" "+ss.nom:""),...(se?{se:se.code}:{}),...(ss?{ss:ss.code}:{}),niveau:noeud.niveau};
+  setUnit(unite); setTab(1); setDiModal({prefill});
+ },[sEq,sPie,sMes,sCtrl,equipements,pieces,mesureList,ctrlList]);  // eslint-disable-line
  const [syncErr,setSyncErr]=useState(null);
  useEffect(()=>{let t;const h=(e)=>{setSyncErr(e.detail);clearTimeout(t);t=setTimeout(()=>setSyncErr(null),10000);};window.addEventListener("gmao:error",h);return()=>{window.removeEventListener("gmao:error",h);clearTimeout(t);};},[]);
  const [feries,setFeries,sFer]=useSynced("feries",{defaults:FERIES_DEFAUT,sa:session.superAdmin});
