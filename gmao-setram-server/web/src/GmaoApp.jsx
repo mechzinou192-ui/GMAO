@@ -98,6 +98,9 @@ export function GmaoApp({session,onLogout}){
  const [assistant,setAssistant]=useState(false);   // panneau « Assistant GMAO »
  const [rapports,setRapports]=useSynced("rapports");
  const [chargesRAM,setChargesRAM]=useSynced("charge_ram");   // charge mensuelle du rapport d'activité (RAM), par unité et par mois
+ // Unités de l'export « Par unité » : celles où l'utilisateur a le volet Indicateurs (une seule pour un agent d'unité ; toutes pour le super administrateur, les experts et le responsable DG)
+ const unitesRHdroit=UNITS.filter(u=>(session.droits[u]?.volets||[]).includes(6));
+ const unitesRH=sa?UNITS:(unitesRHdroit.length?unitesRHdroit:[unit]);
  const saveChargeRAM=(u,mois,valeur)=>{const code="RAM-"+String(u).replace(/[^A-Za-z0-9]/g,"")+"-"+mois;
   setChargesRAM(l=>{ if(!(Number(valeur)>0)) return l.filter(x=>x.code!==code);   // case vidée : la ligne est supprimée
    const rec={code,unit:u,mois,chargeRAM:Number(valeur),saisiPar:user,saisiLe:new Date().toISOString()};
@@ -777,7 +780,7 @@ const [notice,setNotice]=useState(null);
    {tab===3 && sousOnglet==="plan" && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
-   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={sa?UNITS:[unit]} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
+   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={unitesRH} disTous={dis} btsTous={bts} planningTous={planning} equipementsTous={equipements} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
   </main>
   </div>
   </div>
