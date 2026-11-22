@@ -65,13 +65,13 @@ export function GmaoApp({session,onLogout}){
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
  const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===3?(tabOk(2)||tabOk(3)):tabOk(i);   // 3 = Préventif : regroupe « OT préventifs » (volet 2) et « Planning Préventif » (volet 3)   // matériaux : volet 8, indépendant de l'arborescence
  const tab=voir(tabRaw)?tabRaw:ACCUEIL;
- const [prevSub,setPrevSub]=useState("ot");   // sous-onglet du Préventif : "ot" (OT préventifs) ou "plan" (Planning Préventif)
+ const [prevSub,setPrevSub]=useState("plan");   // sous-onglet du Préventif : "plan" (Planning Préventif, 1er) ou "ot" (OT préventifs, 2e)
   const setTab=(i,sub)=>{
    if(i===2){ if(voir(3)){setPrevSub("ot");setTabRaw(3);} return; }   // l'ancien onglet « Ordres de travail » vit maintenant dans Préventif
-   if(i===3){ if(voir(3)){setPrevSub(sub||(tabOk(2)?"ot":"plan"));setTabRaw(3);} return; }
+   if(i===3){ if(voir(3)){setPrevSub(sub||(tabOk(3)?"plan":"ot"));setTabRaw(3);} return; }
    if(voir(i))setTabRaw(i);
   };
-  const sousOnglet=tabOk(2)&&tabOk(3)?prevSub:(tabOk(2)?"ot":"plan");
+  const sousOnglet=tabOk(2)&&tabOk(3)?prevSub:(tabOk(3)?"plan":"ot");
  // ouvre un OT dans le module qui le contient (OT préventifs : Gestion des OT ; correctifs : maintenance corrective)
  const ouvrirOT=(code)=>{const b=bts.find(x=>x.code===code); setTab(b&&estOTPreventif(b)?2:1); setBtDetail(code);};
  const mobile=()=>typeof window!=="undefined"&&window.innerWidth<768;
@@ -765,8 +765,8 @@ const [notice,setNotice]=useState(null);
        setDemandes(l=>[d,...l]); return d;}}:null}/>}
    {tab===7 && (sa||delegue) && <AdminPage superAdmin={sa} unitesAdmin={unitsOk} profilsPerso={profilsPerso} setProfilsPerso={setProfilsPerso} systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
    {tab===3 && <div className="flex gap-2 mb-3" role="tablist" aria-label="Préventif" data-testid="prev-soustabs">
-    {tabOk(2) && <button role="tab" aria-selected={sousOnglet==="ot"} onClick={()=>setPrevSub("ot")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="ot"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>OT préventifs</button>}
     {tabOk(3) && <button role="tab" aria-selected={sousOnglet==="plan"} onClick={()=>setPrevSub("plan")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="plan"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>Planning Préventif</button>}
+    {tabOk(2) && <button role="tab" aria-selected={sousOnglet==="ot"} onClick={()=>setPrevSub("ot")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="ot"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>OT préventifs</button>}
    </div>}
    {tab===3 && sousOnglet==="ot" && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {sousOnglet==="plan" && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
