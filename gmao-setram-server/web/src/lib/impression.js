@@ -1,7 +1,7 @@
-// Ordre de travail imprimable (A4) : document HTML autonome, prévu pour « Imprimer » ou « Enregistrer au format PDF ».
+// Fiche de travail imprimable (A4) à remplir à la main sur le terrain, puis saisie au bureau.
+// Aucun prix, aucun coût : seules les informations déjà saisies dans la GMAO sont pré-remplies, le reste est laissé vide.
 // Fonction pure : retourne du texte, ne touche ni à la fenêtre ni aux données.
 import {tRes} from "./preventif.js";
-import {coutBT} from "./couts.js";
 
 const ESC={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 export const esc=(v)=>String(v??"").replace(/[&<>"']/g,(c)=>ESC[c]);
@@ -26,37 +26,48 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .id td:nth-child(odd){background:#f7f7f7;font-weight:bold;width:16%}
 .box{display:inline-block;width:12px;height:12px;border:1.5px solid #111;margin-right:6px;vertical-align:middle;text-align:center;line-height:10px;font-size:11px}
 .cmt{height:16px}
-.vide td{height:22px}
+.vide td{height:26px}
+.ecrire{height:34px}
+.cer{display:inline-block;min-width:20px;height:20px;line-height:18px;border:1.5px solid #111;border-radius:50%;text-align:center;margin:0 3px;font-size:11px}
+.cer.on{background:#111;color:#fff}
 .consigne{border:1px solid #888;padding:5px 7px;background:#fafafa}
-.tot{text-align:right;margin-top:4px}
 .sign{display:flex;gap:8px;margin-top:14px;page-break-inside:avoid}
 .sign div{flex:1;border:1px solid #888;height:70px;padding:3px 5px;font-size:11px}
 .pied{margin-top:10px;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:3px}
 tr{page-break-inside:avoid}
 `;
 
+const vide=(n,cols)=>`<tr class="vide">${"<td></td>".repeat(cols)}</tr>`.repeat(n);
+const vf=(v)=>{const t=String(v??"").trim(); return t&&t!=="-"?esc(t):"";};   // valeur saisie, sinon case à écrire à la main
+const echelle=(v)=>[1,2,3,4].map(g=>`<span class="cer${Number(v)===g?" on":""}">${g}</span>`).join("");
+const heures=(v)=>v!=null&&v!==""&&Number(v)>0?esc(v)+" h":"……… h";
+
 export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date(),societe="SETRAM"}={}){
  const eq=equipements.find(e=>e.code===bt.eq)||{};
- const c=coutBT(bt,pieces);
  const taches=bt.taches||[];
  const prev=bt.type==="Préventive"||!!bt.plan;
  const lignesTaches=taches.length?taches.map((t,i)=>{
   const r=tRes(t);
-  const case_=r==="OK"?'<span class="box">✓</span>':r==="NOK"?'<span class="box">✗</span>':'<span class="box"></span>';
-  return `<tr><td class="n" style="width:24px">${i+1}</td><td>${case_}${esc(t.lib)}</td><td style="width:70px">${r==="OK"?"OK":r==="NOK"?"Non OK":""}</td><td style="width:34%"><div class="cmt">${esc(t.com||"")}</div></td></tr>`;
+  return `<tr><td class="n" style="width:24px">${i+1}</td><td>${esc(t.lib)}</td><td style="width:92px;white-space:nowrap"><span class="box">${r==="OK"?"✓":""}</span>OK &nbsp;<span class="box">${r==="NOK"?"✗":""}</span>Non OK</td><td style="width:34%"><div class="cmt">${esc(t.com||"")}</div></td></tr>`;
  }).join(""):`<tr><td colspan="4">Aucune tâche définie.</td></tr>`;
+ // Intervenants : ceux déjà assignés sont pré-remplis (nom, fonction), les heures sont à écrire à la main.
  const inter=bt.intervenants||[];
- const lignesInter=inter.length?inter.map(it=>`<tr><td>${esc(it.nom)}</td><td>${esc(it.fonction||"")}</td><td class="n">${esc(it.temps)} h${Number(it.logistique)?" + "+esc(it.logistique)+" h log.":""}</td><td class="n">${nb(it.taux)} DA/h</td><td class="n">${nb(((Number(it.temps)||0)+(Number(it.logistique)||0))*(Number(it.taux)||0))} DA</td></tr>`).join("")
-  :'<tr class="vide"><td></td><td></td><td></td><td></td><td></td></tr>'.repeat(3);
+ const assignes=inter.length?[]:String(bt.assigne||"").split(",").map(x=>x.trim()).filter(x=>x&&x!=="-");
+ const lignesInter=inter.map(it=>`<tr class="vide"><td>${esc(it.nom)}</td><td>${esc(it.fonction||"")}</td><td class="n">${Number(it.temps)>0?esc(it.temps)+" h":""}</td><td class="n">${Number(it.logistique)>0?esc(it.logistique)+" h":""}</td></tr>`).join("")
+  +assignes.map(n=>`<tr class="vide"><td>${esc(n)}</td><td></td><td></td><td></td></tr>`).join("");
+ const nbInter=inter.length+assignes.length;
+ const lignesInterTotal=lignesInter+vide(Math.max(2,4-nbInter),4);
+ // Matières : pièces prévues et matières déjà saisies (sans prix), puis lignes vides à compléter.
+ const prevues=(bt.piecesPrevues||[]).map(x=>{const p=pieces.find(q=>q.code===x.code);return `<tr class="vide"><td>Pièce prévue</td><td>${esc(x.code)}</td><td>${esc(p?p.nom:"")}</td><td class="n">${esc(x.qte)}</td></tr>`;});
  const matieres=["pieces","outillage","consommables"].flatMap(cat=>(bt[cat]||[]).map(it=>{
   const p=pieces.find(x=>x.code===it.code);
-  return `<tr><td>${LOT[cat]}</td><td>${esc(it.code)}</td><td>${esc(p?p.nom:"")}</td><td class="n">${esc(it.qte)}</td><td class="n">${nb(p?p.prix*it.qte:0)} DA</td></tr>`;}));
- const lignesMat=matieres.length?matieres.join(""):'<tr class="vide"><td></td><td></td><td></td><td></td><td></td></tr>'.repeat(3);
+  return `<tr class="vide"><td>${LOT[cat]}</td><td>${esc(it.code)}</td><td>${esc(p?p.nom:"")}</td><td class="n">${esc(it.qte)}</td></tr>`;}));
+ const lignesMat=[...prevues,...matieres].join("")+vide(Math.max(3,5-prevues.length-matieres.length),4);
  const d=imprimeLe instanceof Date?imprimeLe:new Date(imprimeLe);
  const quand=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 
- return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Ordre de travail ${esc(bt.code)}</title><style>${CSS}</style></head><body>
-<div class="entete"><div><div class="soc">${esc(societe)} — GMAO</div><h1>BON DE TRAVAIL</h1></div>
+ return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Fiche de travail ${esc(bt.code)}</title><style>${CSS}</style></head><body>
+<div class="entete"><div><div class="soc">${esc(societe)} — GMAO</div><h1>FICHE DE TRAVAIL ${prev?"PRÉVENTIVE":"CORRECTIVE"}</h1></div>
 <div><div class="code">${esc(bt.code)}</div><div style="text-align:right"><span class="etat">${esc(bt.etat||"")}</span></div></div></div>
 
 <h2>Identification</h2>
@@ -66,29 +77,28 @@ export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date
 ${bt.fmp?`<tr><td>FMP</td><td colspan="3">${esc(bt.fmp.ref||bt.fmp.fichier||"")}${bt.fmp.titre?" — "+esc(bt.fmp.titre):""}</td></tr>`:""}
 <tr><td>Assigné à</td><td>${val(bt.assigne)}</td><td>Horaire</td><td>${(bt.horaire||"Jour")==="Nuit"?"Nuit":"Jour"}</td></tr>
 <tr><td>Consignation</td><td>${(bt.consignation||"Non")==="Oui"?"<b>OUI — nécessaire</b>":"Non"}</td><td>Travail exceptionnel</td><td>${bt.exc?esc(bt.motifExc||"Oui"):"Non"}</td></tr>
-<tr><td>Généré le</td><td>${val(bt.dateGeneration)}</td><td>Clôturé le</td><td>${val(bt.dateCloture)}</td></tr>
+<tr><td>Date d'intervention</td><td>…… / …… / ………</td><td>Début — Fin</td><td>…… h …… — …… h ……</td></tr>
 </table>
 
 ${bt.consigne&&bt.consigne!=="-"?`<h2>Consigne de la maintenance</h2><div class="consigne">${esc(bt.consigne)}</div>`:""}
 
-<h2>Tâches à réaliser / contrôlées</h2>
+<h2>${prev?"Tâches à réaliser":"Tâches à réaliser / contrôler"}</h2>
 <table><tr><th class="n">N°</th><th>Tâche</th><th>Résultat</th><th>Observations</th></tr>${lignesTaches}</table>
 
 ${prev?"":`<h2>Constat</h2>
-<table class="id"><tr><td>Panne</td><td>${val(bt.panne)}</td><td>Cause</td><td>${val(bt.cause)}</td></tr>
-<tr><td>Solution</td><td>${val(bt.effet)}</td><td>Détection / Gravité</td><td>${bt.detection!=null&&bt.detection!==""?esc(bt.detection)+"/4":"—"} — ${bt.gravite!=null&&bt.gravite!==""?esc(bt.gravite)+"/4":"—"}</td></tr></table>`}
+<table class="id"><tr><td>Panne</td><td class="ecrire">${vf(bt.panne)}</td><td>Cause</td><td class="ecrire">${vf(bt.cause)}</td></tr>
+<tr><td>Solution</td><td class="ecrire">${vf(bt.effet)}</td><td>Détection / Gravité</td><td>Détection ${echelle(bt.detection)}<br>Gravité ${echelle(bt.gravite)}</td></tr></table>`}
 
 <h2>Temps</h2>
-<table class="id"><tr><td>Durée d'intervention</td><td>${bt.dureeIntervention!=null&&bt.dureeIntervention!==""?esc(bt.dureeIntervention)+" h":"……… h"}</td><td>Temps logistique</td><td>${bt.tempsLogistique!=null&&bt.tempsLogistique!==""?esc(bt.tempsLogistique)+" h":"……… h"}</td></tr></table>
+<table class="id"><tr><td>Durée d'intervention</td><td>${heures(bt.dureeIntervention)}</td><td>Temps logistique</td><td>${heures(bt.tempsLogistique)}</td></tr></table>
 
 <h2>Intervenants</h2>
-<table><tr><th>Nom</th><th>Fonction</th><th class="n">Temps</th><th class="n">Taux</th><th class="n">Montant</th></tr>${lignesInter}</table>
+<table><tr><th>Nom</th><th>Fonction</th><th class="n">Temps d'intervention</th><th class="n">Temps logistique</th></tr>${lignesInterTotal}</table>
 
 <h2>Pièces, outillage et consommables utilisés</h2>
-<table><tr><th>Catégorie</th><th>Code</th><th>Désignation</th><th class="n">Qté</th><th class="n">Montant</th></tr>${lignesMat}</table>
-<div class="tot">Main-d'œuvre : ${nb(c.mo)} DA — Matières : ${nb(c.mat)} DA — <b>Total : ${nb(c.total)} DA</b></div>
+<table><tr><th>Catégorie</th><th>Code</th><th>Désignation</th><th class="n">Qté</th></tr>${lignesMat}</table>
 
 <div class="sign"><div>Intervenant (nom, date, signature)</div><div>Responsable maintenance (visa)</div><div>Exploitation — consignation / restitution (visa)</div></div>
-<div class="pied">${esc(societe)} — GMAO · Ordre de travail ${esc(bt.code)} · imprimé le ${quand}</div>
+<div class="pied">${esc(societe)} — GMAO · Fiche de travail ${esc(bt.code)} · imprimée le ${quand}</div>
 </body></html>`;
 }
