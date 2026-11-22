@@ -78,6 +78,7 @@ export function BTReadOnly({bt,pieces}){
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
    {!(bt.type==="Préventive"||bt.plan) && <><Info l="Panne">{bt.panne}</Info><Info l="Cause">{bt.cause}</Info>
    <Info l="Solution">{bt.effet}</Info><Info l="Détection / Gravité">{bt.detection}/4 — {bt.gravite}/4</Info></>}
+   {bt.dateIntervention && <Info l="Date d'intervention">{frDate(bt.dateIntervention)}</Info>}{bt.heureIntervention && <Info l="Heure d'intervention">{bt.heureIntervention}</Info>}
    <Info l="Durée d'intervention">{bt.dureeIntervention} h</Info><Info l="Temps logistique">{bt.tempsLogistique} h</Info>
   </div>
   <div><div className="text-xs text-slate-500 mb-1">Intervenants</div>
@@ -171,7 +172,7 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
  const interSys=interDuSysteme(interEq,sysBT);
  const [ajoutInter,setAjoutInter]=useState(false);
  const clean=(v)=>v==="-"?"":(v||"");
- const [f,setF]=useState({panne:clean(bt.panne),cause:clean(bt.cause),effet:clean(bt.effet),detection:bt.detection||(bt.type==="Préventive"||bt.plan?0:1),gravite:bt.gravite||(bt.type==="Préventive"||bt.plan?0:1),dureeIntervention:bt.dureeIntervention||1,tempsLogistique:bt.tempsLogistique||0});
+ const [f,setF]=useState({panne:clean(bt.panne),cause:clean(bt.cause),effet:clean(bt.effet),detection:bt.detection||(bt.type==="Préventive"||bt.plan?0:1),gravite:bt.gravite||(bt.type==="Préventive"||bt.plan?0:1),dureeIntervention:bt.dureeIntervention||1,tempsLogistique:bt.tempsLogistique||0,dateIntervention:bt.dateIntervention||"",heureIntervention:bt.heureIntervention||""});
  const [intervenants,setIntervenants]=useState(bt.intervenants||[]);
  const [piecesBT,setPiecesBT]=useState(bt.pieces||[]);
  const [outillageBT,setOutillageBT]=useState(bt.outillage||[]);
@@ -272,6 +273,10 @@ export function BTFillForm({bt,dsOuvertes=[],dsDeLOT=[],compteur,pieces,inter,eq
    <div className="flex gap-2 mt-1">{[1,2,3,4].map(g=><button key={g} onClick={()=>setF({...f,gravite:g})} className={"w-9 h-9 rounded-lg text-sm font-medium "+(f.gravite===g?"bg-sky-600 text-white":"bg-slate-700 text-slate-300")}>{g}</button>)}</div>
   </Field>
   </>}
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   <Field label="Date d'intervention"><Inp type="date" value={f.dateIntervention} onChange={e=>setF({...f,dateIntervention:e.target.value})} data-testid="bt-date-interv"/></Field>
+   <Field label="Heure d'intervention"><Inp type="time" value={f.heureIntervention} onChange={e=>setF({...f,heureIntervention:e.target.value})} data-testid="bt-heure-interv"/></Field>
+  </div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
    <Field label="Durée d'intervention (h)"><Inp type="number" step="0.5" value={f.dureeIntervention} onChange={e=>setF({...f,dureeIntervention:Number(e.target.value)})}/></Field>
    <Field label="Temps logistique (h)"><Inp type="number" step="0.5" value={f.tempsLogistique} onChange={e=>setF({...f,tempsLogistique:Number(e.target.value)})}/></Field>
