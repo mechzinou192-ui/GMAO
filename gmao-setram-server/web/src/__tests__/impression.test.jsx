@@ -26,6 +26,10 @@ describe('fiche de travail imprimable', () => {
     expect(h).not.toContain('Tâches à réaliser'); expect(h).not.toContain('Contrôler la température');   // pas de tâches en correctif
     expect(h).toContain('Durée d\'intervention'); expect(h).toContain('Temps logistique');
   });
+  it('date et heure d\'intervention saisies dans la GMAO sont reprises sur la fiche', () => {
+    const h = btImprimableHtml({ ...CORR, dateIntervention: '2026-10-05', heureIntervention: '08:30' }, { pieces: PIECES, equipements: EQ });
+    expect(h).toContain('05/10/2026'); expect(h).toContain('08 h 30');
+  });
   it('OT préventif : plan affiché, tâches à cocher à la main, pas de rubrique « Constat »', () => {
     const h = btImprimableHtml({ code: 'OT-PREV-ALG-2026-0001', etat: 'En cours', type: 'Préventive', plan: 'PREV-ALG-0003', eq: 'CFO.ALG.SST.01', taches: [{ lib: 'Graissage' }] }, { pieces: PIECES, equipements: EQ });
     expect(h).toContain('FICHE DE TRAVAIL PRÉVENTIVE'); expect(h).toContain('Plan préventif'); expect(h).toContain('PREV-ALG-0003'); expect(h).not.toContain('<h2>Constat</h2>'); expect(h).not.toContain('DI liée');
@@ -33,6 +37,7 @@ describe('fiche de travail imprimable', () => {
   });
   it('OT vierge à remplir sur le terrain : lignes vides et durées à compléter', () => {
     const h = btImprimableHtml({ code: 'OT-1', etat: 'En cours', type: 'Corrective', eq: 'X', taches: [] }, { pieces: [], equipements: [] });
+    expect(h).not.toContain('Début'); expect(h).toContain('Heure d\'intervention'); expect(h).toContain('…… / …… / ………'); expect(h).toContain('…… h ……');
     expect(h).not.toContain('Aucune tâche'); expect(h).toContain('……… h'); expect(h).toContain('…… / 4'); expect((h.match(/class="vide"/g) || []).length).toBe(9);
     expect(h).not.toContain('DA');
   });
