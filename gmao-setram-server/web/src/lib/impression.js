@@ -5,7 +5,6 @@ import {tRes} from "./preventif.js";
 
 const ESC={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 export const esc=(v)=>String(v??"").replace(/[&<>"']/g,(c)=>ESC[c]);
-const nb=(n)=>String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g," ");   // 1 250 000
 const val=(v)=>{const t=String(v??"").trim(); return t&&t!=="-"?esc(t):"—";};
 const LOT={pieces:"Pièce",outillage:"Outillage",consommables:"Consommable"};
 
@@ -38,6 +37,8 @@ tr{page-break-inside:avoid}
 const vide=(n,cols)=>`<tr class="vide">${"<td></td>".repeat(cols)}</tr>`.repeat(n);
 const vf=(v)=>{const t=String(v??"").trim(); return t&&t!=="-"?esc(t):"";};   // valeur saisie, sinon case à écrire à la main
 const note=(v)=>Number(v)>0?`<b>${esc(v)}</b> / 4`:"…… / 4";
+const dateFr=(v)=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||""));return m?`${m[3]}/${m[2]}/${m[1]}`:"…… / …… / ………";};
+const heureFr=(v)=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(v||""));return m?`${m[1]} h ${m[2]}`:"…… h ……";};
 const heures=(v)=>v!=null&&v!==""&&Number(v)>0?esc(v)+" h":"……… h";
 
 export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date(),societe="SETRAM"}={}){
@@ -75,7 +76,7 @@ export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date
 ${bt.fmp?`<tr><td>FMP</td><td colspan="3">${esc(bt.fmp.ref||bt.fmp.fichier||"")}${bt.fmp.titre?" — "+esc(bt.fmp.titre):""}</td></tr>`:""}
 <tr><td>Assigné à</td><td>${val(bt.assigne)}</td><td>Horaire</td><td>${(bt.horaire||"Jour")==="Nuit"?"Nuit":"Jour"}</td></tr>
 <tr><td>Consignation</td><td>${(bt.consignation||"Non")==="Oui"?"<b>OUI — nécessaire</b>":"Non"}</td><td>Travail exceptionnel</td><td>${bt.exc?esc(bt.motifExc||"Oui"):"Non"}</td></tr>
-<tr><td>Date d'intervention</td><td>…… / …… / ………</td><td>Début — Fin</td><td>…… h …… — …… h ……</td></tr>
+<tr><td>Date d'intervention</td><td>${dateFr(bt.dateIntervention)}</td><td>Heure d'intervention</td><td>${heureFr(bt.heureIntervention)}</td></tr>
 </table>
 
 ${bt.consigne&&bt.consigne!=="-"?`<h2>Consigne de la maintenance</h2><div class="consigne">${esc(bt.consigne)}</div>`:""}
