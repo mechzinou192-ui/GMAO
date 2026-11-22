@@ -746,4 +746,15 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'OT préventifs' }));
     expect(screen.getByRole('tab', { name: 'OT préventifs' }).getAttribute('aria-selected')).toBe('true');
   });
+  it('le planning préventif n’apparaît que dans l’onglet Préventif (pas sur l’accueil, la corrective, l’arborescence…)', async () => {
+    await seConnecter('Super administrateur');
+    onglet(/Préventif/);
+    await screen.findByTestId('prev-soustabs');
+    expect(document.body.textContent).toContain('Planning Préventif');
+    for (const re of [/Maintenance corrective/, /Arborescence/, /Gestion de stock/, /Indicateurs/]) {
+      onglet(re);
+      await waitFor(() => expect(screen.queryByTestId('prev-soustabs')).toBeNull());
+      expect(screen.queryByText('Déclencher')).toBeNull();                 // bouton propre au planning préventif
+    }
+  });
 });
