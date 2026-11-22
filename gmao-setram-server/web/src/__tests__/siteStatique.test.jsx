@@ -220,6 +220,7 @@ describe('application complète en mode site statique', () => {
     const ot = await waitFor(() => { const b = Object.values(apiSite._etat().records.bts || {}).find((r) => r.data.plan && r.data.etat === 'En cours' && r.data.eq === 'MR.ALG.BOG.02'); if (!b) throw new Error('OT'); return b; }, { timeout: 4000 });
     expect(ot.id).toMatch(/^OT-PREV-ALG-/);
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'OT préventifs' }));
     fireEvent.click((await screen.findAllByText(ot.id))[0]);
     const bloc = await screen.findByTestId('releve-cloture');
     expect(bloc.textContent).toContain('Obligatoire pour clôturer');
@@ -235,6 +236,7 @@ describe('application complète en mode site statique', () => {
     await waitFor(() => expect(document.body.textContent).toContain(corr.id));
     expect(document.body.textContent).not.toContain(prev.id);
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'OT préventifs' }));
     await waitFor(() => expect(document.body.textContent).toContain(prev.id));
     expect(document.body.textContent).not.toContain(corr.id);
     onglet(/Arborescence/);
@@ -257,7 +259,7 @@ describe('application complète en mode site statique', () => {
     const bloc = await screen.findByTestId('ot-attente-piece');
     expect(bloc.textContent).toContain('DS-TEST-0001');
     fireEvent.click(screen.getByText(/Clôturer/, { selector: 'button' }));
-    expect(await screen.findByText(/sortie magasin n'est pas traitée|tâches contrôlées|intervenant/)).toBeTruthy();
+    expect((await screen.findAllByText(/sortie magasin n'est pas traitée|tâches contrôlées|intervenant/)).length).toBeGreaterThan(0);
     expect(apiSite._etat().records.bts[ot.id].data.etat).not.toBe('Clôturé');
   });
 
@@ -407,6 +409,7 @@ describe('application complète en mode site statique', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await seConnecter('Super administrateur');
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'OT préventifs' }));
     fireEvent.click((await screen.findAllByText(prev.id))[0]);
     const bouton = await screen.findByTestId('ds-globale');
     expect(bouton.textContent).toContain('3 pièces');
@@ -732,15 +735,15 @@ describe('application complète en mode site statique', () => {
     await waitFor(() => expect(dem().data).toMatchObject({ etat: 'Traitée', reponse: 'Contrôler le câble du départ 3' }), { timeout: 4000 });
     expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.charge' && /traitée/.test(n.texte))).toBe(true);
   });
-  it('menu : plus d’onglet « Ordres de travail » ; Préventif propose « OT préventifs » avant « Planning Préventif »', async () => {
+  it('menu : plus d’onglet « Ordres de travail » ; Préventif propose « Planning Préventif » en premier puis « OT préventifs »', async () => {
     await seConnecter('Super administrateur');
     const menu = [...screen.getByTestId('menu-lateral').querySelectorAll('nav button')].map((b) => b.textContent);
     expect(menu.some((t) => /Ordres de travail/.test(t))).toBe(false);
     onglet(/Préventif/);
-    const onglets = (await screen.findAllByRole('tab')).map((t) => t.textContent);
-    expect(onglets).toEqual(['OT préventifs', 'Planning Préventif']);
-    expect(screen.getByRole('tab', { name: 'OT préventifs' }).getAttribute('aria-selected')).toBe('true');
-    fireEvent.click(screen.getByRole('tab', { name: 'Planning Préventif' }));
+    const onglets = [...(await screen.findByTestId('prev-soustabs')).querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+    expect(onglets).toEqual(['Planning Préventif', 'OT préventifs']);
     expect(screen.getByRole('tab', { name: 'Planning Préventif' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: 'OT préventifs' }));
+    expect(screen.getByRole('tab', { name: 'OT préventifs' }).getAttribute('aria-selected')).toBe('true');
   });
 });
