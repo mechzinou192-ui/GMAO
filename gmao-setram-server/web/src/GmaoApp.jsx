@@ -63,9 +63,15 @@ export function GmaoApp({session,onLogout}){
  const diAu=(niv)=>tabOk(1)&&niveauxDI.includes(niv);   // bouton « Créer une DI » des fiches : module DI requis (comme le clic droit de l'arborescence)   // Directeur UO / DG, responsable DG : consultation (le serveur refuse toute modification)
  const [tabRaw,setTabRaw]=useState(ACCUEIL);
  // visibilité d'un module dans le menu : la maintenance corrective regroupe les volets DI et OT ; les matériaux relèvent du volet Arborescence
- const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):tabOk(i);   // matériaux : volet 8, indépendant de l'arborescence
+ const voir=(i)=>i===ACCUEIL?true:i===1?(tabOk(1)||tabOk(2)):i===3?(tabOk(2)||tabOk(3)):tabOk(i);   // 3 = Préventif : regroupe « OT préventifs » (volet 2) et « Planning Préventif » (volet 3)   // matériaux : volet 8, indépendant de l'arborescence
  const tab=voir(tabRaw)?tabRaw:ACCUEIL;
- const setTab=(i)=>{if(voir(i))setTabRaw(i);};
+ const [prevSub,setPrevSub]=useState("ot");   // sous-onglet du Préventif : "ot" (OT préventifs) ou "plan" (Planning Préventif)
+  const setTab=(i,sub)=>{
+   if(i===2){ if(voir(3)){setPrevSub("ot");setTabRaw(3);} return; }   // l'ancien onglet « Ordres de travail » vit maintenant dans Préventif
+   if(i===3){ if(voir(3)){setPrevSub(sub||(tabOk(2)?"ot":"plan"));setTabRaw(3);} return; }
+   if(voir(i))setTabRaw(i);
+  };
+  const sousOnglet=tabOk(2)&&tabOk(3)?prevSub:(tabOk(2)?"ot":"plan");
  // ouvre un OT dans le module qui le contient (OT préventifs : Gestion des OT ; correctifs : maintenance corrective)
  const ouvrirOT=(code)=>{const b=bts.find(x=>x.code===code); setTab(b&&estOTPreventif(b)?2:1); setBtDetail(code);};
  const mobile=()=>typeof window!=="undefined"&&window.innerWidth<768;
@@ -108,7 +114,7 @@ export function GmaoApp({session,onLogout}){
   if(n.unit&&unitsOk.includes(n.unit)) setUnit(n.unit);
   if(n.collection==="bts") ouvrirOT(n.recordId);
   else if(n.collection==="equipements"){const e=equipements.find(x=>x.code===n.recordId); if(e) setEquipDetail(e);}
-  else if(n.collection==="planning") setTab(3);
+  else if(n.collection==="planning") setTab(3,"plan");
   else if(n.collection==="arborescence") setTab(0);
   else if(n.collection==="rapports"){ setTab(RAPPORTS); setRapportOuvert(n.recordId); }
   else if(n.collection==="demandes") setTab(VALIDATION);
@@ -617,7 +623,7 @@ const [notice,setNotice]=useState(null);
  if(syncStates.includes("error")) return <Splash msg="Impossible de joindre le serveur GMAO." action={()=>window.location.reload()} actionLabel="Réessayer"/>;
  if(!syncStates.every(s=>s==="ready")) return <Splash msg="Chargement des données…"/>;
 
- const ordreMenu=[ACCUEIL,0,MATERIAUX,1,2,3,4,5,6,RAPPORTS,VALIDATION,7];
+ const ordreMenu=[ACCUEIL,0,MATERIAUX,1,3,4,5,6,RAPPORTS,VALIDATION,7];   // 2 (OT) n'est plus au menu : il est dans Préventif
  const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0)+notifs.nonLues;
  const alerteRouge=(tabOk(5)&&(ctRouge+habRouge)>0)||(tabOk(4)&&critStock.length>0);
  const initiales=(user||"?").replace(/^Démo — /,"").split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("");
@@ -698,7 +704,7 @@ const [notice,setNotice]=useState(null);
   <div className="flex-1 min-w-0 flex flex-col">
   <div className="gm-strip">
    {tab!==ACCUEIL&&<button className="gm-strip-tab" onClick={()=>allerA(ACCUEIL)}>{I.home}<span className="hidden sm:inline">Accueil</span></button>}
-   <div className="gm-strip-tab is-active">{tabs[tab].ic}<h1 className="gm-title truncate">{tabs[tab].n}</h1></div>
+   <div className="gm-strip-tab is-active">{tabs[tab].ic}<h1 className="gm-title truncate">{tab===3?(sousOnglet==="ot"?"OT préventifs":"Planning Préventif"):tabs[tab].n}</h1></div>
    <div className="gm-strip-unit">Unité <b>{unit}</b></div>
   </div>
   <main className="gm-main flex-1 min-w-0 p-3 md:p-5">
@@ -709,7 +715,7 @@ const [notice,setNotice]=useState(null);
     </div>
     <div className="mt-2 space-y-1.5">{alertesVisibles.slice(0,6).map(a=><div key={a.key} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-900 rounded-lg px-2 py-1.5">
      <span className="text-slate-300"><b className="text-rose-300">{a.nom}</b> est en congé {libConge(a.c)}, mais est assigné à <span className="text-sky-400">{a.label}</span> ({a.kind==="plan"?"prévu le "+a.dates.slice(0,3).map(frDate).join(", ")+(a.dates.length>3?"…":""):"OT en cours"}).</span>
-     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white text-xs" onClick={()=>{ if(a.kind==="plan"){const pl=planning.find(x=>x.code===a.code); setTab(3); setPlanModal({mode:"edit",item:pl});} else {ouvrirOT(a.code);} }}>Changer l'intervenant</Btn>
+     <Btn cls="bg-rose-700 hover:bg-rose-600 text-white text-xs" onClick={()=>{ if(a.kind==="plan"){const pl=planning.find(x=>x.code===a.code); setTab(3,"plan"); setPlanModal({mode:"edit",item:pl});} else {ouvrirOT(a.code);} }}>Changer l'intervenant</Btn>
     </div>)}
     {alertesVisibles.length>6 && <div className="text-xs text-slate-400">… et {alertesVisibles.length-6} autre(s) alerte(s).</div>}</div>
    </div>}
@@ -717,7 +723,6 @@ const [notice,setNotice]=useState(null);
    {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
      onGo={allerA} onNewDI={!creerDI?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
    {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={!creerDI?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
-   {tab===2 && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
      onAddEquip={!arboCreer?undefined:(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
@@ -759,7 +764,12 @@ const [notice,setNotice]=useState(null);
        const d={code:nums[0],...f,etat:"Envoyée",demandeur:user,demandeurId:session.id,le:new Date().toISOString().slice(0,16).replace("T"," "),fichiers:[],historique:[{action:"Envoyée",par:user,le:new Date().toISOString().slice(0,16).replace("T"," ")}]};
        setDemandes(l=>[d,...l]); return d;}}:null}/>}
    {tab===7 && (sa||delegue) && <AdminPage superAdmin={sa} unitesAdmin={unitsOk} profilsPerso={profilsPerso} setProfilsPerso={setProfilsPerso} systemsList={systemsList} me={session.id} importRefs={{units:UNITS,unitAbbr:UNIT_ABBR,roles:ROLES,cdcEtats:CDC_ETATS,orgDom:ORG_DOM,systemsList,treeStruct,equipements,pieces,intervenants:inter,prestataires,planning,organismes,mesures:mesureList,controles:ctrlList}}/>}
-   {tab===3 && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
+   {tab===3 && <div className="flex gap-2 mb-3" role="tablist" aria-label="Préventif" data-testid="prev-soustabs">
+    {tabOk(2) && <button role="tab" aria-selected={sousOnglet==="ot"} onClick={()=>setPrevSub("ot")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="ot"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>OT préventifs</button>}
+    {tabOk(3) && <button role="tab" aria-selected={sousOnglet==="plan"} onClick={()=>setPrevSub("plan")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="plan"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>Planning Préventif</button>}
+   </div>}
+   {tab===3 && sousOnglet==="ot" && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {sousOnglet==="plan" && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
    {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
