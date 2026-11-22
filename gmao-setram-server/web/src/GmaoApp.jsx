@@ -254,6 +254,12 @@ export function GmaoApp({session,onLogout}){
  const [dss,setDss,sDss]=useSynced("dss");
  const [bsList,setBsList,sBs]=useSynced("bs");
  const [brs,setBrs,sBrs]=useSynced("brs");
+ // Magasin PAR UNITÉ : articles, DS, BS, BR et décharges appartiennent à une unité ; chaque écran (et chaque export)
+ // ne montre que ceux de l'unité affichée — le gestionnaire de stock d'une unité ne voit que son magasin.
+ const deLUnite=(l)=>l.filter(x=>x.unit===unit);
+ const piecesDe=(u)=>pieces.filter(p=>p.unit===u);
+ const piecesU=deLUnite(pieces), dssU=deLUnite(dss), bsU=deLUnite(bsList), brsU=deLUnite(brs), dechargesU=deLUnite(decharges);
+ const uniteDeOT=(code)=>{const b=bts.find(x=>x.code===code); return b?kpiUnitOf(b.eq,equipements):unit;};
 
  const [planModal,setPlanModal]=useState(null);
  const [planning,setPlanning,sPla]=useSynced("planning");
@@ -267,10 +273,13 @@ export function GmaoApp({session,onLogout}){
  // sauf rupture de stock -> "En attente pièce" (et l'OT lié passe alors aussi "En attente pièce")
  async function addDS(f){
   let lignes;
-  try{ lignes=construireLignes(f.lignes||[{piece:f.piece,qte:f.qte}],pieces); }catch(e){ setSyncErr(e.message); return; }
-  const nums=await numeros("dss"); if(!nums) return;
+  // la DS appartient à l'unité de l'OT (sinon de l'équipement) et ne peut demander que des articles de ce magasin
+  const u=f.bt?uniteDeOT(f.bt):(f.eq?kpiUnitOf(f.eq,equipements):unit);
+  const mag=piecesDe(u);
+  try{ lignes=construireLignes(f.lignes||[{piece:f.piece,qte:f.qte}],mag); }catch(e){ setSyncErr(e.message+" (magasin de "+u+")"); return; }
+  const nums=await numeros("dss",{unit:u}); if(!nums) return;
   const dsCode=nums[0];
-  const ds={code:dsCode,eq:f.eq,nom:f.nom,designation:f.designation,lignes,bt:f.bt||null,etat:etatSelonStock(lignes,pieces)};
+  const ds={code:dsCode,unit:u,eq:f.eq,nom:f.nom,designation:f.designation,lignes,bt:f.bt||null,etat:etatSelonStock(lignes,mag)};
   setDss(d=>[ds,...d]);
   // toute DS rattachée à un OT le met « En attente pièce » jusqu'au traitement du BS par le magasin
   if(f.bt) setBts(bs=>bs.map(b=>b.code===f.bt&&b.etat!=="Clôturé"?{...b,etat:"En attente pièce"}:b));
@@ -298,9 +307,9 @@ export function GmaoApp({session,onLogout}){
    if(ds.etat!=="En attente pièce") setDss(d=>d.map(x=>x.code===dsCode?{...x,etat:"En attente pièce"}:x));
    alert("Stock insuffisant pour générer le BS : "+manque.map(l=>l.pieceNom||l.piece).join(", ")+"."); return;
   }
-  const nums=await numeros("bs"); if(!nums) return;
+  const nums=await numeros("bs",{unit:ds.unit}); if(!nums) return;
   const bsCode=nums[0];
-  setBsList(b=>[{code:bsCode,ds:dsCode,lignes,etat:"À traiter"},...b]);
+  setBsList(b=>[{code:bsCode,unit:ds.unit,ds:dsCode,lignes,etat:"À traiter"},...b]);
   setDss(d=>d.map(x=>x.code===dsCode?{...x,etat:"BS généré",bs:bsCode}:x));
  }
 
@@ -325,9 +334,10 @@ export function GmaoApp({session,onLogout}){
  // Bon de Retour : réintègre une pièce non utilisée en stock
  async function addBR(f){
   const piece=pieces.find(p=>p.code===f.piece);
-  const nums=await numeros("brs"); if(!nums) return;
+  if(!piece) return;
+  const nums=await numeros("brs",{unit:piece.unit}); if(!nums) return;
   const brCode=nums[0];
-  setBrs(b=>[{code:brCode,piece:piece.code,pieceNom:piece.nom,qte:f.qte,prix:piece.prix},...b]);
+  setBrs(b=>[{code:brCode,unit:piece.unit,piece:piece.code,pieceNom:piece.nom,qte:f.qte,prix:piece.prix},...b]);
   setPieces(ps=>ps.map(p=>p.code===piece.code?{...p,stock:p.stock+f.qte,mouvements:[...(p.mouvements||[]),{date:new Date().toISOString().slice(0,10),qte:f.qte,type:"Retour",ref:brCode}]}:p));
   setBrModal(false);
  }
@@ -390,7 +400,8 @@ const [notice,setNotice]=useState(null);
   if(type==="piece"){
    const pc=pieces.find(x=>x.code===code);
    if(!pc) return avis("QR code : article « "+code+" » introuvable.");
-   if(!tabOk(4)) return avis("QR code "+code+" : vous n'avez pas accès au module Stock.");
+   if(!sa && !((session.droits[pc.unit]||{}).volets||[]).includes(4)) return avis("QR code "+code+" : vous n'avez pas accès au magasin de "+(pc.unit||"cette unité")+".");
+   if(pc.unit && pc.unit!==unit) setUnit(pc.unit);
    setTab(4); setPieceModal(pc); return;
   }
   if(type==="mat"){
@@ -509,9 +520,10 @@ const [notice,setNotice]=useState(null);
  // Outillage et consommables sortent par décharge (pas de DS) : sortie de stock immédiate + mouvement
  async function addDecharge(f){
   const piece=pieces.find(p=>p.code===f.piece);
-  const nums=await numeros("decharges"); if(!nums) return;
+  if(!piece) return;
+  const nums=await numeros("decharges",{unit:piece.unit}); if(!nums) return;
   const code=nums[0];
-  setDecharges(d=>[{code,piece:piece.code,pieceNom:piece.nom,categorie:piece.categorie,qte:f.qte,prix:piece.prix,recu:f.recu,bt:f.bt||null,date:f.date},...d]);
+  setDecharges(d=>[{code,unit:piece.unit,piece:piece.code,pieceNom:piece.nom,categorie:piece.categorie,qte:f.qte,prix:piece.prix,recu:f.recu,bt:f.bt||null,date:f.date},...d]);
   setPieces(ps=>ps.map(p=>p.code===piece.code?{...p,stock:p.stock-f.qte,mouvements:[...(p.mouvements||[]),{date:f.date,qte:f.qte,type:"Décharge",ref:code,detail:f.recu}]}:p));
   setDechargeModal(null);
  }
@@ -527,10 +539,10 @@ const [notice,setNotice]=useState(null);
    setPieces(ps=>ps.map(x=>x.code===f.code?{...x,...f.data}:x));
   } else {
    const variant={"Pièce":"P","Outillage":"O","Consommable":"C"}[f.data.categorie];
-   const nums=await numeros("pieces",{variant}); if(!nums) return;
+   const nums=await numeros("pieces",{variant,unit}); if(!nums) return;   // article créé dans le magasin de l'unité affichée
    const code=nums[0];
    const today=new Date().toISOString().slice(0,10);
-   setPieces(ps=>[...ps,{...f.data,code,mouvements:f.data.stock>0?[{date:today,qte:f.data.stock,type:"Achat"}]:[]}]);
+   setPieces(ps=>[...ps,{...f.data,code,unit,mouvements:f.data.stock>0?[{date:today,qte:f.data.stock,type:"Achat"}]:[]}]);
   }
   setPieceForm(null);
  }
@@ -624,7 +636,7 @@ const [notice,setNotice]=useState(null);
  const sysAll=sa||grant.systems.includes("*")||systemsList.every(([c])=>grant.systems.includes(c));
  const interOk=(p)=>sysAll||(p.externe?(p.systemes||[]).some(sysOk):grant.systems.some(c=>posteCouvre(p.poste,c)));
  const visInter=inter.filter(interOk), visPresta=prestataires.filter(interOk);
- const critStock = pieces.filter(p=>p.stock<p.min);
+ const critStock = piecesU.filter(p=>p.stock<p.min);   // alerte : magasin de l'unité affichée
  const ctAl=visPresta.map(contratInfo).filter(c=>c.alerte); const ctRouge=ctAl.filter(c=>c.niveau==="rouge").length, ctOrange=ctAl.length-ctRouge;
  const habAl=habListe(visInter); const habRouge=habAl.filter(x=>x.niveau==="rouge").length, habOrange=habAl.filter(x=>x.niveau==="orange").length;
  const syncStates=[sEq,sSys,sTree,sMes,sCtrl,sOrg,sPre,sDch,sDss,sBs,sBrs,sFer,sDis,sBts,sPie,sPla,sInt,sCpt];
@@ -681,7 +693,7 @@ const [notice,setNotice]=useState(null);
   </header>
   {assistant && <Assistant unite={unit} onFermer={()=>setAssistant(false)}
    contexte={()=>({dis:dis.filter(d=>inScope(d.eq)),bts:bts.filter(b=>inScope(b.eq)),equipements:equipements.filter(e=>e.unit===unit&&sysOk(e.system)),
-    planning:visPlanning.filter(p=>p.unit===unit),pieces:tabOk(4)||tabOk(6)?pieces:[],intervenants:[...visInter,...visPresta],
+    planning:visPlanning.filter(p=>p.unit===unit),pieces:tabOk(4)||tabOk(6)?piecesU:[],intervenants:[...visInter,...visPresta],
     peutPersonnel:sa||tabOk(5)||tabOk(6),aujourdhui:todayStr()})}
    onOuvrir={(ref)=>{
     if(ref.type==="ot") ouvrirOT(ref.code);
@@ -728,9 +740,9 @@ const [notice,setNotice]=useState(null);
     {alertesVisibles.length>6 && <div className="text-xs text-slate-400">… et {alertesVisibles.length-6} autre(s) alerte(s).</div>}</div>
    </div>}
 
-   {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={pieces} alertes={alertesItems} sa={sa}
+   {tab===ACCUEIL && <Accueil tabOk={tabOk} unit={unit} dis={visDis} bts={visBts} planning={visPlanning} compteurs={visCompteurs} pieces={piecesU} alertes={alertesItems} sa={sa}
      onGo={allerA} onNewDI={!creerDI?undefined:()=>setDiModal({})} onNewOT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenDI={(c)=>setDiDetail(c)} onOpenOT={ouvrirOT}/>}
-   {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={pieces} onNewDI={!creerDI?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===1 && <MaintenanceCorrective chemin={(d)=>cheminDI(d,{equipements,systemsList,treeStruct})} voirDI={tabOk(1)} voirOT={tabOk(2)} dis={visDis} bts={visBts.filter(b=>!estOTPreventif(b))} pieces={piecesU} onNewDI={!creerDI?undefined:()=>setDiModal({})} onOpenDI={(d)=>setDiDetail(d.code)} onGenererBT={capCreerOT?(di)=>setBtModal({di}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {(tab===0||tab===MATERIAUX) && <Arbo key={tab} mode={tab===0?"arbo":"materiaux"} unit={unit} equipements={equipements} systemsList={visSystems} treeStruct={treeStruct}
      onAddEquip={!arboCreer?undefined:(system,subCode,subNom)=>setEquipModal({mode:"add",system,subCode,subNom,unit})}
      onOpenEquip={setEquipDetail}
@@ -776,11 +788,11 @@ const [notice,setNotice]=useState(null);
     {tabOk(3) && <button role="tab" aria-selected={sousOnglet==="plan"} onClick={()=>setPrevSub("plan")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="plan"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>Planning Préventif</button>}
     {tabOk(2) && <button role="tab" aria-selected={sousOnglet==="ot"} onClick={()=>setPrevSub("ot")} className={"px-4 py-2 rounded-lg text-sm font-medium "+(sousOnglet==="ot"?"bg-sky-600 text-white":"bg-slate-800 text-slate-300 hover:bg-slate-700")}>OT préventifs</button>}
    </div>}
-   {tab===3 && sousOnglet==="ot" && <BTPage bts={visBts.filter(estOTPreventif)} pieces={pieces} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
+   {tab===3 && sousOnglet==="ot" && <BTPage bts={visBts.filter(estOTPreventif)} pieces={piecesU} titre="Ordres de travail préventifs" sousTitre="Générés depuis les plans préventifs ou créés par la Maintenance — cliquez sur une ligne pour saisir le compte-rendu puis clôturer" onNouveauBT={capCreerOT?()=>setBtModal({di:null}):undefined} onOpenBT={(b)=>setBtDetail(b.code)}/>}
    {tab===3 && sousOnglet==="plan" && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
-   {tab===4 && <Magasin pieces={pieces} decharges={decharges} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dss} bsList={bsList} brs={brs} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
+   {tab===4 && <Magasin unit={unit} pieces={piecesU} decharges={dechargesU} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dssU} bsList={bsU} brs={brsU} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
-   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={unitesRH} disTous={dis} btsTous={bts} planningTous={planning} equipementsTous={equipements} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={pieces} systemsList={visSystems} treeStruct={treeStruct}/>}
+   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={unitesRH} disTous={dis} btsTous={bts} planningTous={planning} equipementsTous={equipements} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={piecesU} systemsList={visSystems} treeStruct={treeStruct}/>}
   </main>
   </div>
   </div>
@@ -790,7 +802,7 @@ const [notice,setNotice]=useState(null);
   </Modal>}
 
   {btModal && <Modal title={btModal.di? "Générer un OT depuis "+btModal.di.code+" — Service Maintenance" : "Nouvel OT (Préventif) — Service Maintenance"} onClose={()=>setBtModal(null)}>
-   <BTCreateForm di={btModal.di} inter={interAll} pieces={pieces} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} onSubmit={unSeul(addBT)}/>
+   <BTCreateForm di={btModal.di} inter={interAll} pieces={piecesU} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} onSubmit={unSeul(addBT)}/>
   </Modal>}
 
   {diDetail && (()=>{const d=dis.find(x=>x.code===diDetail); if(!d) return null; const btLie=bts.find(b=>b.di===d.code);
@@ -805,7 +817,7 @@ const [notice,setNotice]=useState(null);
   {btDetail && (()=>{const b=bts.find(x=>x.code===btDetail); if(!b) return null;
    const plb=b.plan?planning.find(p=>p.code===b.plan):null; const cptB=plb&&isCompteurPlan(plb)?cptDe(plb)||null:null;
    return <Modal wide title={"Ordre de Travail — "+b.code} onClose={()=>setBtDetail(null)}>
-    <BTDetail key={b.code} bt={b} dsOuvertes={dsOuvertesDe(b.code)} compteur={cptB} pieces={pieces} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)} onTerminer={(data)=>unSeul(terminerSaisie)(b.code,data)} peutCloturer={capCloture}
+    <BTDetail key={b.code} bt={b} dsOuvertes={dsOuvertesDe(b.code)} compteur={cptB} pieces={piecesDe(uniteDeOT(b.code))} inter={interAll} equipements={equipements} onSave={(data)=>unSeul(saveBT)(b.code,data)} onCloturer={(data)=>unSeul(cloturerBT)(b.code,data)} onTerminer={(data)=>unSeul(terminerSaisie)(b.code,data)} peutCloturer={capCloture}
      onStatut={sa?(e,m)=>setBts(l=>l.map(x=>x.code===b.code?avecStatut(x,e,user,m):x)):undefined}
      dsDeLOT={dss.filter(d=>d.bt===b.code)}
      onCreateDS={(items)=>{const reste=piecesRestantAdemander(items,dss.filter(d=>d.bt===b.code));setBtDetail(null);setDsModal({prefill:{eq:b.eq,nom:b.nom,lignes:(reste.length?reste:items).map(x=>({piece:x.code,qte:x.qte})),bt:b.code}});}}/>
@@ -942,15 +954,15 @@ const [notice,setNotice]=useState(null);
   </Modal>}
 
   {dsModal && <Modal title="Nouvelle Demande de Sortie (DS) — Pièces" onClose={()=>setDsModal(null)}>
-   <DSForm pieces={pieces.filter(p=>p.categorie==="Pièce")} bts={bts} prefill={dsModal.prefill} onSubmit={unSeul(addDS)}/>
+   <DSForm pieces={piecesDe(dsModal.prefill&&dsModal.prefill.bt?uniteDeOT(dsModal.prefill.bt):unit).filter(p=>p.categorie==="Pièce")} bts={bts.filter(b=>kpiUnitOf(b.eq,equipements)===unit)} prefill={dsModal.prefill} onSubmit={unSeul(addDS)}/>
   </Modal>}
 
   {brModal && <Modal title="Nouveau Bon de Retour (BR)" onClose={()=>setBrModal(false)}>
-   <BRForm pieces={pieces} onSubmit={unSeul(addBR)}/>
+   <BRForm pieces={piecesU} onSubmit={unSeul(addBR)}/>
   </Modal>}
 
   {planModal && <Modal wide title={planModal.mode==="edit"?"Plan préventif — "+planModal.item.code:"Nouveau plan préventif"} onClose={()=>setPlanModal(null)}>
-   <PlanForm mode={planModal.mode} item={planModal.item} compteurs={visCompteurs} systemsList={systemsList} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} treeStruct={treeStruct} unit={unit} niveaux={niveauxPlan} inter={interAll} pieces={pieces} onSubmit={unSeul(savePlan)}/>
+   <PlanForm mode={planModal.mode} item={planModal.item} compteurs={visCompteurs} systemsList={systemsList} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} treeStruct={treeStruct} unit={unit} niveaux={niveauxPlan} inter={interAll} pieces={piecesU} onSubmit={unSeul(savePlan)}/>
    {planModal.mode==="edit" && <ZoneSuppression quoi={"le plan "+planModal.item.code} bloque={blocage.plan(planModal.item)} onSupprimer={()=>supprimer.plan(planModal.item.code)}/>}
   </Modal>}
 
@@ -960,11 +972,11 @@ const [notice,setNotice]=useState(null);
   </Modal>}
 
   {achatModal && <Modal title="Nouvel achat / réapprovisionnement" onClose={()=>setAchatModal(null)}>
-   <AchatForm pieces={pieces} prefill={achatModal.prefill} onSubmit={addAchat}/>
+   <AchatForm pieces={piecesU} prefill={achatModal.prefill} onSubmit={addAchat}/>
   </Modal>}
 
   {dechargeModal && <Modal title="Décharge — Outillage / Consommable" onClose={()=>setDechargeModal(null)}>
-   <DechargeForm pieces={pieces.filter(p=>p.categorie!=="Pièce")} inter={inter} bts={bts.filter(b=>b.etat!=="Clôturé")} prefill={dechargeModal.prefill} onSubmit={unSeul(addDecharge)}/>
+   <DechargeForm pieces={piecesU.filter(p=>p.categorie!=="Pièce")} inter={inter} bts={bts.filter(b=>b.etat!=="Clôturé"&&kpiUnitOf(b.eq,equipements)===unit)} prefill={dechargeModal.prefill} onSubmit={unSeul(addDecharge)}/>
   </Modal>}
 
   {pieceForm && <Modal wide title={pieceForm.mode==="edit"?"Modifier — "+pieceForm.piece.code+" "+pieceForm.piece.nom:"Ajouter — "+pieceForm.categorie} onClose={()=>setPieceForm(null)}>

@@ -9,7 +9,7 @@ export const VOLET_INDICATEURS = 6;
 
 // Chaque collection est rattachée à un volet d'écriture (volet).
 //  - shared  : donnée commune à toutes les unités (unit = '') ; accessible si l'utilisateur
-//              a le volet dans AU MOINS une unité (comme dans l'interface : magasin central, intervenants…)
+//              a le volet dans AU MOINS une unité (intervenants, appareils de mesure… ; le magasin est par unité depuis la v1.21)
 //  - readVolets : volets supplémentaires autorisés en LECTURE (ex. Indicateurs, ou DI qui lisent les équipements)
 //  - readAll : lisible par tout utilisateur connecté (référentiels : systèmes, arborescence, jours fériés)
 //  - writeVolets : volets autorisés en ÉCRITURE quand il y en a plusieurs (sinon : volet)
@@ -20,12 +20,14 @@ export const COLLECTIONS = {
   planning:     { volet: 3, readVolets: [3, 6] },
   // compteurs d'équipement (km, heures…) : relevés saisis par le préventif ou par le technicien à la clôture d'un OT
   compteurs_eq: { volet: 3, writeVolets: [2, 3], readVolets: [0, 2, 3, 6] },
+  // magasin PAR UNITÉ (v1.21) : articles, DS, BS, BR et décharges sont rattachés à une unité ; le gestionnaire de stock
+  // d'une unité ne voit que le magasin de son unité. Pas de filtre par système (enregistrés avec system = null).
   // articles lisibles depuis les OT et le préventif (pièces utilisées) ; DS créées depuis un OT
-  pieces:       { volet: 4, shared: true, readVolets: [2, 3, 4, 6] },
-  dss:          { volet: 4, shared: true, readVolets: [2, 4, 6], writeVolets: [2, 4] },
-  bs:           { volet: 4, shared: true },
-  brs:          { volet: 4, shared: true },
-  decharges:    { volet: 4, shared: true },
+  pieces:       { volet: 4, readVolets: [2, 3, 4, 6] },
+  dss:          { volet: 4, readVolets: [2, 4, 6], writeVolets: [2, 4] },
+  bs:           { volet: 4 },
+  brs:          { volet: 4 },
+  decharges:    { volet: 4 },
   intervenants: { volet: 5, shared: true, readVolets: [2, 3, 5, 6] },
   prestataires: { volet: 5, shared: true, readVolets: [2, 3, 5, 6] },
   // gestion et suivi des matériaux (volet 8) : appareils de mesure, contrôles réglementaires, organismes

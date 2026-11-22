@@ -297,45 +297,62 @@ describe('sous-équipements', () => {
 });
 
 describe('articles du magasin', () => {
-  const H = ['Catégorie *', 'Désignation *', 'Référence', 'Prix unitaire (DA)', 'Stock actuel', 'Seuil min', 'Seuil max', 'Code'];
+  const H = ['Unité *', 'Catégorie *', 'Désignation *', 'Référence', 'Prix unitaire (DA)', 'Stock actuel', 'Seuil min', 'Seuil max', 'Code'];
   it('prépare les articles, attribue les codes par le serveur et crée le mouvement initial', async () => {
-    const lec = await lire({ 'Articles du magasin': [H, ['Pièce', 'Fusible 10A', 'FUS-10', 120, 50, 10, 100], ['outillage', 'Clé 17', '', '', 2], ['Consommable', 'Chiffon', '', '', 0], ['Pièce', 'Relais', '', 80, 5, 1, 9]] });
+    const lec = await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'Fusible 10A', 'FUS-10', 120, 50, 10, 100], ['Alger', 'outillage', 'Clé 17', '', '', 2], ['Alger', 'Consommable', 'Chiffon', '', '', 0], ['Alger', 'Pièce', 'Relais', '', 80, 5, 1, 9]] });
     const p = preparerImport(lec, ctx());
     expect(p.erreurs).toEqual([]);
     expect(p.aCoder).toHaveLength(4);
     const appels = [];
-    const body = await completerCodes(p, async (col, o) => { appels.push([col, o.variant, o.count]); return Array.from({ length: o.count }, (_, i) => `${o.variant}-${String(i + 1).padStart(3, '0')}`); });
-    expect(appels).toEqual([['pieces', 'P', 2], ['pieces', 'O', 1], ['pieces', 'C', 1]]);
+    const body = await completerCodes(p, async (col, o) => { appels.push([col, o.variant, o.unit, o.count]); return Array.from({ length: o.count }, (_, i) => `${o.variant}-${String(i + 1).padStart(3, '0')}`); });
+    expect(appels).toEqual([['pieces', 'P', 'Alger', 2], ['pieces', 'O', 'Alger', 1], ['pieces', 'C', 'Alger', 1]]);
     const items = body.collections.pieces;
     expect(items.map((i) => i.id)).toEqual(['P-001', 'O-001', 'C-001', 'P-002']);
-    expect(items[0].data).toMatchObject({ code: 'P-001', nom: 'Fusible 10A', ref: 'FUS-10', prix: 120, stock: 50, min: 10, max: 100, categorie: 'Pièce' });
+    expect(items[0].data).toMatchObject({ code: 'P-001', unit: 'Alger', nom: 'Fusible 10A', ref: 'FUS-10', prix: 120, stock: 50, min: 10, max: 100, categorie: 'Pièce' });
     expect(items[0].data.mouvements).toEqual([{ date: '2026-10-05', qte: 50, type: 'Achat' }]);
     expect(items[2].data.mouvements).toEqual([]);
-    expect(items.every((i) => i.unit === '' && !i.overwrite)).toBe(true);
+    expect(items.every((i) => i.unit === 'Alger' && !i.overwrite)).toBe(true);
+  });
+  it('magasin par unité : le même article dans deux unités = deux articles, numéros réservés pour chaque unité', async () => {
+    const lec = await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'Fusible 10A', 'FUS-10', 120, 50], ['Oran', 'Pièce', 'Fusible 10A', 'FUS-10', 120, 8], ['ORN', 'Pièce', 'Relais']] });
+    const p = preparerImport(lec, ctx());
+    expect(p.erreurs).toEqual([]);
+    const appels = []; let n = 0;
+    const body = await completerCodes(p, async (col, o) => { appels.push([o.variant, o.unit, o.count]); return Array.from({ length: o.count }, () => `P-${String(++n).padStart(3, '0')}`); });
+    expect(appels).toEqual([['P', 'Alger', 1], ['P', 'Oran', 2]]);
+    expect(body.collections.pieces.map((i) => [i.id, i.unit, i.data.unit, i.data.stock])).toEqual([['P-001', 'Alger', 'Alger', 50], ['P-002', 'Oran', 'Oran', 8], ['P-003', 'Oran', 'Oran', 0]]);
+    // un article existant n'est reconnu que dans son magasin ; il ne change jamais d'unité
+    const ex = { code: 'P-001', unit: 'Alger', nom: 'Fusible 10A', ref: 'FUS-10', categorie: 'Pièce', stock: 40, min: 1, max: 2, prix: 5, mouvements: [], constructeur: {}, fourn1: {}, fourn2: {} };
+    const rejeu = preparerImport(await lire({ 'Articles du magasin': [H, ['Oran', 'Pièce', 'Fusible 10A', 'FUS-10', 1, 3]] }), ctx({ pieces: [ex] }));
+    expect(rejeu.aCoder).toHaveLength(1);                             // créé dans le magasin d'Oran
+    const deplace = preparerImport(await lire({ 'Articles du magasin': [H, ['Oran', 'Pièce', 'Fusible 10A', '', '', '', '', '', 'P-001']] }), ctx({ pieces: [ex] }), { onConflict: 'update' });
+    expect(deplace.erreurs[0].message).toMatch(/appartient au magasin de Alger/);
+    const sansUnite = preparerImport(await lire({ 'Articles du magasin': [H, ['', 'Pièce', 'X']] }), ctx());
+    expect(sansUnite.erreurs).toHaveLength(1);
   });
   it('échec de la numérotation : rien n\'est envoyé', async () => {
-    const p = preparerImport(await lire({ 'Articles du magasin': [H, ['Pièce', 'X']] }), ctx());
+    const p = preparerImport(await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'X']] }), ctx());
     expect(await completerCodes(p, async () => null)).toBeNull();
   });
   it('seuil max < seuil min, catégorie inconnue, stock négatif : erreurs', async () => {
-    const lec = await lire({ 'Articles du magasin': [H, ['Pièce', 'A', '', '', 5, 10, 3], ['Machin', 'B'], ['Pièce', 'C', '', '', -1]] });
+    const lec = await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'A', '', '', 5, 10, 3], ['Alger', 'Machin', 'B'], ['Alger', 'Pièce', 'C', '', '', -1]] });
     const p = preparerImport(lec, ctx());
     expect(p.erreurs.map((e) => e.ligne)).toEqual([2, 3, 4]);
     expect(p.erreurs[0].message).toMatch(/Seuil max/);
   });
   it('rejeu : article reconnu (même désignation/référence), stock jamais modifié, avertissement en mise à jour', async () => {
-    const ex = { code: 'P-001', nom: 'Fusible 10A', ref: 'FUS-10', categorie: 'Pièce', stock: 40, min: 1, max: 2, prix: 5, mouvements: [{ type: 'Achat', qte: 40 }], constructeur: {}, fourn1: {}, fourn2: {} };
-    const lec = await lire({ 'Articles du magasin': [H, ['Pièce', 'Fusible 10A', 'FUS-10', 130, 99, 10, 100]] });
+    const ex = { code: 'P-001', unit: 'Alger', nom: 'Fusible 10A', ref: 'FUS-10', categorie: 'Pièce', stock: 40, min: 1, max: 2, prix: 5, mouvements: [{ type: 'Achat', qte: 40 }], constructeur: {}, fourn1: {}, fourn2: {} };
+    const lec = await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'Fusible 10A', 'FUS-10', 130, 99, 10, 100]] });
     const skip = preparerImport(lec, ctx({ pieces: [ex] }));
     expect(skip.aCoder).toHaveLength(0); expect(skip.collections.pieces ?? []).toHaveLength(0); expect(skip.resume[0].existants).toBe(1);
     const maj = preparerImport(lec, ctx({ pieces: [ex] }), { onConflict: 'update' });
     const r = maj.collections.pieces[0];
-    expect(r).toMatchObject({ id: 'P-001', ecrase: true });
+    expect(r).toMatchObject({ id: 'P-001', unit: 'Alger', ecrase: true });
     expect(r.data.prix).toBe(130); expect(r.data.stock).toBe(40); expect(r.data.mouvements).toHaveLength(1);
     expect(maj.avertissements[0].message).toMatch(/stock de P-001 non modifié \(40\)/);
   });
   it('code inconnu : refusé plutôt qu\'inventé', async () => {
-    const p = preparerImport(await lire({ 'Articles du magasin': [H, ['Pièce', 'X', '', '', '', '', '', 'P-777']] }), ctx());
+    const p = preparerImport(await lire({ 'Articles du magasin': [H, ['Alger', 'Pièce', 'X', '', '', '', '', '', 'P-777']] }), ctx());
     expect(p.erreurs[0].message).toMatch(/« P-777 » n'existe pas/);
   });
 });

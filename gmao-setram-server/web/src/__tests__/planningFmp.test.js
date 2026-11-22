@@ -18,9 +18,10 @@ const INTER = [
   { nom: 'M. Billet', mat: 'MT-4', poste: 'Technicien BILLETTIQUE', role: 'Technicien', taux: 1000, conges: [] },
 ];
 const PIECES = [
-  { code: 'O-001', nom: 'Multimètre Fluke 117', categorie: 'Outillage', stock: 2 },
-  { code: 'O-002', nom: 'Dynamomètre', categorie: 'Outillage', stock: 1 },
-  { code: 'C-001', nom: 'Chiffon industriel', categorie: 'Consommable', stock: 50 },
+  { code: 'O-009', unit: 'Oran', nom: 'Multimètre Fluke 117', categorie: 'Outillage', stock: 4 },   // magasin d'Oran : jamais repris pour un plan d'Alger
+  { code: 'O-001', unit: 'Alger', nom: 'Multimètre Fluke 117', categorie: 'Outillage', stock: 2 },
+  { code: 'O-002', unit: 'Alger', nom: 'Dynamomètre', categorie: 'Outillage', stock: 1 },
+  { code: 'C-001', unit: 'Alger', nom: 'Chiffon industriel', categorie: 'Consommable', stock: 50 },
 ];
 const ctx = (ex = {}) => ({ units: UNITS, unitAbbr: ABBR, roles: ['Technicien'], cdcEtats: [], orgDom: [], systemsList: [['CFO', 'Courants forts']],
   treeStruct: { CFO: [{ code: 'SST', sub: 'Sous-station' }] }, today: '2026-10-21', equipements: [EQ], pieces: PIECES, intervenants: INTER,

@@ -100,12 +100,13 @@ Identique à l'interface : pour chaque utilisateur, **par unité** → liste de 
 | 1 DI | `dis` | par unité + système (déduits de l'équipement visé) |
 | 2 OT | `bts` | par unité + système |
 | 3 Planning préventif | `planning` | par unité + système |
-| 4 Gestion de stock | `pieces`, `dss`, `bs`, `brs`, `decharges` | partagé (magasin central) |
+| 4 Gestion de stock | `pieces`, `dss`, `bs`, `brs`, `decharges` | par unité (un magasin par unité, sans filtre par système) |
 | 5 Intervenants | `intervenants`, `prestataires`, `feries` | partagé |
 | 6 Indicateurs | lecture seule des collections nécessaires aux KPI | — |
 
 Les collections « partagées » sont accessibles si l'utilisateur détient le volet dans **au moins une** unité (comme
-dans l'interface d'origine, où le magasin et les intervenants sont communs). Un utilisateur qui crée des DI peut lire
+dans l'interface, où les intervenants sont communs). Depuis la v1.21 le magasin est **par unité** : un gestionnaire de stock
+ne voit et ne modifie que le magasin des unités où il a le volet 4. Un utilisateur qui crée des DI peut lire
 les `equipements` de son périmètre même sans le volet 0.
 
 Unités : Alger, Oran, Constantine, Sidi Bel Abbès, Ouargla, Sétif, Mostaganem (modifiable via `UNITS` dans `.env`).
@@ -121,8 +122,8 @@ un document au même instant obtiennent deux numéros différents.
 | OT | `OT-ALG-2026-0042` | par unité, par année |
 | OT préventif | `OT-PREV-ALG-2026-0042` | par unité, par année |
 | Plan préventif | `PREV-ALG-0042` | par unité, continu |
-| DS / BS / BR / Décharge | `DS-2026-0042`, `BS-…`, `BR-…`, `DCH-…` | magasin central, par année |
-| Articles | `P-001` (pièce), `O-001` (outillage), `C-001` (consommable) | continu |
+| DS / BS / BR / Décharge | `DS-2026-0042`, `BS-…`, `BR-…`, `DCH-…` | numéro unique pour l'entreprise, par année (le document appartient au magasin d'une unité) |
+| Articles | `P-001` (pièce), `O-001` (outillage), `C-001` (consommable) | continu, unique pour l'entreprise (l'article appartient au magasin d'une unité) |
 
 - L'**unité** d'une DI ou d'un OT est celle de l'équipement visé ; l'**année** est l'année civile à Alger.
 - Les anciens codes (`DI-2026-015`, `OT-3312`…) restent valides ; un numéro déjà utilisé est automatiquement sauté.
