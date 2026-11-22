@@ -28,8 +28,6 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .cmt{height:16px}
 .vide td{height:26px}
 .ecrire{height:34px}
-.cer{display:inline-block;min-width:20px;height:20px;line-height:18px;border:1.5px solid #111;border-radius:50%;text-align:center;margin:0 3px;font-size:11px}
-.cer.on{background:#111;color:#fff}
 .consigne{border:1px solid #888;padding:5px 7px;background:#fafafa}
 .sign{display:flex;gap:8px;margin-top:14px;page-break-inside:avoid}
 .sign div{flex:1;border:1px solid #888;height:70px;padding:3px 5px;font-size:11px}
@@ -39,7 +37,7 @@ tr{page-break-inside:avoid}
 
 const vide=(n,cols)=>`<tr class="vide">${"<td></td>".repeat(cols)}</tr>`.repeat(n);
 const vf=(v)=>{const t=String(v??"").trim(); return t&&t!=="-"?esc(t):"";};   // valeur saisie, sinon case à écrire à la main
-const echelle=(v)=>[1,2,3,4].map(g=>`<span class="cer${Number(v)===g?" on":""}">${g}</span>`).join("");
+const note=(v)=>Number(v)>0?`<b>${esc(v)}</b> / 4`:"…… / 4";
 const heures=(v)=>v!=null&&v!==""&&Number(v)>0?esc(v)+" h":"……… h";
 
 export function btImprimableHtml(bt,{pieces=[],equipements=[],imprimeLe=new Date(),societe="SETRAM"}={}){
@@ -82,18 +80,18 @@ ${bt.fmp?`<tr><td>FMP</td><td colspan="3">${esc(bt.fmp.ref||bt.fmp.fichier||"")}
 
 ${bt.consigne&&bt.consigne!=="-"?`<h2>Consigne de la maintenance</h2><div class="consigne">${esc(bt.consigne)}</div>`:""}
 
-<h2>${prev?"Tâches à réaliser":"Tâches à réaliser / contrôler"}</h2>
-<table><tr><th class="n">N°</th><th>Tâche</th><th>Résultat</th><th>Observations</th></tr>${lignesTaches}</table>
+${prev?`<h2>Tâches à réaliser</h2>
+<table><tr><th class="n">N°</th><th>Tâche</th><th>Résultat</th><th>Observations</th></tr>${lignesTaches}</table>`:""}
 
 ${prev?"":`<h2>Constat</h2>
 <table class="id"><tr><td>Panne</td><td class="ecrire">${vf(bt.panne)}</td><td>Cause</td><td class="ecrire">${vf(bt.cause)}</td></tr>
-<tr><td>Solution</td><td class="ecrire">${vf(bt.effet)}</td><td>Détection / Gravité</td><td>Détection ${echelle(bt.detection)}<br>Gravité ${echelle(bt.gravite)}</td></tr></table>`}
+<tr><td>Solution</td><td class="ecrire">${vf(bt.effet)}</td><td>Détection / Gravité</td><td>Détection : ${note(bt.detection)}<br>Gravité : ${note(bt.gravite)}</td></tr></table>`}
 
 <h2>Temps</h2>
 <table class="id"><tr><td>Durée d'intervention</td><td>${heures(bt.dureeIntervention)}</td><td>Temps logistique</td><td>${heures(bt.tempsLogistique)}</td></tr></table>
 
 <h2>Intervenants</h2>
-<table><tr><th>Nom</th><th>Fonction</th><th class="n">Temps d'intervention</th><th class="n">Temps logistique</th></tr>${lignesInterTotal}</table>
+<table><tr><th>Nom</th><th>Fonction</th><th class="n">Durée d'intervention</th><th class="n">Temps logistique</th></tr>${lignesInterTotal}</table>
 
 <h2>Pièces, outillage et consommables utilisés</h2>
 <table><tr><th>Catégorie</th><th>Code</th><th>Désignation</th><th class="n">Qté</th></tr>${lignesMat}</table>
