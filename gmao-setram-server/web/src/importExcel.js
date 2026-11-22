@@ -139,7 +139,7 @@ export const FEUILLES = [
       C('code', 'Code', 'laisser vide pour une création'),
     ] },
   { cle: 'pieces', nom: 'Articles du magasin', collection: 'pieces',
-    but: 'Pièces, outillage et consommables du magasin de chaque unité (un même article peut exister dans plusieurs unités : une ligne par unité). Code créé automatiquement (P-001, O-001, C-001). Le stock est pris en compte à la création uniquement.',
+    but: 'Pièces, outillage et consommables du magasin de chaque unité (un même article peut exister dans plusieurs unités : une ligne par unité). Code créé automatiquement, avec l\'unité (P-ALG-001, O-ALG-001, C-ALG-001). Le stock est pris en compte à la création uniquement.',
     cols: [
       C('unite', 'Unité', 'Alger', { req: true, t: 'unite' }),
       C('cat', 'Catégorie', 'Pièce', { req: true, t: 'choix' }),
@@ -975,7 +975,7 @@ export function compterAEcrire(prep) {
   return { parCollection: out, total };
 }
 
-// Attribue les numéros des nouveaux articles (P-001, O-001, C-001) auprès du serveur, puis fabrique le corps de la requête.
+// Attribue les numéros des nouveaux articles (P-ALG-001, O-ALG-001, C-ALG-001) auprès du serveur, puis fabrique le corps de la requête.
 // reserver(collection, { variant, unit, count }) doit retourner un tableau de codes, ou null en cas d'échec.
 export async function completerCodes(prep, reserver) {
   const groupes = new Map();      // collection | variante | unité -> enregistrements (articles : P/O/C ; plans : par unité)

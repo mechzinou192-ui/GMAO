@@ -116,19 +116,19 @@ export function genererDemo(now = new Date(), graine = 2026) {
     ['Consommable', 'Graisse haute température', 'GRS-HT', 1200, 25, 10, 40, 8], ['Consommable', 'Nettoyant contact', 'NET-C', 780, 30, 12, 50, 14], ['Consommable', 'Chiffons (lot)', 'CHF-L', 350, 60, 20, 100, 25],
     ['Consommable', 'Gants isolants', 'GNT-I', 4800, 12, 6, 20, 3],
   ];
-  const cptCat = { Pièce: 0, Outillage: 0, Consommable: 0 };
   const PREF = { Pièce: 'P', Outillage: 'O', Consommable: 'C' };
   // magasin PAR UNITÉ : Alger a tout le catalogue, les autres unités un magasin réduit (pièces courantes + multimètre).
-  // Les codes restent uniques pour toute l'entreprise (P-001… pour Alger, puis la suite pour Oran, etc.).
+  // Codes par unité, comme les DI et les OT : P-ALG-001, O-ORN-001…
   const piecesParUnite = {};
   const outilParUnite = {};                                                // multimètre de l'unité (outillage des visites)
   for (const unit of Object.keys(ABBR)) {
     piecesParUnite[unit] = [];
+    const cptCat = { Pièce: 0, Outillage: 0, Consommable: 0 };                 // numérotation par unité : P-ALG-001, P-ORN-001…
     const catalogue = unit === 'Alger' ? ART : ART.filter(([categorie, nom], idx) => (categorie === 'Pièce' && idx < 12) || nom === 'Multimètre');
     catalogue.forEach(([categorie, nom, ref, prix, stock0, min, max, sorties0]) => {
       const reduit = unit !== 'Alger';
       const stock = reduit ? Math.max(0, Math.round(stock0 / 3)) : stock0, sorties90 = reduit ? Math.round(sorties0 / 3) : sorties0;
-      const code = `${PREF[categorie]}-${pad(++cptCat[categorie], 3)}`;
+      const code = `${PREF[categorie]}-${ABBR[unit]}-${pad(++cptCat[categorie], 3)}`;
       const mouvements = [{ date: jourDe(-150), qte: stock + sorties90 + 6, type: 'Achat' }];
       // magasins réduits : valeurs fixes (sans tirage aléatoire), pour que les données d'Alger restent identiques d'une version à l'autre
       let reste = sorties90, k = 0;
@@ -140,8 +140,8 @@ export function genererDemo(now = new Date(), graine = 2026) {
       if (categorie === 'Pièce') piecesParUnite[unit].push(data);
       if (nom === 'Multimètre') outilParUnite[unit] = code;
     });
+    for (const [cat, pre] of Object.entries(PREF)) if (cptCat[cat]) compteurs.set(`pieces:${pre}|${ABBR[unit]}|0`, cptCat[cat]);
   }
-  compteurs.set('pieces:P||0', cptCat.Pièce); compteurs.set('pieces:O||0', cptCat.Outillage); compteurs.set('pieces:C||0', cptCat.Consommable);
 
   /* ───── DI et OT correctifs ───── */
   const DESIGN = {

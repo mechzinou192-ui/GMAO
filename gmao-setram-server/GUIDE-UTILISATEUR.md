@@ -130,7 +130,7 @@ La **date estimée** est calculée d'après l'usage moyen. À la clôture de l'O
 
 ## 7. Gestion de stock
 
-**Un magasin par unité.** Chaque unité a son propre magasin : articles, DS, BS, BR, achats et décharges. L'écran et les exports montrent le magasin de l'**unité affichée** (en haut) ; le gestionnaire de stock d'une unité ne voit que le sien. Une DS faite depuis un OT va au magasin de l'unité de l'OT et ne propose que ses articles. Le super administrateur (et toute personne ayant le module Stock sur plusieurs unités) change d'unité pour passer d'un magasin à l'autre. Les numéros (P-001, DS-2026-0012…) restent uniques pour toute l'entreprise. Import Excel : la feuille « Articles du magasin » a une colonne **Unité** obligatoire (un même article dans deux unités = deux lignes).
+**Un magasin par unité.** Chaque unité a son propre magasin : articles, DS, BS, BR, achats et décharges. L'écran et les exports montrent le magasin de l'**unité affichée** (en haut) ; le gestionnaire de stock d'une unité ne voit que le sien. Une DS faite depuis un OT va au magasin de l'unité de l'OT et ne propose que ses articles. Le super administrateur (et toute personne ayant le module Stock sur plusieurs unités) change d'unité pour passer d'un magasin à l'autre. Comme les DI et les OT, les numéros portent l'unité : **P-ALG-001**, **DS-ALG-2026-0012**, **BS-ALG-…**, **BR-ALG-…**, **DCH-ALG-…** (les anciens numéros, ex. P-001 ou DS-2026-0012, restent valables). Import Excel : la feuille « Articles du magasin » a une colonne **Unité** obligatoire (un même article dans deux unités = deux lignes).
 
 | Document | Usage |
 |---|---|

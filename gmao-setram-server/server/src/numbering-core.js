@@ -6,24 +6,26 @@
  *   perUnit          = un compteur par unité, abréviation dans le code (DI-ALG-2026-0042)
  *   yearly           = le compteur repart de 1 chaque année civile (fuseau Africa/Algiers)
  *
- * Exemples : DI-ALG-2026-0001 · OT-ORN-2026-0007 · OT-PREV-ALG-2026-0003 · DS-2026-0012 · P-001
+ * Exemples : DI-ALG-2026-0001 · OT-ORN-2026-0007 · OT-PREV-ALG-2026-0003 · DS-ALG-2026-0012 · P-ALG-001
+ * Magasin par unité (v1.21) : articles, DS, BS, BR et décharges ont aussi l'unité dans le code. Les codes déjà attribués
+ * (DS-2026-0012, P-001) restent valides : seuls les nouveaux éléments prennent le nouveau format.
  */
 export const SEQUENCES = {
   dis:          { collection: 'dis',        prefix: 'DI',      perUnit: true,  yearly: true,  pad: 4 },
   bts:          { collection: 'bts',        prefix: 'OT',      perUnit: true,  yearly: true,  pad: 4 },
   'bts:prev':   { collection: 'bts',        prefix: 'OT-PREV', perUnit: true,  yearly: true,  pad: 4 },
   planning:     { collection: 'planning',   prefix: 'PREV',    perUnit: true,  yearly: false, pad: 4 },
-  dss:          { collection: 'dss',        prefix: 'DS',      perUnit: false, yearly: true,  pad: 4 },
+  dss:          { collection: 'dss',        prefix: 'DS',      perUnit: true,  yearly: true,  pad: 4 },
   rapports:     { collection: 'rapports',   prefix: 'RAP',     perUnit: true,  yearly: true,  pad: 3 },
   // demandes d'expertise (DEX-ALG-2026-001) et d'assistance (DAS-ALG-2026-001) adressées à l'expert DG
   'demandes:EXP': { collection: 'demandes', prefix: 'DEX',   perUnit: true,  yearly: true,  pad: 3 },
   'demandes:ASS': { collection: 'demandes', prefix: 'DAS',   perUnit: true,  yearly: true,  pad: 3 },
-  bs:           { collection: 'bs',         prefix: 'BS',      perUnit: false, yearly: true,  pad: 4 },
-  brs:          { collection: 'brs',        prefix: 'BR',      perUnit: false, yearly: true,  pad: 4 },
-  decharges:    { collection: 'decharges',  prefix: 'DCH',     perUnit: false, yearly: true,  pad: 4 },
-  'pieces:P':   { collection: 'pieces',     prefix: 'P',       perUnit: false, yearly: false, pad: 3 },
-  'pieces:O':   { collection: 'pieces',     prefix: 'O',       perUnit: false, yearly: false, pad: 3 },
-  'pieces:C':   { collection: 'pieces',     prefix: 'C',       perUnit: false, yearly: false, pad: 3 },
+  bs:           { collection: 'bs',         prefix: 'BS',      perUnit: true,  yearly: true,  pad: 4 },
+  brs:          { collection: 'brs',        prefix: 'BR',      perUnit: true,  yearly: true,  pad: 4 },
+  decharges:    { collection: 'decharges',  prefix: 'DCH',     perUnit: true,  yearly: true,  pad: 4 },
+  'pieces:P':   { collection: 'pieces',     prefix: 'P',       perUnit: true,  yearly: false, pad: 3 },
+  'pieces:O':   { collection: 'pieces',     prefix: 'O',       perUnit: true,  yearly: false, pad: 3 },
+  'pieces:C':   { collection: 'pieces',     prefix: 'C',       perUnit: true,  yearly: false, pad: 3 },
 };
 
 export const MAX_BATCH = 1000;   // numéros réservés en une requête (import de gros volumes)

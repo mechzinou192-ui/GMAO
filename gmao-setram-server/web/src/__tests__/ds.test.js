@@ -90,7 +90,7 @@ describe('repartir de zéro : périmètre par catégorie, unité et système', (
   it('une seule unité : compteurs de cette unité seulement, référentiels refusés, unité inconnue refusée', () => {
     const p = preparerReinitialisation({ ...base, unit: 'Oran', collections: ['dis', 'dss', 'equipements'] }, { units: ['Alger', 'Oran'] });
     expect(p.unit).toBe('Oran');
-    expect(p.sequences).toEqual(['dis']);            // « dss » est commun à toutes les unités : son compteur n'est pas touché
+    expect(p.sequences).toEqual(['dis', 'dss']);      // magasin par unité : le compteur des DS de l'unité repart aussi à 1
     expect(p.scopes).toEqual(['ORN']);
     expect(() => preparerReinitialisation({ ...base, unit: 'Oran', collections: ['arborescence'] })).toThrow(/communs à toutes les unités/);
     expect(() => preparerReinitialisation({ ...base, unit: 'Mars', collections: ['dis'] }, { units: ['Alger', 'Oran'] })).toThrow(/Unité inconnue/);
