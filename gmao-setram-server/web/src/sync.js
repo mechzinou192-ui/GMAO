@@ -23,6 +23,7 @@ const BASE = {
   bts:          { id: byCode, newestFirst: true, fenetre: true },
   planning:     { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
+  charge_ram:   { id: byCode, meta: (x) => ({ unit: x.unit, system: null }) },   // charge RAM saisie : 1 ligne par unité et par mois
   pieces:       { id: byCode },
   rapports:     { id: byCode, newestFirst: true, meta: (r) => ({ unit: r.unit, system: null }) },
   demandes:     { id: byCode, newestFirst: true, meta: (d) => ({ unit: d.unit, system: d.system }) },
