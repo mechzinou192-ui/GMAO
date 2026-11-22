@@ -123,10 +123,14 @@ dataRouter.post('/:collection/next-code', collectionOf, async (req, res) => {
   if (!def) return res.status(404).json({ error: 'Pas de numérotation pour cette collection.' });
   const unit = def.perUnit ? String(b.unit ?? '') : '';
   if (def.perUnit && !config.units.includes(unit)) return res.status(400).json({ error: 'Unité invalide.' });
+  // numéro commun à toutes les unités (DS-2026-0012, P-001) mais donnée rattachée à une unité (magasin par unité) :
+  // le droit est contrôlé sur l'unité de l'élément à créer
+  const unitDroit = def.perUnit || req.def.shared ? unit : String(b.unit ?? '');
+  if (!req.def.shared && !config.units.includes(unitDroit)) return res.status(400).json({ error: 'Unité invalide.' });
   const count = b.count === undefined ? 1 : Number(b.count);
   if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH)
     return res.status(400).json({ error: `count doit être compris entre 1 et ${MAX_BATCH}.` });
-  if (!canWrite(req.user, collection, def.perUnit ? unit : '', null))
+  if (!canWrite(req.user, collection, unitDroit, null))
     return res.status(403).json({ error: "Vous n'avez pas le droit de créer ces données." });
   if (!actionPermise(req.user, collection, 'creer'))
     return res.status(403).json({ error: 'Votre profil ne permet pas de créer ces données (réglage du super administrateur).', code: 'PROFIL' });

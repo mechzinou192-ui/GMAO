@@ -196,8 +196,12 @@ export function createDemoApi({ now = new Date(), stockage = (typeof sessionStor
       if (!def) throw err(404, 'Pas de numérotation pour cette collection.');
       const u = def.perUnit ? String(unit ?? '') : '';
       if (def.perUnit && !UNITS.includes(u)) throw err(400, 'Unité invalide.');
+      // numéro commun à l'entreprise mais élément rattaché à une unité (magasin par unité) : droit contrôlé sur cette unité
+      const shared = !!(COLLECTIONS[collection] || {}).shared;
+      const uDroit = def.perUnit || shared ? u : String(unit ?? '');
+      if (!shared && !UNITS.includes(uDroit)) throw err(400, 'Unité invalide.');
       if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH) throw err(400, `count doit être compris entre 1 et ${MAX_BATCH}.`);
-      if (!canWrite(user, collection, def.perUnit ? u : '', null)) throw err(403, "Vous n'avez pas le droit de créer ces données.");
+      if (!canWrite(user, collection, uDroit, null)) throw err(403, "Vous n'avez pas le droit de créer ces données.");
       if (!actionPermise(user, collection, 'creer')) throw err(403, 'Votre profil ne permet pas de créer ces données (réglage du super administrateur).', { code: 'PROFIL' });
       const codes = reserver(cle, { unit: u, count }); sauver();
       return codes;

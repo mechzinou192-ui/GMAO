@@ -1,5 +1,29 @@
 # Journal des modifications
 
+## Non publié — magasin par unité ; comparatif des unités sur toutes les unités accessibles
+- **Magasin par unité** : articles, DS, BS, BR et décharges ne sont plus communs à toutes les unités. Chaque unité a son
+  magasin ; le gestionnaire de stock d'une unité ne voit et ne modifie que le sien (contrôlé par le serveur). L'écran
+  *Gestion de stock*, ses exports (nommés avec l'unité), l'alerte « Stock critique », l'accueil, les indicateurs de stock et
+  l'assistant montrent le magasin de l'**unité affichée**. Une DS (créée depuis un OT) va au magasin de l'unité de l'OT et ne
+  propose que ses articles ; le BS suit sa DS ; BR et décharges suivent l'article. Le super administrateur et les comptes
+  qui ont le module Stock sur plusieurs unités changent d'unité pour passer d'un magasin à l'autre. QR code d'un article :
+  l'application bascule sur l'unité de l'article (si la personne y a accès).
+- Numéros inchangés et uniques pour l'entreprise (P-001, DS-2026-0012…) ; `next-code` exige désormais l'unité pour ces
+  collections (droit vérifié sur cette unité).
+- **Migration `010_magasin_par_unite.sql`** (automatique au démarrage) : chaque élément existant est rattaché à une unité —
+  DS : unité de l'OT lié, sinon de l'équipement ; BS : de sa DS ; article : unité qui l'a le plus demandé (DS), sinon qui
+  l'a le plus utilisé dans ses OT ; décharge : de l'OT, sinon de l'article ; BR : de l'article ; à défaut, l'unité la plus
+  active de la base (celle du pilote). Un article demandé par plusieurs unités est rattaché à une seule : recréez-le dans
+  le magasin de l'autre unité si besoin.
+- **Import Excel** : colonne **Unité** obligatoire dans « Articles du magasin » ; un article n'est reconnu que dans le
+  magasin de son unité et ne change jamais d'unité ; les pièces / outillage / consommables d'un plan préventif importé
+  sont cherchés dans le magasin de l'unité du plan.
+- **Indicateurs — comparatif des unités** (écran et export de la synthèse) : toutes les unités où la personne a le module
+  Indicateurs (comme l'export RH « Par unité ») — une seule pour un agent d'unité, plusieurs pour un expert ou le
+  responsable DG, toutes pour le super administrateur. Auparavant, seule l'unité affichée apparaissait.
+- Démonstration : un magasin par unité (Alger : catalogue complet ; autres unités : magasin réduit).
+- `server/public/` et `web/dist-demo/` recompilés.
+
 ## Non publié — OT : temps logistique par intervenant ; validation des OT par le responsable maintenance ; demandes d'expertise / d'assistance
 - **OT — intervenants** : « saisissez la durée d'intervention et temps logistique de chacun (h) ». Chaque intervenant a
   deux saisies (intervention, logistique) ; coût main-d'œuvre = (intervention + logistique) × taux, repris dans la fiche,

@@ -139,8 +139,9 @@ export const FEUILLES = [
       C('code', 'Code', 'laisser vide pour une création'),
     ] },
   { cle: 'pieces', nom: 'Articles du magasin', collection: 'pieces',
-    but: 'Pièces, outillage et consommables du magasin central. Code créé automatiquement (P-001, O-001, C-001). Le stock est pris en compte à la création uniquement.',
+    but: 'Pièces, outillage et consommables du magasin de chaque unité (un même article peut exister dans plusieurs unités : une ligne par unité). Code créé automatiquement (P-001, O-001, C-001). Le stock est pris en compte à la création uniquement.',
     cols: [
+      C('unite', 'Unité', 'Alger', { req: true, t: 'unite' }),
       C('cat', 'Catégorie', 'Pièce', { req: true, t: 'choix' }),
       C('nom', 'Désignation', 'Fusible 10A', { req: true }),
       C('ref', 'Référence', 'FUS-10A'), C('serie', 'N° de série', ''),
@@ -688,7 +689,7 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     const def = defOf('pieces'), s = stats('pieces');
     const lignes = lire(def, lecture.feuilles.pieces); s.lignes = lecture.feuilles.pieces.lignes.length;
     const parCode = new Map(ctx.pieces.map((p) => [p.code, p]));
-    const parNom = indexer(ctx.pieces, (p) => `${p.categorie}|${norm(p.nom)}|${norm(p.ref)}`);
+    const parNom = indexer(ctx.pieces, (p) => `${p.unit || ''}|${p.categorie}|${norm(p.nom)}|${norm(p.ref)}`);   // magasin par unité
     const explicites = new Set();
     for (const { ligne, v } of lignes) {
       if (v.min !== undefined && v.max !== undefined && v.max < v.min) { err(def.nom, ligne, 'Seuil max', 'doit être supérieur ou égal au seuil min'); continue; }
@@ -699,7 +700,8 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
         ex = parCode.get(code);
         if (!ex) { err(def.nom, ligne, 'Code', `« ${code} » n'existe pas : laissez vide pour créer un nouvel article (le code est attribué automatiquement)`); continue; }
         if (ex.categorie !== v.cat) { err(def.nom, ligne, 'Catégorie', `l'article ${code} est de catégorie « ${ex.categorie} »`); continue; }
-      } else ex = prendre(parNom, `${v.cat}|${norm(v.nom)}|${norm(v.ref)}`);
+        if (ex.unit && ex.unit !== v.unite) { err(def.nom, ligne, 'Unité', `l'article ${code} appartient au magasin de ${ex.unit} : un article ne change pas d'unité (laissez le code vide pour le créer dans le magasin de ${v.unite})`); continue; }
+      } else ex = prendre(parNom, `${v.unite}|${v.cat}|${norm(v.nom)}|${norm(v.ref)}`);
       const sous = (p) => { const o = {}; ['nom', 'contact', 'tel', 'email'].forEach((k) => { if (v[`${p}_${k}`]) o[k] = v[`${p}_${k}`]; }); return o; };
       const champs = { nom: v.nom, ...(v.ref ? { ref: v.ref } : {}), ...(v.serie ? { serie: v.serie } : {}), ...(v.prix !== undefined ? { prix: v.prix } : {}),
         ...(v.min !== undefined ? { min: v.min } : {}), ...(v.max !== undefined ? { max: v.max } : {}) };
@@ -707,16 +709,17 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
         if (maj) {
           if (v.stock !== undefined && v.stock !== ex.stock) warn(def.nom, ligne, `stock de ${ex.code} non modifié (${ex.stock}) : le stock d'un article existant évolue par achats, sorties et retours`);
           const data = { ...clone(ex), ...champs, constructeur: { ...(ex.constructeur || {}), ...sous('c') }, fourn1: { ...(ex.fourn1 || {}), ...sous('f1') }, fourn2: { ...(ex.fourn2 || {}), ...sous('f2') } };
-          ecrire('pieces', ex.code, { id: ex.code, unit: '', system: null, data, ecrase: true }); s.modifies++;
+          data.unit = v.unite;
+          ecrire('pieces', ex.code, { id: ex.code, unit: v.unite, system: null, data, ecrase: true }); s.modifies++;
         } else {
           if (v.stock !== undefined && v.stock !== ex.stock) warn(def.nom, ligne, `« ${ex.code} » existe déjà : ligne ignorée (stock inchangé)`);
           s.existants++;
         }
       } else {
-        const data = { nom: v.nom, ref: v.ref || '', serie: v.serie || '', prix: v.prix ?? 0, stock: v.stock ?? 0, min: v.min ?? 0, max: v.max ?? 0, categorie: v.cat,
+        const data = { unit: v.unite, nom: v.nom, ref: v.ref || '', serie: v.serie || '', prix: v.prix ?? 0, stock: v.stock ?? 0, min: v.min ?? 0, max: v.max ?? 0, categorie: v.cat,
           constructeur: { nom: '', contact: '', tel: '', email: '', ...sous('c') }, fourn1: { nom: '', tel: '', email: '', ...sous('f1') }, fourn2: { nom: '', tel: '', email: '', ...sous('f2') },
           mouvements: (v.stock ?? 0) > 0 ? [{ date: aujourdhui, qte: v.stock, type: 'Achat' }] : [] };
-        const rec = { id: null, unit: '', system: null, data, variant: { Pièce: 'P', Outillage: 'O', Consommable: 'C' }[v.cat] };
+        const rec = { id: null, unit: v.unite, system: null, data, variant: { Pièce: 'P', Outillage: 'O', Consommable: 'C' }[v.cat] };
         aCoder.push(rec); sortieDe('pieces').set(`nouveau:${aCoder.length}`, rec); s.nouveaux++;
       }
     }
@@ -783,19 +786,19 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
     const inter = (ctx.intervenants || []).filter((i) => !i.externe);
     const parNomInter = new Map((ctx.intervenants || []).concat(ctx.prestataires || []).map((i) => [norm(i.nom), i]));
     const articles = (ctx.pieces || []);
-    const trouverArticle = (txt, categorie) => {
+    const trouverArticle = (txt, categorie, unite) => {
       const t = norm(txt);
-      const cat = articles.filter((p) => p.categorie === categorie);
+      const cat = articles.filter((p) => p.categorie === categorie && (!unite || p.unit === unite));   // magasin de l'unité du plan
       return cat.find((p) => norm(p.code) === t) || cat.find((p) => norm(p.nom) === t)
         || (() => { const c = cat.filter((p) => norm(p.nom).includes(t) || t.includes(norm(p.nom))); return c.length === 1 ? c[0] : null; })();
     };
-    const listeArticles = (txt, categorie, ligne, colonne) => {
+    const listeArticles = (txt, categorie, ligne, colonne, unite) => {
       const out = [];
       for (const brut of String(txt || '').split(/[;\n]/).map((x) => x.trim()).filter(Boolean)) {
         const m = brut.match(/^(.*?)(?:\s*[x×*]\s*(\d+)|\s*\((\d+)\))\s*$/i);
         const nom = (m ? m[1] : brut).trim(); const qte = m ? Number(m[2] || m[3]) : 1;
-        const a = trouverArticle(nom, categorie);
-        if (!a) { warn(def.nom, ligne, `colonne « ${colonne} » : « ${nom} » introuvable dans la catégorie ${categorie} du magasin — non repris (créez l'article puis réimportez en mode « mettre à jour »)`); continue; }
+        const a = trouverArticle(nom, categorie, unite);
+        if (!a) { warn(def.nom, ligne, `colonne « ${colonne} » : « ${nom} » introuvable dans la catégorie ${categorie} du magasin${unite ? ` de ${unite}` : ''} — non repris (créez l'article puis réimportez en mode « mettre à jour »)`); continue; }
         const ex = out.find((x) => x.code === a.code); if (ex) ex.qte += qte; else out.push({ code: a.code, qte });
       }
       return out;
@@ -833,9 +836,9 @@ export function preparerImport(lecture, ctx, { onConflict = 'skip' } = {}) {
       }
       const champs = {
         taches, fmp: { ref: fmp.ref, titre: fmp.titre, lien: v.fmp, fichier: fmp.fichier },
-        piecesPrevues: listeArticles(v.pieces, 'Pièce', ligne, 'Pièces à utiliser'),
-        consommables: listeArticles(v.conso, 'Consommable', ligne, 'Consommables à utiliser'),
-        outillage: listeArticles(v.outil, 'Outillage', ligne, 'Outillage à utiliser'),
+        piecesPrevues: listeArticles(v.pieces, 'Pièce', ligne, 'Pièces à utiliser', d.unit),
+        consommables: listeArticles(v.conso, 'Consommable', ligne, 'Consommables à utiliser', d.unit),
+        outillage: listeArticles(v.outil, 'Outillage', ligne, 'Outillage à utiliser', d.unit),
         intitule: fmp.titre,
       };
       const ex = prendre(existants, cle);
@@ -973,11 +976,11 @@ export function compterAEcrire(prep) {
 }
 
 // Attribue les numéros des nouveaux articles (P-001, O-001, C-001) auprès du serveur, puis fabrique le corps de la requête.
-// reserver(collection, { variant, count }) doit retourner un tableau de codes, ou null en cas d'échec.
+// reserver(collection, { variant, unit, count }) doit retourner un tableau de codes, ou null en cas d'échec.
 export async function completerCodes(prep, reserver) {
   const groupes = new Map();      // collection | variante | unité -> enregistrements (articles : P/O/C ; plans : par unité)
   for (const r of prep.aCoder) {
-    const k = `${r.collection || 'pieces'}|${r.variant || ''}|${r.collection === 'planning' ? r.unit : ''}`;
+    const k = `${r.collection || 'pieces'}|${r.variant || ''}|${r.unit || ''}`;   // articles : magasin de l'unité ; plans : compteur de l'unité
     if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(r);
   }
   for (const [k, recs] of groupes) {

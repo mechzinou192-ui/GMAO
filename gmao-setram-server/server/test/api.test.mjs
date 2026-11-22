@@ -92,7 +92,8 @@ test('le technicien ne peut écrire que dans son périmètre', async () => {
   assert.equal((await tech.call('PUT', '/data/equipements/EQ-2', { ...eq, unit: 'Oran', system: 'CFO' })).status, 403);   // autre unité
   assert.equal((await tech.call('PUT', '/data/equipements/EQ-3', { ...eq, unit: 'Alger', system: 'VOIE' })).status, 403); // autre système
   assert.equal((await tech.call('PUT', '/data/bts/OT-1', { data: {}, unit: 'Alger', system: 'CFO' })).status, 403);       // volet 2 non accordé
-  assert.equal((await tech.call('PUT', '/data/pieces/P-1', { data: { nom: 'x' } })).status, 403);                         // volet 4 (magasin) non accordé
+  assert.equal((await tech.call('PUT', '/data/pieces/P-1', { data: { nom: 'x' }, unit: 'Alger' })).status, 403);           // volet 4 (magasin) non accordé
+  assert.equal((await tech.call('PUT', '/data/pieces/P-1', { data: { nom: 'x' } })).status, 400);                         // magasin par unité : unité obligatoire
   assert.equal((await tech.call('PUT', '/data/intervenants/MT-1', { data: { nom: 'x' } })).status, 403);                  // volet 5 non accordé
   assert.equal((await tech.call('PUT', '/data/systemes/main', { data: { list: [] } })).status, 403);                     // systèmes : super administrateur seul (organigramme)
   assert.equal((await tech.call('PUT', '/data/arborescence/CFO.TST', { data: { system: 'CFO', code: 'TST', sub: 'Test' } })).status, 200);   // sous-système : volet 0 suffit
@@ -179,14 +180,15 @@ test('numérotation : OT, OT préventif, plan, magasin et articles', async () =>
   assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0001`);
   assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0002`);
   assert.equal(await code('planning', { unit: 'Sidi Bel Abbès' }), 'PREV-SBA-0001');
-  assert.equal(await code('dss', {}), `DS-${YEAR}-0001`);
-  assert.equal(await code('bs', {}), `BS-${YEAR}-0001`);
-  assert.equal(await code('brs', {}), `BR-${YEAR}-0001`);
-  assert.equal(await code('decharges', {}), `DCH-${YEAR}-0001`);
-  assert.equal(await code('dss', { unit: 'Oran' }), `DS-${YEAR}-0002`);            // magasin central : un seul compteur
-  assert.equal(await code('pieces', { variant: 'P' }), 'P-001');
-  assert.equal(await code('pieces', { variant: 'O' }), 'O-001');
-  assert.equal(await code('pieces', { variant: 'P' }), 'P-002');
+  assert.equal(await code('dss', { unit: 'Alger' }), `DS-${YEAR}-0001`);
+  assert.equal(await code('bs', { unit: 'Alger' }), `BS-${YEAR}-0001`);
+  assert.equal(await code('brs', { unit: 'Alger' }), `BR-${YEAR}-0001`);
+  assert.equal(await code('decharges', { unit: 'Alger' }), `DCH-${YEAR}-0001`);
+  assert.equal(await code('dss', { unit: 'Oran' }), `DS-${YEAR}-0002`);            // magasin par unité, mais numéros uniques pour l'entreprise
+  assert.equal(await code('pieces', { unit: 'Alger', variant: 'P' }), 'P-001');
+  assert.equal(await code('pieces', { unit: 'Oran', variant: 'O' }), 'O-001');
+  assert.equal(await code('pieces', { unit: 'Oran', variant: 'P' }), 'P-002');
+  assert.equal((await admin.call('POST', '/data/dss/next-code', {})).status, 400);       // unité de l'élément obligatoire
 });
 
 test('numérotation : 25 demandes simultanées donnent 25 numéros distincts', async () => {
@@ -213,8 +215,8 @@ test('numérotation : droits et validations', async () => {
   assert.match(r.body.codes[0], new RegExp(`^DI-ALG-${YEAR}-\\d{4}$`));
   assert.equal((await u.call('POST', '/data/dis/next-code', { unit: 'Oran' })).status, 403);   // autre unité
   assert.equal((await u.call('POST', '/data/bts/next-code', { unit: 'Alger' })).status, 403);  // volet OT non accordé
-  assert.equal((await u.call('POST', '/data/dss/next-code', {})).status, 403);                 // volet Magasin non accordé
-  assert.equal((await u.call('POST', '/data/pieces/next-code', { variant: 'P' })).status, 403);
+  assert.equal((await u.call('POST', '/data/dss/next-code', { unit: 'Alger' })).status, 403);   // volet Magasin non accordé
+  assert.equal((await u.call('POST', '/data/pieces/next-code', { unit: 'Alger', variant: 'P' })).status, 403);
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Paris' })).status, 400);
   assert.equal((await admin.call('POST', '/data/dis/next-code', {})).status, 400);             // unité obligatoire
   assert.equal((await admin.call('POST', '/data/dis/next-code', { unit: 'Alger', count: 0 })).status, 400);
@@ -223,6 +225,72 @@ test('numérotation : droits et validations', async () => {
   assert.equal((await admin.call('POST', '/data/pieces/next-code', { variant: 'Z' })).status, 404);
   assert.equal((await admin.call('POST', '/data/equipements/next-code', { unit: 'Alger' })).status, 404); // pas de numérotation serveur
   assert.equal((await anon.call('POST', '/data/dis/next-code', { unit: 'Alger' })).status, 401);
+});
+
+test('magasin par unité : chaque gestionnaire de stock ne voit et ne modifie que le magasin de son unité', async () => {
+  const magAlg = await newUser('mag.alger', { Alger: { systems: ['*'], volets: [4] } }, 'Motdepasse2026ok', 'Gestionnaire de stock');
+  const magOrn = await newUser('mag.oran', { Oran: { systems: ['*'], volets: [4] } }, 'Motdepasse2026ok', 'Gestionnaire de stock');
+  const chargeAlg = await newUser('ot.alger.mag', { Alger: { systems: ['CFO'], volets: [2] } });
+  assert.equal((await magAlg.call('PUT', '/data/pieces/P-MAG-ALG', { unit: 'Alger', data: { code: 'P-MAG-ALG', unit: 'Alger', nom: 'Fusible' } })).status, 200);
+  assert.equal((await magOrn.call('PUT', '/data/pieces/P-MAG-ORN', { unit: 'Oran', data: { code: 'P-MAG-ORN', unit: 'Oran', nom: 'Fusible' } })).status, 200);
+  assert.equal((await magOrn.call('PUT', '/data/pieces/P-MAG-X', { unit: 'Alger', data: { nom: 'x' } })).status, 403);        // magasin d'une autre unité
+  for (const col of ['dss', 'bs', 'brs', 'decharges']) {
+    assert.equal((await magAlg.call('PUT', `/data/${col}/${col}-MAG-ALG`, { unit: 'Alger', data: { code: `${col}-MAG-ALG`, unit: 'Alger' } })).status, 200, col);
+    assert.equal((await magAlg.call('PUT', `/data/${col}/${col}-MAG-ORN`, { unit: 'Oran', data: { unit: 'Oran' } })).status, 403, col);
+  }
+  const voit = async (c, col) => (await c.call('GET', `/data/${col}`)).body.items.map(i => i.id).filter(id => id.includes('-MAG-'));
+  assert.deepEqual(await voit(magAlg, 'pieces'), ['P-MAG-ALG']);
+  assert.deepEqual(await voit(magOrn, 'pieces'), ['P-MAG-ORN']);
+  for (const col of ['dss', 'bs', 'brs', 'decharges']) {
+    assert.deepEqual(await voit(magAlg, col), [`${col}-MAG-ALG`], col);
+    assert.deepEqual(await voit(magOrn, col), [], col);
+  }
+  // déplacement d'un article vers une autre unité refusé ; numéros réservés seulement pour son unité
+  const cur = (await magAlg.call('GET', '/data/pieces')).body.items.find(i => i.id === 'P-MAG-ALG');
+  assert.equal((await magAlg.call('PUT', '/data/pieces/P-MAG-ALG', { unit: 'Oran', data: cur.data, version: cur.version })).status, 403);
+  assert.equal((await magOrn.call('PUT', '/data/pieces/P-MAG-ALG', { unit: 'Oran', data: cur.data, version: cur.version })).status, 403);
+  assert.equal((await magAlg.call('POST', '/data/dss/next-code', { unit: 'Alger' })).status, 200);
+  assert.equal((await magAlg.call('POST', '/data/dss/next-code', { unit: 'Oran' })).status, 403);
+  assert.equal((await magAlg.call('POST', '/data/pieces/next-code', { unit: 'Oran', variant: 'P' })).status, 403);
+  // le chargé d'Alger lit les articles d'Alger (pièces de ses OT) et crée les DS de son unité, pas celles d'Oran
+  assert.deepEqual(await voit(chargeAlg, 'pieces'), ['P-MAG-ALG']);
+  assert.equal((await chargeAlg.call('PUT', '/data/dss/DS-MAG-OT', { unit: 'Alger', data: { code: 'DS-MAG-OT', unit: 'Alger', bt: 'OT-1' } })).status, 200);
+  assert.equal((await chargeAlg.call('PUT', '/data/dss/DS-MAG-OT2', { unit: 'Oran', data: { unit: 'Oran' } })).status, 403);
+  assert.deepEqual(await voit(chargeAlg, 'bs'), []);                                                                          // BS : volet magasin
+  // le super administrateur voit tous les magasins
+  assert.ok((await voit(admin, 'pieces')).includes('P-MAG-ALG') && (await voit(admin, 'pieces')).includes('P-MAG-ORN'));
+});
+
+test('magasin par unité : reprise des données existantes (migration 010)', async () => {
+  const sql = fs.readFileSync(new URL('../src/migrations/010_magasin_par_unite.sql', import.meta.url), 'utf8');
+  const ins = (col, id, unit, data) => q('INSERT INTO records (collection, id, unit, system, data) VALUES ($1,$2,$3,NULL,$4)', [col, id, unit, JSON.stringify(data)]);
+  await ins('equipements', 'MIG.ORN.SST.01', 'Oran', { code: 'MIG.ORN.SST.01' });
+  await ins('bts', 'OT-MIG-CST', 'Constantine', { code: 'OT-MIG-CST', pieces: [{ code: 'P-MIG-3', qte: 1 }] });
+  await ins('pieces', 'P-MIG-1', '', { code: 'P-MIG-1', nom: 'demandé par Oran' });
+  await ins('pieces', 'P-MIG-2', '', { code: 'P-MIG-2', nom: 'demandé par Constantine' });
+  await ins('pieces', 'P-MIG-3', '', { code: 'P-MIG-3', nom: 'utilisé dans un OT de Constantine' });
+  await ins('pieces', 'P-MIG-4', '', { code: 'P-MIG-4', nom: 'jamais utilisé' });
+  await ins('dss', 'DS-MIG-1', '', { code: 'DS-MIG-1', eq: 'MIG.ORN.SST.01.02', lignes: [{ piece: 'P-MIG-1', qte: 2 }] });   // sous-équipement d'Oran
+  await ins('dss', 'DS-MIG-2', '', { code: 'DS-MIG-2', eq: 'MIG.ORN.SST.01', bt: 'OT-MIG-CST', piece: 'P-MIG-2', qte: 1 }); // l'OT prime
+  await ins('bs', 'BS-MIG-1', '', { code: 'BS-MIG-1', ds: 'DS-MIG-1' });
+  await ins('brs', 'BR-MIG-1', '', { code: 'BR-MIG-1', piece: 'P-MIG-3' });
+  await ins('decharges', 'DCH-MIG-1', '', { code: 'DCH-MIG-1', piece: 'P-MIG-1' });
+  await ins('decharges', 'DCH-MIG-2', '', { code: 'DCH-MIG-2', piece: 'P-MIG-1', bt: 'OT-MIG-CST' });
+  const cx = await pool.connect();
+  try { await cx.query('BEGIN'); await cx.query(sql); await cx.query('COMMIT'); } catch (e) { await cx.query('ROLLBACK'); throw e; } finally { cx.release(); }
+  const defaut = (await q("SELECT unit FROM records WHERE unit <> '' AND NOT deleted GROUP BY unit ORDER BY count(*) DESC, unit LIMIT 1")).rows[0].unit;
+  const attendu = { 'pieces|P-MIG-1': 'Oran', 'pieces|P-MIG-2': 'Constantine', 'pieces|P-MIG-3': 'Constantine', 'pieces|P-MIG-4': defaut,
+    'dss|DS-MIG-1': 'Oran', 'dss|DS-MIG-2': 'Constantine', 'bs|BS-MIG-1': 'Oran', 'brs|BR-MIG-1': 'Constantine',
+    'decharges|DCH-MIG-1': 'Oran', 'decharges|DCH-MIG-2': 'Constantine' };
+  const { rows } = await q("SELECT collection, id, unit, data, version FROM records WHERE id LIKE '%-MIG-%' AND collection IN ('pieces','dss','bs','brs','decharges')");
+  assert.equal(rows.length, Object.keys(attendu).length);
+  for (const r of rows) {
+    assert.equal(r.unit, attendu[`${r.collection}|${r.id}`], `${r.collection} ${r.id}`);
+    assert.equal(r.data.unit, r.unit, `${r.id} : unité aussi dans la donnée`);
+    assert.equal(r.version, 2, `${r.id} : version avancée (les postes connectés se resynchronisent)`);
+  }
+  assert.equal((await q("SELECT count(*)::int AS n FROM records WHERE collection IN ('pieces','dss','bs','brs','decharges') AND unit = ''")).rows[0].n, 0);
+  await q("DELETE FROM records WHERE id LIKE '%-MIG-%' OR id = 'MIG.ORN.SST.01'");
 });
 
 test('compteurs d’équipement : relevés autorisés au volet OT ou Préventif, lecture par les indicateurs', async () => {
@@ -314,7 +382,7 @@ test('limitation de débit : écritures comptées par utilisateur connecté', as
   try {
     const st = [];
     for (let i = 0; i < 4; i++) {
-      const r = await fetch(b2 + `/data/pieces/LIM-${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao', Cookie: admin.cookie }, body: JSON.stringify({ data: { nom: 'x' } }) });
+      const r = await fetch(b2 + `/data/pieces/LIM-${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gmao', Cookie: admin.cookie }, body: JSON.stringify({ data: { nom: 'x' }, unit: 'Alger' }) });
       st.push(r.status);
     }
     assert.deepEqual(st, [200, 200, 200, 429]);
@@ -334,9 +402,9 @@ test('numérotation : le millésime suit l’année civile d’Alger', () => {
 });
 
 test('journal d’audit : avant / après sur les modifications et suppressions', async () => {
-  await admin.call('PUT', '/data/pieces/P-AUDIT', { data: { nom: 'Fusible', stock: 10, prix: 5 } });
+  await admin.call('PUT', '/data/pieces/P-AUDIT', { data: { nom: 'Fusible', stock: 10, prix: 5 }, unit: 'Alger' });
   const cur = (await admin.call('GET', '/data/pieces')).body.items.find(i => i.id === 'P-AUDIT');
-  await admin.call('PUT', '/data/pieces/P-AUDIT', { data: { nom: 'Fusible', stock: 7, prix: 5 }, version: cur.version });
+  await admin.call('PUT', '/data/pieces/P-AUDIT', { data: { nom: 'Fusible', stock: 7, prix: 5 }, unit: 'Alger', version: cur.version });
   await admin.call('DELETE', '/data/pieces/P-AUDIT');
   const log = (await admin.call('GET', '/users/audit/log?limit=500')).body.entries.filter(e => e.record_id === 'P-AUDIT');
   const upd = log.find(e => e.action === 'update');
@@ -354,7 +422,7 @@ const count = async (col) => (await q('SELECT count(*)::int AS n FROM records WH
 test('import : réservé au super administrateur', async () => {
   const u = await newUser('imp.tech', { Alger: { systems: ['CFO'], volets: [0, 4, 5] } });
   const n0 = await count('pieces');
-  assert.equal((await imp(u, { collections: { pieces: [{ id: 'P-X', data: { nom: 'x' } }] } })).status, 403);
+  assert.equal((await imp(u, { collections: { pieces: [{ id: 'P-X', unit: 'Alger', data: { nom: 'x' } }] } })).status, 403);
   assert.equal((await imp(anon, { collections: {} })).status, 401);
   assert.equal(await count('pieces'), n0);                                  // rien écrit
 });
@@ -365,7 +433,7 @@ test('import : création, puis rejeu = tout ignoré (idempotent), puis mise à j
       { id: 'CFO.ALG.SST.01', unit: 'Alger', system: 'CFO', data: { code: 'CFO.ALG.SST.01', nom, sousEquip: [] } },
       { id: 'CFO.ORN.SST.01', unit: 'Oran', system: 'CFO', data: { code: 'CFO.ORN.SST.01', nom: 'T Oran', sousEquip: [] } },
     ],
-    pieces: [{ id: 'P-IMP-1', data: { code: 'P-IMP-1', nom: 'Fusible 10A', stock: 5 } }],
+    pieces: [{ id: 'P-IMP-1', unit: 'Alger', data: { code: 'P-IMP-1', nom: 'Fusible 10A', stock: 5 } }],
     organismes: [{ id: 'ORG-IMP', data: { code: 'ORG-IMP', nom: 'APAVE' } }],
   } });
   let r = await imp(admin, body('Transformateur'));
@@ -400,13 +468,13 @@ test('import : simulation (dryRun) sans aucune écriture', async () => {
 test('import : tout ou rien — une ligne invalide annule tout', async () => {
   const before = { p: await count('pieces'), e: await count('equipements') };
   const bad = [
-    { collections: { pieces: [{ id: 'P-OK', data: { nom: 'ok' } }], equipements: [{ id: 'EQ-BAD', unit: 'Paris', data: {} }] } },   // unité inconnue
-    { collections: { pieces: [{ id: 'P-OK2', data: { nom: 'ok' } }, { id: 'P-OK2', data: { nom: 'doublon' } }] } },                 // doublon dans le fichier
-    { collections: { pieces: [{ id: 'P-OK3', data: 'pas un objet' }] } },
-    { collections: { pieces: [{ id: '', data: {} }] } },
+    { collections: { pieces: [{ id: 'P-OK', unit: 'Alger', data: { nom: 'ok' } }], equipements: [{ id: 'EQ-BAD', unit: 'Paris', data: {} }] } },   // unité inconnue
+    { collections: { pieces: [{ id: 'P-OK2', unit: 'Alger', data: { nom: 'ok' } }, { id: 'P-OK2', unit: 'Alger', data: { nom: 'doublon' } }] } },                 // doublon dans le fichier
+    { collections: { pieces: [{ id: 'P-OK3', unit: 'Alger', data: 'pas un objet' }] } },
+    { collections: { pieces: [{ id: '', unit: 'Alger', data: {} }] } },
     { collections: { inconnue: [{ id: 'x', data: {} }] } },
     { collections: {} },
-    { onConflict: 'écraser', collections: { pieces: [{ id: 'P-OK4', data: {} }] } },
+    { onConflict: 'écraser', collections: { pieces: [{ id: 'P-OK4', unit: 'Alger', data: {} }] } },
   ];
   for (const b of bad) assert.equal((await imp(admin, b)).status, 400, JSON.stringify(b).slice(0, 80));
   assert.equal(await count('pieces'), before.p);
@@ -424,8 +492,8 @@ test('import : un élément supprimé est recréé ; échec en cours de route = 
   // échec SQL au milieu (donnée non sérialisable en base) : la transaction est annulée
   const n0 = await count('pieces');
   r = await imp(admin, { collections: { pieces: [
-    { id: 'P-A', data: { nom: 'a' } },
-    { id: 'P-B', data: { nom: 'b\u0000c' } },        // caractère NUL : refusé par PostgreSQL (jsonb)
+    { id: 'P-A', unit: 'Alger', data: { nom: 'a' } },
+    { id: 'P-B', unit: 'Alger', data: { nom: 'b\u0000c' } },        // caractère NUL : refusé par PostgreSQL (jsonb)
   ] } });
   assert.equal(r.status, 500);
   assert.equal(await count('pieces'), n0);
@@ -433,7 +501,7 @@ test('import : un élément supprimé est recréé ; échec en cours de route = 
 
 test('import : gros volume (100 000 lignes en une feuille), mise à jour groupée, journal d’audit', async () => {
   const N = 100000;
-  const items = Array.from({ length: N }, (_, i) => ({ id: `P-BIG-${i}`, data: { nom: `Article ${i}`, stock: i } }));
+  const items = Array.from({ length: N }, (_, i) => ({ id: `P-BIG-${i}`, unit: 'Alger', data: { nom: `Article ${i}`, stock: i } }));
   const t0 = Date.now();
   const r = await imp(admin, { collections: { pieces: items } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -446,8 +514,8 @@ test('import : gros volume (100 000 lignes en une feuille), mise à jour groupé
   assert.ok(log, 'import absent du journal');
   assert.equal(log.detail.onConflict, 'skip');
   // second passage : 2 000 mises à jour + 1 000 créations, en lots
-  const maj = Array.from({ length: 2000 }, (_, i) => ({ id: `P-BIG-${i}`, data: { nom: `Article ${i} bis`, stock: 0 } }))
-    .concat(Array.from({ length: 1000 }, (_, i) => ({ id: `P-BIG2-${i}`, data: { nom: 'Nouveau' } })));
+  const maj = Array.from({ length: 2000 }, (_, i) => ({ id: `P-BIG-${i}`, unit: 'Alger', data: { nom: `Article ${i} bis`, stock: 0 } }))
+    .concat(Array.from({ length: 1000 }, (_, i) => ({ id: `P-BIG2-${i}`, unit: 'Alger', data: { nom: 'Nouveau' } })));
   const r2 = await imp(admin, { onConflict: 'update', collections: { pieces: maj } });
   assert.deepEqual(r2.body.totals, { created: 1000, updated: 2000, skipped: 0 });
   const p = (await q("SELECT data, version FROM records WHERE collection='pieces' AND id='P-BIG-1999'")).rows[0];
@@ -459,7 +527,7 @@ test('import : au-delà de la limite (IMPORT_MAX_LIGNES) la feuille est refusée
   const { config: cfgImp } = await import('../src/config.js');
   const avant = cfgImp.importMaxLignes; cfgImp.importMaxLignes = 1000;
   try {
-    const items = Array.from({ length: 1001 }, (_, i) => ({ id: `P-LIM-${i}`, data: { nom: 'x' } }));
+    const items = Array.from({ length: 1001 }, (_, i) => ({ id: `P-LIM-${i}`, unit: 'Alger', data: { nom: 'x' } }));
     const r = await imp(admin, { collections: { pieces: items } });
     assert.equal(r.status, 400); assert.match(r.body.error.message || r.body.error, /max 1000/);
     assert.equal((await q("SELECT count(*)::int AS n FROM records WHERE id LIKE 'P-LIM-%'")).rows[0].n, 0);
@@ -1029,7 +1097,7 @@ test('repartir de zéro : réservé au super administrateur, confirmation + sauv
   const vivants = async (c) => (await q('SELECT count(*)::int AS n FROM records WHERE collection=$1 AND NOT deleted', [c])).rows[0].n;
   await admin.call('PUT', '/data/systemes/SYS-RZ', { data: { code: 'SYS-RZ' } });
   await admin.call('PUT', `/data/dis/DI-OUA-${YEAR}-0042`, { data: { code: `DI-OUA-${YEAR}-0042` }, unit: 'Ouargla', system: 'CFO' });
-  await admin.call('PUT', '/data/pieces/P-RZ', { data: { code: 'P-RZ' } });
+  await admin.call('PUT', '/data/pieces/P-RZ', { data: { code: 'P-RZ' }, unit: 'Alger' });
   const avantSys = await vivants('systemes');
   const avantDis = await vivants('dis');
   assert.ok(avantDis > 0);
@@ -1105,7 +1173,9 @@ test('démo : données créées, comptes utilisables, périmètres respectés, n
   const expl = await login('demo.exploitation', comptes['demo.exploitation'].password);
   assert.equal((await expl.call('GET', '/data/bts')).body.items.length, 0);
   const mag = await login('demo.magasin', comptes['demo.magasin'].password);
-  assert.ok((await mag.call('GET', '/data/pieces')).body.items.length >= 15);
+  const piecesMag = (await mag.call('GET', '/data/pieces')).body.items;
+  assert.ok(piecesMag.length >= 15);
+  assert.ok(piecesMag.every(i => i.unit === 'Alger'), 'le magasinier d\'Alger ne voit que le magasin d\'Alger');
   await login('demo.admin', comptes['demo.admin'].password);
 
   // la numérotation continue après les données de démonstration (pas de doublon avec les DI existantes)
@@ -1132,7 +1202,7 @@ test('démo : remise à zéro = retour exact à l\'état initial (modifications,
   const c = new Client(); await c.call('POST', '/auth/login', { id: 'demo.admin', password: 'Demo2026-Admin' });
   const avant = (await c.call('GET', '/data/dis')).body.items.length;
   await c.call('DELETE', `/data/dis/${(await c.call('GET', '/data/dis')).body.items[0].id}`);
-  await c.call('PUT', '/data/pieces/P-VISITEUR', { data: { code: 'P-VISITEUR', nom: 'Ajouté par un visiteur' } });
+  await c.call('PUT', '/data/pieces/P-VISITEUR', { data: { code: 'P-VISITEUR', nom: 'Ajouté par un visiteur' }, unit: 'Alger' });
   const dis0 = (await c.call('GET', '/data/dis')).body.items[0].id;
   await upload(c, { collection: 'dis', recordId: dis0 }, JPEG);
   assert.ok(fsx.readdirSync(FILES_DIR).length > 0);
@@ -1160,7 +1230,10 @@ test('démo : jeu de données cohérent (références, formats, dates, droits)',
   const traites = c.dis.filter(r => r.data.etat === 'Traité'); assert.ok(traites.every(r => c.bts.some(b => b.data.di === r.id && b.data.etat === 'Clôturé')));
   assert.ok(c.dis.some(r => r.data.etat === 'À Transmettre') && c.dis.some(r => r.data.etat === 'Transmis'), 'DI ouvertes présentes');
   for (const p of c.planning) assert.ok(eqParCode.has(p.data.eq) && p.data.date >= d.aujourdhui.slice(0, 0));
-  const pcs = new Set(c.pieces.map(r => r.id)); for (const b of c.bts) for (const it of b.data.pieces) assert.ok(pcs.has(it.code), `${b.id} → ${it.code}`);
+  const pcs = new Map(c.pieces.map(r => [r.id, r]));
+  for (const b of c.bts) for (const it of [...b.data.pieces, ...b.data.outillage]) { assert.ok(pcs.has(it.code), `${b.id} → ${it.code}`); assert.equal(pcs.get(it.code).unit, b.unit, `${b.id} → ${it.code} : article d'une autre unité`); }
+  for (const p of c.pieces) { assert.ok(p.unit, p.id); assert.equal(p.data.unit, p.unit); }
+  assert.ok(new Set(c.pieces.map(p => p.unit)).size >= 3, 'un magasin par unité');
   assert.ok(c.pieces.some(p => p.data.stock < p.data.min), 'des articles sous le seuil (alertes)');
   assert.ok(c.intervenants.some(i => i.data.habs.some(h => h.date)), 'habilitations');
   assert.ok(c.prestataires.some(p => p.data.dateFin < d.aujourdhui) && c.prestataires.some(p => p.data.cdc === 'À préparer'), 'alertes de contrats');

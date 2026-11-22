@@ -36,7 +36,7 @@ describe('Import Excel — interface', () => {
     render(<ImportDonnees refs={refs} />);
     charger(await fichier({
       'Équipements': [EQ, ['Alger', 'CFO', 'SST', 'Transformateur'], ['Oran', 'MR', 'BOG', 'Bogie']],
-      'Articles du magasin': [['Catégorie *', 'Désignation *', 'Stock actuel'], ['Pièce', 'Fusible', 12]],
+      'Articles du magasin': [['Unité *', 'Catégorie *', 'Désignation *', 'Stock actuel'], ['Alger', 'Pièce', 'Fusible', 12]],
     }));
     const tableau = await screen.findByTestId('resume-import');
     expect(tableau.textContent).toContain('Équipements');
@@ -55,8 +55,8 @@ describe('Import Excel — interface', () => {
     const body = api.importExcel.mock.calls[0][0];
     expect(body.onConflict).toBe('skip');
     expect(body.collections.equipements.map((e) => e.id)).toEqual(['CFO.ALG.SST.01', 'MR.ORN.BOG.01']);
-    expect(body.collections.pieces[0]).toMatchObject({ id: 'P-001', unit: '' });
-    expect(api.nextCodes).toHaveBeenCalledWith('pieces', { unit: undefined, variant: 'P', count: 1 });
+    expect(body.collections.pieces[0]).toMatchObject({ id: 'P-001', unit: 'Alger' });
+    expect(api.nextCodes).toHaveBeenCalledWith('pieces', { unit: 'Alger', variant: 'P', count: 1 });
     expect(screen.getByTestId('import-termine').textContent).toContain('3 créé(s)');
     expect(refreshAll).toHaveBeenCalledTimes(2);                             // et à nouveau après l'import
   });
@@ -114,7 +114,7 @@ describe('Import Excel — interface', () => {
   it('numérotation des articles impossible : rien n\'est envoyé', async () => {
     api.nextCodes.mockRejectedValue(Object.assign(new Error('x'), { network: true }));
     render(<ImportDonnees refs={refs} />);
-    charger(await fichier({ 'Articles du magasin': [['Catégorie *', 'Désignation *'], ['Pièce', 'Fusible']] }));
+    charger(await fichier({ 'Articles du magasin': [['Unité *', 'Catégorie *', 'Désignation *'], ['Alger', 'Pièce', 'Fusible']] }));
     fireEvent.click(await screen.findByText(/4\. Importer/));
     fireEvent.click(await screen.findByText("Confirmer l'import"));
     await waitFor(() => expect(api.nextCodes).toHaveBeenCalled());

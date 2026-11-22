@@ -118,17 +118,29 @@ export function genererDemo(now = new Date(), graine = 2026) {
   ];
   const cptCat = { Pièce: 0, Outillage: 0, Consommable: 0 };
   const PREF = { Pièce: 'P', Outillage: 'O', Consommable: 'C' };
-  const piecesDef = [];
-  ART.forEach(([categorie, nom, ref, prix, stock, min, max, sorties90], idx) => {
-    const code = `${PREF[categorie]}-${pad(++cptCat[categorie], 3)}`;
-    const mouvements = [{ date: jourDe(-150), qte: stock + sorties90 + 6, type: 'Achat' }];
-    let reste = sorties90;
-    while (reste > 0) { const q = Math.min(reste, entre(1, Math.max(1, Math.ceil(sorties90 / 3)))); mouvements.push({ date: jourDe(-entre(2, 85)), qte: q, type: 'Sortie' }); reste -= q; }
-    if (nom === 'Capteur de proximité') mouvements.splice(1, 0, { date: jourDe(-520), qte: 2, type: 'Sortie' });   // dernière sortie très ancienne : article dormant
-    const data = { code, nom, ref, serie: '', prix, stock, min, max, categorie, constructeur: { nom: pick(MARQUES), contact: '', tel: '', email: '' }, fourn1: { nom: pick(FOURN), tel: '021 00 00 00', email: 'ventes@fournisseur.example' }, fourn2: { nom: '', tel: '', email: '' }, mouvements: mouvements.sort((a, b) => a.date.localeCompare(b.date)) };
-    col.pieces.push({ id: code, unit: '', system: null, data });
-    piecesDef.push(data);
-  });
+  // magasin PAR UNITÉ : Alger a tout le catalogue, les autres unités un magasin réduit (pièces courantes + multimètre).
+  // Les codes restent uniques pour toute l'entreprise (P-001… pour Alger, puis la suite pour Oran, etc.).
+  const piecesParUnite = {};
+  const outilParUnite = {};                                                // multimètre de l'unité (outillage des visites)
+  for (const unit of Object.keys(ABBR)) {
+    piecesParUnite[unit] = [];
+    const catalogue = unit === 'Alger' ? ART : ART.filter(([categorie, nom], idx) => (categorie === 'Pièce' && idx < 12) || nom === 'Multimètre');
+    catalogue.forEach(([categorie, nom, ref, prix, stock0, min, max, sorties0]) => {
+      const reduit = unit !== 'Alger';
+      const stock = reduit ? Math.max(0, Math.round(stock0 / 3)) : stock0, sorties90 = reduit ? Math.round(sorties0 / 3) : sorties0;
+      const code = `${PREF[categorie]}-${pad(++cptCat[categorie], 3)}`;
+      const mouvements = [{ date: jourDe(-150), qte: stock + sorties90 + 6, type: 'Achat' }];
+      // magasins réduits : valeurs fixes (sans tirage aléatoire), pour que les données d'Alger restent identiques d'une version à l'autre
+      let reste = sorties90, k = 0;
+      while (reste > 0) { const q = reduit ? Math.min(reste, 2) : Math.min(reste, entre(1, Math.max(1, Math.ceil(sorties90 / 3)))); mouvements.push({ date: jourDe(reduit ? -(10 + 17 * k++) : -entre(2, 85)), qte: q, type: 'Sortie' }); reste -= q; }
+      if (nom === 'Capteur de proximité') mouvements.splice(1, 0, { date: jourDe(-520), qte: 2, type: 'Sortie' });   // dernière sortie très ancienne : article dormant
+      const n = cptCat[categorie];
+      const data = { code, unit, nom, ref, serie: '', prix, stock, min, max, categorie, constructeur: { nom: reduit ? MARQUES[n % MARQUES.length] : pick(MARQUES), contact: '', tel: '', email: '' }, fourn1: { nom: reduit ? FOURN[n % FOURN.length] : pick(FOURN), tel: '021 00 00 00', email: 'ventes@fournisseur.example' }, fourn2: { nom: '', tel: '', email: '' }, mouvements: mouvements.sort((a, b) => a.date.localeCompare(b.date)) };
+      col.pieces.push({ id: code, unit, system: null, data });
+      if (categorie === 'Pièce') piecesParUnite[unit].push(data);
+      if (nom === 'Multimètre') outilParUnite[unit] = code;
+    });
+  }
   compteurs.set('pieces:P||0', cptCat.Pièce); compteurs.set('pieces:O||0', cptCat.Outillage); compteurs.set('pieces:C||0', cptCat.Consommable);
 
   /* ───── DI et OT correctifs ───── */
@@ -181,7 +193,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
       const bcode = `OT-${abr}-${an}-${pad(nb, 4)}`;
       const duree = entre(1, 6), log = entre(0, 2);
       const clos = etatDI === 'Traité';
-      const piece = piecesDef[entre(0, 11)];
+      const piece = piecesParUnite[unit][entre(0, 11)];
       const consomme = rnd() < 0.55 ? [{ code: piece.code, qte: entre(1, 3) }] : [];
       const bt = { code: bcode, di: code, eq: eq.code, nom: eq.nom, type: 'Corrective — Curative', consigne: `Intervenir sur ${eq.nom} : ${panne.toLowerCase()}.`, horaire: hDebut >= 19 ? 'Nuit' : 'Jour',
         consignation: eq.system === 'CFO' ? 'Oui' : 'Non', exc: false, motifExc: '', assigne: tech[1], assignes: [tech[1]], dateGeneration: ajoutH(ev.off, hDebut, 30, 1),
@@ -215,7 +227,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
       const dernierOff = -entre(2, Math.min(pas - 1, 25));
       const tech = interDe(techPar[eq.system] || 'MT-1001');
       const taches = (TACHES_PREV[periode] || TACHES_PREV.Mensuel).slice();
-      col.planning.push({ id: code, unit, system: eq.system, data: { code, unit, sys: eq.system, eq: eq.code, nom: eq.nom, periode, date: jourDe(dernierOff + pas), dernier: jourDe(dernierOff), assignes: [tech[1]], taches, outillage: [{ code: 'O-002', qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: eq.system === 'CFO' ? 'Oui' : 'Non', intitule } });
+      col.planning.push({ id: code, unit, system: eq.system, data: { code, unit, sys: eq.system, eq: eq.code, nom: eq.nom, periode, date: jourDe(dernierOff + pas), dernier: jourDe(dernierOff), assignes: [tech[1]], taches, outillage: [{ code: outilParUnite[unit], qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: eq.system === 'CFO' ? 'Oui' : 'Non', intitule } });
       // historique : visites passées clôturées + une visite ouverte pour les plans mensuels
       const passees = Math.min(4, Math.floor(100 / pas));
       for (let k = passees; k >= 1; k--) {
@@ -225,7 +237,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
         const ok = rnd() < 0.85;
         col.bts.push({ id: bc, unit, system: eq.system, data: { code: bc, di: null, plan: code, eq: eq.code, nom: eq.nom, type: 'Préventive', consigne: `Visite ${periode.toLowerCase()} — ${eq.nom}`, horaire: 'Jour', consignation: eq.system === 'CFO' ? 'Oui' : 'Non', exc: false, motifExc: '',
           assigne: tech[1], assignes: [tech[1]], dateGeneration: horo(off, 7, 30), detection: 0, gravite: 0, dureeIntervention: ok ? entre(1, 3) : 0, tempsLogistique: ok ? 0 : 0, panne: '-', cause: '-', effet: '-',
-          intervenants: [{ nom: tech[1], fonction: tech[2], taux: tech[4], temps: ok ? entre(2, 4) : 0 }], pieces: [], outillage: [{ code: 'O-002', qte: 1 }], consommables: [],
+          intervenants: [{ nom: tech[1], fonction: tech[2], taux: tech[4], temps: ok ? entre(2, 4) : 0 }], pieces: [], outillage: [{ code: outilParUnite[unit], qte: 1 }], consommables: [],
           taches: taches.map((lib) => ({ lib, res: ok ? 'OK' : null, com: '' })), etat: ok ? 'Clôturé' : 'En cours', ...(ok ? { dateCloture: horo(off, 11, 0) } : {}) } });
       }
     }
@@ -265,7 +277,7 @@ export function genererDemo(now = new Date(), graine = 2026) {
     const tech = interDe(techPar[sys] || 'MT-1001');
     const valeurDernier = Math.round(cptVal[cpt] - pasCpt * part);
     col.planning.push({ id: code, unit, system: sys, data: { code, unit, sys, eq: eqCode, nom, periode: 'Compteur', date: '', dernier: jourDe(-entre(20, 60)), declenchement: 'Compteur', compteur: cpt, pas: pasCpt, seuil: 90, valeurDernier,
-      assignes: [tech[1]], taches, outillage: [{ code: 'O-002', qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: 'Non', intitule } });
+      assignes: [tech[1]], taches, outillage: [{ code: outilParUnite[unit], qte: 1 }], consommables: [], exc: false, motifExc: '', horaire: 'Jour', consignation: 'Non', intitule } });
   }
 
   /* ───── Rapports d'activité (Alger) : le mois précédent clôturé, le mois en cours en revue chez l'expert DG ───── */

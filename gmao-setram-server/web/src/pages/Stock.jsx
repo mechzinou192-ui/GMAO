@@ -6,7 +6,7 @@ import {Badge,Btn,Card,ETATS_MANUELS,ExportBtn,Field,Inp,StatutManuel,fmtFourn,o
 import {I} from "../ui/icones.jsx";
 import {DS_MODIFIABLES,lignesDS,totalDS,quantiteDS,construireLignes,lignesEnRupture} from "../lib/ds.js";
 
-export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onRetirerLigneDS,onStatutDS,onStatutBS,onOpenPiece,onAddPiece,onEditPiece}){
+export function Magasin({unit,pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDecharge,onNewAchat,onTraiterBS,onGenererBS,onAnnulerDS,onRetirerLigneDS,onStatutDS,onStatutBS,onOpenPiece,onAddPiece,onEditPiece}){
  const SECTIONS=[
   ["pieces","Pièces"],["consommables","Consommables"],["outillage","Outillage"],
   ["decharges","Décharges (Outillage / Consommables)"],["ds","Demandes de Sortie (DS) — Pièces"],["bs","Bons de Sortie (BS)"],["br","Bons de Retour (BR)"],
@@ -15,21 +15,23 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
  const CAT={pieces:"Pièce",consommables:"Consommable",outillage:"Outillage"};
  const titre=SECTIONS.find(x=>x[0]===section)[1];
  const exportSection=()=>{
-  const F={fichier:"Magasin_"+titre.split(" (")[0].split(" — ")[0]};
-  if(CAT[section]) return exporterXlsx({...F,feuilles:[{nom:titre,titre:titre+" — Gestion de stock",
+  // magasin par unité : chaque export ne contient que le magasin de l'unité affichée, nommée dans le fichier et le titre
+  const U=unit?" — "+unit:"";
+  const F={fichier:"Magasin_"+(unit?unit.replace(/[^A-Za-z0-9]/g,"")+"_":"")+titre.split(" (")[0].split(" — ")[0]};
+  if(CAT[section]) return exporterXlsx({...F,feuilles:[{nom:titre,titre:titre+" — Gestion de stock"+U,
    colonnes:[{h:"Code"},{h:"Désignation"},{h:"Référence"},{h:"N° de série"},{h:"Prix unitaire (DA)",t:"num"},{h:"Stock",t:"num"},{h:"Seuil min",t:"num"},{h:"Seuil max",t:"num"},{h:"Sous le seuil min"},{h:"Valeur du stock (DA)",t:"num"},{h:"Constructeur"},{h:"Fournisseur 1"},{h:"Fournisseur 2"}],
    lignes:pieces.filter(p=>p.categorie===CAT[section]).map(p=>[p.code,p.nom,p.ref||"",p.serie||"",p.prix,p.stock,p.min,p.max,ouiNon(p.stock<p.min),p.prix*p.stock,(p.constructeur||{}).nom||"",fmtFourn([p.fourn1]),fmtFourn([p.fourn2])])}]});
-  if(section==="decharges") return exporterXlsx({...F,feuilles:[{nom:"Décharges",titre:"Décharges (Outillage / Consommables)",
+  if(section==="decharges") return exporterXlsx({...F,feuilles:[{nom:"Décharges",titre:"Décharges (Outillage / Consommables)"+U,
    colonnes:[{h:"Code"},{h:"Date",t:"date"},{h:"Code article"},{h:"Article"},{h:"Catégorie"},{h:"Quantité",t:"num"},{h:"Valeur (DA)",t:"num"},{h:"Reçu par"},{h:"OT lié"}],
    lignes:decharges.map(d=>[d.code,d.date,d.piece,d.pieceNom,d.categorie,d.qte,d.prix*d.qte,d.recu,d.bt||""])}]});
-  if(section==="ds") return exporterXlsx({...F,feuilles:[{nom:"DS",titre:"Demandes de Sortie (DS) — Pièces",
+  if(section==="ds") return exporterXlsx({...F,feuilles:[{nom:"DS",titre:"Demandes de Sortie (DS) — Pièces"+U,
    colonnes:[{h:"Code DS"},{h:"Code équipement"},{h:"Équipement"},{h:"Désignation",max:50},{h:"Code article"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"OT lié"},{h:"État"},{h:"Motif d'annulation"}],
    // une ligne Excel par pièce (une DS globale occupe plusieurs lignes, même code DS)
    lignes:dss.flatMap(d=>lignesDS(d).map(l=>[d.code,d.eq,d.nom,d.designation,l.piece,l.pieceNom,l.qte,l.prix*l.qte,d.bt||"",d.etat,d.motif||""]))}]});
-  if(section==="bs") return exporterXlsx({...F,feuilles:[{nom:"BS",titre:"Bons de Sortie (BS)",
+  if(section==="bs") return exporterXlsx({...F,feuilles:[{nom:"BS",titre:"Bons de Sortie (BS)"+U,
    colonnes:[{h:"Code BS"},{h:"DS liée"},{h:"Code article"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"},{h:"État"}],
    lignes:bsList.flatMap(b=>lignesDS(b).map(l=>[b.code,b.ds,l.piece,l.pieceNom,l.qte,l.prix*l.qte,b.etat]))}]});
-  return exporterXlsx({...F,feuilles:[{nom:"BR",titre:"Bons de Retour (BR)",
+  return exporterXlsx({...F,feuilles:[{nom:"BR",titre:"Bons de Retour (BR)"+U,
    colonnes:[{h:"Code BR"},{h:"Article"},{h:"Quantité",t:"num"},{h:"Montant (DA)",t:"num"}],
    lignes:brs.map(b=>[b.code,b.pieceNom,b.qte,b.prix*b.qte])}]});
  };
@@ -56,7 +58,7 @@ export function Magasin({pieces,dss,bsList,brs,decharges,onNewDS,onNewBR,onNewDe
   <Card>
    <div className="flex flex-wrap items-end justify-between gap-3">
     <div className="flex-1 min-w-[220px] max-w-sm">
-     <div className="text-xs text-slate-400 mb-1">Rubrique</div>
+     <div className="text-xs text-slate-400 mb-1">Rubrique{unit?" — magasin de "+unit:""}</div>
      <select value={section} onChange={e=>setSection(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
       {SECTIONS.map(([k,l])=><option key={k} value={k}>{l}</option>)}
      </select>

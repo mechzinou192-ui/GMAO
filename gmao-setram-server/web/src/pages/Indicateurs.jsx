@@ -106,7 +106,12 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const rh=useMemo(()=>kpiRH(ctx.corr,ctx.prev,per,Number(normeBase)||KPI_NORME_DEFAUT,0),[ctx,per,normeBase]);
  const stk=useMemo(()=>kpiStock(pieces,per,Math.max(0.1,Number(delai)||3),new Date()),[pieces,per,delai]);
  const amdec=useMemo(()=>kpiAmdec(ctx.corr,per,{groupBy,gravBase,equipements,nomSys,nomSub}),[ctx,per,groupBy,gravBase,equipements,systemsList,treeStruct]);
- const unites=useMemo(()=>UNITS.map(u=>{const c=kpiCollect(u,{dis,bts,planning,equipements},per,parcMode,{sys:fSys,sub:fSub});return {u,c,k:kpiCalc(c.corr,c.prev,per,c.nbEquip),o:kpiObj(u)};}).filter(x=>x.c.corr.length+x.c.prev.length>0),[dis,bts,planning,equipements,per,parcMode,fSys,fSub]);
+ // Comparatif : toutes les unités accessibles à l'utilisateur (volet Indicateurs), comme l'export RH « Par unité » —
+ // une seule pour un agent d'unité ; plusieurs pour un expert / le responsable DG ; toutes pour le super administrateur
+ const unitesComp=unitesRH&&unitesRH.length?unitesRH:[unit];
+ const unites=useMemo(()=>{const data={dis:disTous||dis,bts:btsTous||bts,planning:planningTous||planning,equipements:equipementsTous||equipements};
+  return UNITS.filter(u=>unitesComp.includes(u)).map(u=>{const c=kpiCollect(u,data,per,parcMode,{sys:fSys,sub:fSub});return {u,c,k:kpiCalc(c.corr,c.prev,per,c.nbEquip),o:kpiObj(u)};}).filter(x=>x.c.corr.length+x.c.prev.length>0);},
+  [dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,unitesComp.join("|"),per,parcMode,fSys,fSub]);   // eslint-disable-line
  const perLabel=frDate(start)+" → "+frDate(end)+" ("+per.days+" j · "+per.hours+" h)"+(fltActif?" — filtre : "+fltLabel:"");
  const ratePanne=kpiRating(K.lambdaTheo*100,...KPI_SEUILS.tauxPanne), rateInterv=kpiRating(K.tauxInterv*100,...KPI_SEUILS.tauxInterv), rateRec=kpiRating(K.tauxRecurrence*100,...KPI_SEUILS.recurrence);
  const lblRate=(r)=>r==="ok"?"Bon":r==="warn"?"Seuil d'alerte":"Seuil critique";

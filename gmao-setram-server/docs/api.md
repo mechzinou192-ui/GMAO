@@ -68,6 +68,7 @@ Exemple d'erreur :
 | PUT | `/data/:collection/:id` | écriture du volet sur l'unité / le système | Crée (sans `version`) ou modifie (avec `version`). Corps : `{ "unit": "Alger", "system": "CFO", "data": {…}, "version": 3 }`. 409 `EXISTS` / `CONFLICT` avec `current` |
 | DELETE | `/data/:collection/:id` | écriture | Suppression logique (contenu conservé dans l'audit) |
 | POST | `/data/:collection/next-code` | écriture | Réserve 1 à 200 numéros : `{ "unit": "Alger", "variant": "prev", "count": 5 }` → `{ "codes": ["OT-PREV-ALG-2026-0012", …] }` |
+|  |  |  | Magasin (`pieces`, `dss`, `bs`, `brs`, `decharges`) : `unit` obligatoire (unité de l'élément à créer, droit contrôlé sur cette unité) ; le numéro reste unique pour l'entreprise |
 | POST | `/data/:collection/bulk` | super administrateur | Écriture en lot `{ items: [{ id, unit, system, data }] }` (20 000 max, une transaction) |
 
 Exemple :

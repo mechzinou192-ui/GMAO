@@ -39,7 +39,9 @@ describe('serveur de démonstration intégré au navigateur', () => {
     expect(new Set((await dir.list('dis')).items.map((i) => i.unit)).size).toBeGreaterThanOrEqual(4);
     await expect(dir.save('dis', 'DI-X', { unit: 'Alger', system: 'CFO', data: { code: 'DI-X' } })).rejects.toMatchObject({ status: 403 });
     expect((await (await connecte(nouveau(), 'demo.exploitation')).list('bts')).items).toHaveLength(0);
-    expect((await (await connecte(nouveau(), 'demo.magasin')).list('pieces')).items.length).toBeGreaterThanOrEqual(15);
+    const piecesMag = (await (await connecte(nouveau(), 'demo.magasin')).list('pieces')).items;
+    expect(piecesMag.length).toBeGreaterThanOrEqual(15);
+    expect(piecesMag.every((i) => i.unit === 'Alger')).toBe(true);                    // magasin par unité : le magasinier d'Alger ne voit que son magasin
     const adm = await connecte(nouveau(), 'demo.admin');
     expect((await adm.list('equipements')).items.length).toBeGreaterThanOrEqual(60);
     expect((await tech.list('systemes')).items.length).toBeGreaterThan(5);          // référentiels lisibles par tous
@@ -48,17 +50,17 @@ describe('serveur de démonstration intégré au navigateur', () => {
   it('enregistrement : création, modification versionnée, conflit, doublon, suppression, synchronisation par « since »', async () => {
     const api = await connecte(nouveau(), 'demo.admin');
     const t0 = (await api.list('pieces')).serverTime;
-    const c = await api.save('pieces', 'P-TEST', { unit: '', system: null, data: { code: 'P-TEST', nom: 'Essai', stock: 1 } });
+    const c = await api.save('pieces', 'P-TEST', { unit: 'Alger', system: null, data: { code: 'P-TEST', nom: 'Essai', stock: 1 } });
     expect(c).toMatchObject({ id: 'P-TEST', version: 1, deleted: false });
-    await expect(api.save('pieces', 'P-TEST', { unit: '', data: { nom: 'doublon' } })).rejects.toMatchObject({ status: 409, code: 'EXISTS' });
-    const m = await api.save('pieces', 'P-TEST', { unit: '', data: { code: 'P-TEST', nom: 'Essai 2', stock: 2 }, version: 1 });
+    await expect(api.save('pieces', 'P-TEST', { unit: 'Alger', data: { nom: 'doublon' } })).rejects.toMatchObject({ status: 409, code: 'EXISTS' });
+    const m = await api.save('pieces', 'P-TEST', { unit: 'Alger', data: { code: 'P-TEST', nom: 'Essai 2', stock: 2 }, version: 1 });
     expect(m.version).toBe(2);
-    await expect(api.save('pieces', 'P-TEST', { unit: '', data: {}, version: 1 })).rejects.toMatchObject({ status: 409, code: 'CONFLICT', current: expect.objectContaining({ version: 2 }) });
+    await expect(api.save('pieces', 'P-TEST', { unit: 'Alger', data: {}, version: 1 })).rejects.toMatchObject({ status: 409, code: 'CONFLICT', current: expect.objectContaining({ version: 2 }) });
     const depuis = (await api.list('pieces', t0)).items; expect(depuis.map((i) => i.id)).toEqual(['P-TEST']);
     await api.remove('pieces', 'P-TEST');
     expect((await api.list('pieces')).items.some((i) => i.id === 'P-TEST')).toBe(false);
     expect((await api.list('pieces', t0)).items.find((i) => i.id === 'P-TEST')).toMatchObject({ deleted: true, version: 3 });
-    expect((await api.save('pieces', 'P-TEST', { unit: '', data: { nom: 'recréé' } })).version).toBe(4);
+    expect((await api.save('pieces', 'P-TEST', { unit: 'Alger', data: { nom: 'recréé' } })).version).toBe(4);
     await expect(api.save('dis', 'DI-?', { unit: 'Paris', data: {} })).rejects.toMatchObject({ status: 400 });
     await expect(api.save('dis', 'a/b', { unit: 'Alger', data: {} })).rejects.toMatchObject({ status: 400 });
     await expect(api.list('inconnue')).rejects.toMatchObject({ status: 404 });
@@ -70,7 +72,8 @@ describe('serveur de démonstration intégré au navigateur', () => {
     const [a, b] = await api.nextCodes('dis', { unit: 'Alger', count: 2 });
     expect(a).toBe(`DI-ALG-${AN}-${String(Math.max(...existants) + 1).padStart(4, '0')}`); expect(b.endsWith(String(Math.max(...existants) + 2).padStart(4, '0'))).toBe(true);
     expect((await api.nextCodes('bts', { unit: 'Oran', variant: 'prev' }))[0]).toMatch(new RegExp(`^OT-PREV-ORN-${AN}-\\d{4}$`));
-    expect((await api.nextCodes('pieces', { variant: 'P' }))[0]).toMatch(/^P-0\d\d$/);
+    expect((await api.nextCodes('pieces', { unit: 'Alger', variant: 'P' }))[0]).toMatch(/^P-\d{3}$/);
+    await expect(api.nextCodes('pieces', { variant: 'P' })).rejects.toMatchObject({ status: 400 });             // magasin par unité : unité obligatoire
     await expect(api.nextCodes('dis', { unit: 'Paris' })).rejects.toMatchObject({ status: 400 });
     await expect(api.nextCodes('dis', { unit: 'Alger', count: 0 })).rejects.toMatchObject({ status: 400 });
     await expect(api.nextCodes('equipements', { unit: 'Alger' })).rejects.toMatchObject({ status: 404 });
@@ -85,7 +88,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
 
   it('import Excel : tout ou rien, ignorer / mettre à jour, simulation, droits', async () => {
     const adm = await connecte(nouveau(), 'demo.admin');
-    const corps = (nom, extra = {}) => ({ collections: { organismes: [{ id: 'ORG-99', data: { code: 'ORG-99', nom } }], pieces: [{ id: 'P-IMP', data: { code: 'P-IMP', nom: 'x' } }] }, ...extra });
+    const corps = (nom, extra = {}) => ({ collections: { organismes: [{ id: 'ORG-99', data: { code: 'ORG-99', nom } }], pieces: [{ id: 'P-IMP', unit: 'Alger', data: { code: 'P-IMP', nom: 'x' } }] }, ...extra });
     let r = await adm.importExcel(corps('A'));
     expect(r.totals).toEqual({ created: 2, updated: 0, skipped: 0 });
     r = await adm.importExcel(corps('B')); expect(r.totals).toEqual({ created: 0, updated: 0, skipped: 2 });
@@ -95,7 +98,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
     r = await adm.importExcel({ dryRun: true, collections: { mesures: [{ id: 'M-S', data: { nom: 'a' } }] } });
     expect(r).toMatchObject({ dryRun: true, totals: { created: 1 } }); expect((await adm.list('mesures')).items.some((i) => i.id === 'M-S')).toBe(false);
     const avant = (await adm.list('pieces')).items.length;
-    for (const mauvais of [{ collections: { pieces: [{ id: 'P-OK', data: {} }], equipements: [{ id: 'E', unit: 'Paris', data: {} }] } }, { collections: { pieces: [{ id: 'D', data: {} }, { id: 'D', data: {} }] } }, { collections: {} }, { onConflict: 'x', collections: { pieces: [] } }])
+    for (const mauvais of [{ collections: { pieces: [{ id: 'P-OK', unit: 'Alger', data: {} }], equipements: [{ id: 'E', unit: 'Paris', data: {} }] } }, { collections: { pieces: [{ id: 'D', unit: 'Alger', data: {} }, { id: 'D', unit: 'Alger', data: {} }] } }, { collections: {} }, { onConflict: 'x', collections: { pieces: [] } }])
       await expect(adm.importExcel(mauvais)).rejects.toMatchObject({ status: 400 });
     expect((await adm.list('pieces')).items.length).toBe(avant);                             // rien écrit
     await expect((await connecte(nouveau(), 'demo.responsable')).importExcel(corps('Z'))).rejects.toMatchObject({ status: 403 });
@@ -123,7 +126,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
     for (const appel of [() => adm.createUser({ id: 'x' }), () => adm.updateUser('demo.admin', {}), () => adm.deleteUser('demo.technicien'), () => adm.changePassword('a', 'b')])
       await expect(appel()).rejects.toMatchObject({ status: 403, message: 'Désactivé dans la version de démonstration.' });
     expect((await adm.users()).users).toHaveLength(9); expect((await adm.users()).users.every((u) => !('password' in u))).toBe(true);
-    await adm.save('pieces', 'P-J', { unit: '', data: { nom: 'x' } });
+    await adm.save('pieces', 'P-J', { unit: 'Alger', data: { nom: 'x' } });
     expect((await adm.audit()).entries[0]).toMatchObject({ action: 'create', record_id: 'P-J', user_id: 'demo.admin' });
     const r = await connecte(nouveau(), 'demo.responsable');
     await expect(r.users()).rejects.toMatchObject({ status: 403 }); await expect(r.audit()).rejects.toMatchObject({ status: 403 });
@@ -132,14 +135,14 @@ describe('serveur de démonstration intégré au navigateur', () => {
   it('l\'état survit au rechargement de la page (onglet) mais pas à la fermeture : stockage de session', async () => {
     const magasin = new Map(); const stockage = { getItem: (k) => (magasin.has(k) ? magasin.get(k) : null), setItem: (k, v) => magasin.set(k, v) };
     const a = createDemoApi({ stockage }); await a.login('demo.admin', MDP['demo.admin']);
-    await a.save('pieces', 'P-PERSIST', { unit: '', data: { nom: 'gardé' } });
+    await a.save('pieces', 'P-PERSIST', { unit: 'Alger', data: { nom: 'gardé' } });
     const b = createDemoApi({ stockage });                                           // « rechargement » : nouvelle instance, même onglet
     expect((await b.me()).user.id).toBe('demo.admin');
     expect((await b.list('pieces')).items.some((i) => i.id === 'P-PERSIST')).toBe(true);
     const c = createDemoApi({ stockage: { getItem: () => null, setItem: () => {} } });  // nouvel onglet : démo à zéro
     await c.login('demo.admin', MDP['demo.admin']); expect((await c.list('pieces')).items.some((i) => i.id === 'P-PERSIST')).toBe(false);
     const casse = createDemoApi({ stockage: { getItem: () => '{pas du json', setItem: () => { throw new Error('quota'); } } });   // stockage cassé : aucune panne
-    await casse.login('demo.admin', MDP['demo.admin']); await casse.save('pieces', 'P-Q', { unit: '', data: { nom: 'x' } });
+    await casse.login('demo.admin', MDP['demo.admin']); await casse.save('pieces', 'P-Q', { unit: 'Alger', data: { nom: 'x' } });
   });
 });
 
@@ -250,7 +253,7 @@ describe('application complète en mode site statique', () => {
   it('OT : une DS non traitée bloque la clôture et met l’OT en attente de pièce', async () => {
     const ot = Object.values(apiSite._etat().records.bts).find((r) => r.unit === 'Alger' && !r.data.plan && r.data.etat === 'En cours');
     const t = new Date().toISOString();
-    (apiSite._etat().records.dss ||= {})['DS-TEST-0001'] = { id: 'DS-TEST-0001', unit: '', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t,
+    (apiSite._etat().records.dss ||= {})['DS-TEST-0001'] = { id: 'DS-TEST-0001', unit: 'Alger', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t,
       data: { code: 'DS-TEST-0001', eq: ot.data.eq, nom: ot.data.nom, designation: 'Test', piece: 'P-001', pieceNom: 'Fusible 10A', qte: 1, prix: 120, bt: ot.id, etat: 'Transmis au Magasinier' } };
     await seConnecter('Responsable maintenance');
     onglet(/Maintenance corrective/);
@@ -398,6 +401,25 @@ describe('application complète en mode site statique', () => {
     await seConnecter('Direction');
     onglet(/Indicateurs|KPI/);
     await waitFor(() => expect(document.body.textContent).toMatch(/Disponibilit|MTBF|MTTR/));
+  });
+
+  it('magasin par unité : le magasinier ne voit que le magasin de son unité ; le super administrateur change d’unité pour voir les autres', async () => {
+    const recs = apiSite._etat().records.pieces;
+    const alger = Object.values(recs).find((r) => r.unit === 'Alger' && r.data.categorie === 'Pièce');
+    const oran = Object.values(recs).find((r) => r.unit === 'Oran' && r.data.categorie === 'Pièce');
+    expect(alger && oran).toBeTruthy();
+    await seConnecter('Magasinier');
+    onglet(/Gestion de stock/);
+    await waitFor(() => expect(document.body.textContent).toContain(alger.id));
+    expect(document.body.textContent).not.toContain(oran.id);
+    expect(document.body.textContent).toContain('magasin de Alger');
+    cleanup(); apiSite._reinitialiser();
+    await seConnecter('Super administrateur');
+    onglet(/Gestion de stock/);
+    await waitFor(() => expect(document.body.textContent).toContain(alger.id));
+    fireEvent.change(screen.getByLabelText('Unité opérationnelle'), { target: { value: 'Oran' } });
+    await waitFor(() => expect(document.body.textContent).toContain(oran.id));
+    expect(document.body.textContent).not.toContain(alger.id);
   });
 
   it('préventif : une DS globale pour toutes les pièces prévues, retrait d’une pièce par le magasin, bon de sortie multi-pièces', async () => {

@@ -17,6 +17,7 @@ const RETRY_MS = 5000;
 
 const byCode = (x) => x.code;
 const asValueOf = (c) => !!(c.single || c.rows);
+const magasin = (x) => ({ unit: x.unit || '', system: null });
 const BASE = {
   equipements:  { id: byCode, meta: (x) => ({ unit: x.unit, system: x.system }) },
   dis:          { id: byCode, newestFirst: true, fenetre: true },
@@ -24,14 +25,15 @@ const BASE = {
   planning:     { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   charge_ram:   { id: byCode, meta: (x) => ({ unit: x.unit, system: null }) },   // charge RAM saisie : 1 ligne par unité et par mois
-  pieces:       { id: byCode },
+  // magasin par unité : l'unité est portée par l'élément (articles, DS, BS, BR, décharges)
+  pieces:       { id: byCode, meta: magasin },
   rapports:     { id: byCode, newestFirst: true, meta: (r) => ({ unit: r.unit, system: null }) },
   demandes:     { id: byCode, newestFirst: true, meta: (d) => ({ unit: d.unit, system: d.system }) },
   profils:      { id: (p) => p.nom },
-  dss:          { id: byCode, newestFirst: true },
-  bs:           { id: byCode, newestFirst: true },
-  brs:          { id: byCode, newestFirst: true },
-  decharges:    { id: byCode, newestFirst: true },
+  dss:          { id: byCode, newestFirst: true, meta: magasin },
+  bs:           { id: byCode, newestFirst: true, meta: magasin },
+  brs:          { id: byCode, newestFirst: true, meta: magasin },
+  decharges:    { id: byCode, newestFirst: true, meta: magasin },
   intervenants: { id: (x) => x.mat },
   prestataires: { id: (x) => x.mat },
   mesures:      { id: byCode },
