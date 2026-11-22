@@ -122,11 +122,11 @@ un document au même instant obtiennent deux numéros différents.
 | OT | `OT-ALG-2026-0042` | par unité, par année |
 | OT préventif | `OT-PREV-ALG-2026-0042` | par unité, par année |
 | Plan préventif | `PREV-ALG-0042` | par unité, continu |
-| DS / BS / BR / Décharge | `DS-2026-0042`, `BS-…`, `BR-…`, `DCH-…` | numéro unique pour l'entreprise, par année (le document appartient au magasin d'une unité) |
-| Articles | `P-001` (pièce), `O-001` (outillage), `C-001` (consommable) | continu, unique pour l'entreprise (l'article appartient au magasin d'une unité) |
+| DS / BS / BR / Décharge | `DS-ALG-2026-0042`, `BS-ALG-…`, `BR-ALG-…`, `DCH-ALG-…` | par unité (magasin de l'unité), par année |
+| Articles | `P-ALG-001` (pièce), `O-ALG-001` (outillage), `C-ALG-001` (consommable) | par unité, continu |
 
 - L'**unité** d'une DI ou d'un OT est celle de l'équipement visé ; l'**année** est l'année civile à Alger.
-- Les anciens codes (`DI-2026-015`, `OT-3312`…) restent valides ; un numéro déjà utilisé est automatiquement sauté.
+- Les anciens codes (`DI-2026-015`, `OT-3312`, `DS-2026-0012`, `P-001`…) restent valides ; un numéro déjà utilisé est automatiquement sauté.
 - Si le serveur est injoignable au moment de créer un document, **rien n'est créé** et un message l'indique (on ne risque
   plus de doublon). Un numéro réservé puis non utilisé n'est pas réattribué : la suite peut comporter des trous.
 - Pour une unité ajoutée via `UNITS`, l'abréviation est formée des 3 premières lettres (modifiable dans `server/src/numbering.js`).

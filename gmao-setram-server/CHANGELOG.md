@@ -8,8 +8,10 @@
   propose que ses articles ; le BS suit sa DS ; BR et décharges suivent l'article. Le super administrateur et les comptes
   qui ont le module Stock sur plusieurs unités changent d'unité pour passer d'un magasin à l'autre. QR code d'un article :
   l'application bascule sur l'unité de l'article (si la personne y a accès).
-- Numéros inchangés et uniques pour l'entreprise (P-001, DS-2026-0012…) ; `next-code` exige désormais l'unité pour ces
-  collections (droit vérifié sur cette unité).
+- **Numéros avec l'unité**, comme les DI et les OT : `P-ALG-001` (pièce), `O-ALG-001`, `C-ALG-001`, `DS-ALG-2026-0001`,
+  `BS-ALG-…`, `BR-ALG-…`, `DCH-ALG-…`, avec un compteur par unité. Les numéros déjà attribués (P-001, DS-2026-0012…) ne
+  sont pas renommés et restent valables. `next-code` exige l'unité pour ces collections (droit vérifié sur cette unité).
+  « Repartir de zéro » sur une seule unité remet aussi à 1 les compteurs du magasin de cette unité.
 - **Migration `010_magasin_par_unite.sql`** (automatique au démarrage) : chaque élément existant est rattaché à une unité —
   DS : unité de l'OT lié, sinon de l'équipement ; BS : de sa DS ; article : unité qui l'a le plus demandé (DS), sinon qui
   l'a le plus utilisé dans ses OT ; décharge : de l'OT, sinon de l'article ; BR : de l'article ; à défaut, l'unité la plus

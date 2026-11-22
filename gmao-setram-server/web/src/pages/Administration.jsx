@@ -182,7 +182,7 @@ export function RepartirDeZero({systemsList=[]}){
     <div className="text-xs text-slate-500 mt-2">Rien n'est effacé physiquement : les éléments sont archivés en base puis retirés de l'application. La DSI peut annuler l'opération (procédure dans le runbook).</div></div>
   </div>
   <div className="mt-3 space-y-1">
-   <Chk checked={numerotationActive} onChange={v=>!system&&setNumerotation(v)}>Remettre la numérotation à 1{unit?" (pour l'unité "+unit+" seulement)":""} (DI-…-0001, OT-…-0001, DS-…-0001, P-001…){system?" — indisponible avec un système : des éléments restent":""}</Chk>
+   <Chk checked={numerotationActive} onChange={v=>!system&&setNumerotation(v)}>Remettre la numérotation à 1{unit?" (pour l'unité "+unit+" seulement)":""} (DI-…-0001, OT-…-0001, DS-…-0001, P-…-001…){system?" — indisponible avec un système : des éléments restent":""}</Chk>
    <Chk checked={sauvegarde} onChange={setSauvegarde}>J'ai fait <b>et vérifié</b> une sauvegarde de la base (runbook § sauvegarde)</Chk>
   </div>
   <div className="text-xs text-slate-300 mt-2" data-testid="reinit-resume">Sera vidé : <b>{effectives.length?effectives.map(c=>NOMS_COLLECTIONS[c]||c).join(", "):"rien (cochez au moins une catégorie)"}</b> — {perimetre(unit,system)}.</div>

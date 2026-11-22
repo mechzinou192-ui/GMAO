@@ -113,7 +113,7 @@ dataRouter.get('/:collection', collectionOf, async (req, res) => {
 // Numérotation par le serveur : réserve 1..n numéros uniques (jamais deux fois le même).
 //   POST /api/data/dis/next-code        { unit: "Alger" }                 -> { codes: ["DI-ALG-2026-0001"] }
 //   POST /api/data/bts/next-code        { unit: "Alger", variant: "prev", count: 5 }
-//   POST /api/data/pieces/next-code     { variant: "P" }                  -> { codes: ["P-001"] }
+//   POST /api/data/pieces/next-code     { unit: "Alger", variant: "P" }  -> { codes: ["P-ALG-001"] }
 // Un numéro réservé puis non utilisé (erreur réseau, abandon) n'est pas réattribué : la suite peut comporter des trous.
 dataRouter.post('/:collection/next-code', collectionOf, async (req, res) => {
   const { collection } = req.params;

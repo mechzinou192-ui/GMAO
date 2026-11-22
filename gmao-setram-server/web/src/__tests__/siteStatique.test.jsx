@@ -72,7 +72,7 @@ describe('serveur de démonstration intégré au navigateur', () => {
     const [a, b] = await api.nextCodes('dis', { unit: 'Alger', count: 2 });
     expect(a).toBe(`DI-ALG-${AN}-${String(Math.max(...existants) + 1).padStart(4, '0')}`); expect(b.endsWith(String(Math.max(...existants) + 2).padStart(4, '0'))).toBe(true);
     expect((await api.nextCodes('bts', { unit: 'Oran', variant: 'prev' }))[0]).toMatch(new RegExp(`^OT-PREV-ORN-${AN}-\\d{4}$`));
-    expect((await api.nextCodes('pieces', { unit: 'Alger', variant: 'P' }))[0]).toMatch(/^P-\d{3}$/);
+    expect((await api.nextCodes('pieces', { unit: 'Alger', variant: 'P' }))[0]).toMatch(/^P-ALG-\d{3}$/);
     await expect(api.nextCodes('pieces', { variant: 'P' })).rejects.toMatchObject({ status: 400 });             // magasin par unité : unité obligatoire
     await expect(api.nextCodes('dis', { unit: 'Paris' })).rejects.toMatchObject({ status: 400 });
     await expect(api.nextCodes('dis', { unit: 'Alger', count: 0 })).rejects.toMatchObject({ status: 400 });
@@ -254,7 +254,7 @@ describe('application complète en mode site statique', () => {
     const ot = Object.values(apiSite._etat().records.bts).find((r) => r.unit === 'Alger' && !r.data.plan && r.data.etat === 'En cours');
     const t = new Date().toISOString();
     (apiSite._etat().records.dss ||= {})['DS-TEST-0001'] = { id: 'DS-TEST-0001', unit: 'Alger', system: null, version: 1, deleted: false, createdAt: t, updatedAt: t,
-      data: { code: 'DS-TEST-0001', eq: ot.data.eq, nom: ot.data.nom, designation: 'Test', piece: 'P-001', pieceNom: 'Fusible 10A', qte: 1, prix: 120, bt: ot.id, etat: 'Transmis au Magasinier' } };
+      data: { code: 'DS-TEST-0001', eq: ot.data.eq, nom: ot.data.nom, designation: 'Test', piece: 'P-ALG-001', pieceNom: 'Fusible 10A', qte: 1, prix: 120, bt: ot.id, etat: 'Transmis au Magasinier' } };
     await seConnecter('Responsable maintenance');
     onglet(/Maintenance corrective/);
     fireEvent.click(await screen.findByText('OT correctifs'));
@@ -426,8 +426,8 @@ describe('application complète en mode site statique', () => {
     const recs = apiSite._etat().records;
     const prev = Object.values(recs.bts).find((r) => r.unit === 'Alger' && r.data.plan && r.data.etat !== 'Clôturé' && r.data.etat !== 'Annulé');
     const stock = (c) => recs.pieces[c].data.stock;
-    const s1 = stock('P-001'), s2 = stock('P-002');
-    prev.data = { ...prev.data, piecesPrevues: [{ code: 'P-001', qte: 2 }, { code: 'P-002', qte: 1 }, { code: 'P-003', qte: 500 }] };
+    const s1 = stock('P-ALG-001'), s2 = stock('P-ALG-002');
+    prev.data = { ...prev.data, piecesPrevues: [{ code: 'P-ALG-001', qte: 2 }, { code: 'P-ALG-002', qte: 1 }, { code: 'P-ALG-003', qte: 500 }] };
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await seConnecter('Super administrateur');
     onglet(/Préventif/);
@@ -441,7 +441,7 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(screen.getByText('Créer la Demande de Sortie (DS)'));
     await waitFor(() => expect(Object.values(apiSite._etat().records.dss || {}).some((r) => r.data.bt === prev.id)).toBe(true));
     const ds = () => Object.values(apiSite._etat().records.dss).find((r) => r.data.bt === prev.id && !r.deleted);
-    expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-001', 'P-002', 'P-003']);       // UNE seule DS, trois pièces
+    expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-ALG-001', 'P-ALG-002', 'P-ALG-003']);       // UNE seule DS, trois pièces
     expect(ds().data.etat).toBe('En attente pièce');
     await waitFor(() => expect(apiSite._etat().records.bts[prev.id].data.etat).toBe('En attente pièce'));
 
@@ -451,14 +451,14 @@ describe('application complète en mode site statique', () => {
     const code = ds().id;
     const cellule = await screen.findByTestId('ds-lignes-' + code);
     fireEvent.click(within(cellule).getByLabelText(/Retirer .* de la DS/, { selector: '[aria-label*="Relais"]' }));
-    await waitFor(() => expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-001', 'P-002']));
+    await waitFor(() => expect(ds().data.lignes.map((l) => l.piece)).toEqual(['P-ALG-001', 'P-ALG-002']));
     expect(ds().data.etat).toBe('Transmis au Magasinier');                                      // plus de rupture : transmis au magasin
 
     fireEvent.click(within(cellule.closest('tr')).getByText('Générer BS'));
     fireEvent.change(choixSection, { target: { value: 'bs' } });
     fireEvent.click(await screen.findByText('Traiter / Délivrer'));
-    await waitFor(() => expect(stock('P-001')).toBe(s1 - 2));
-    expect(stock('P-002')).toBe(s2 - 1);
+    await waitFor(() => expect(stock('P-ALG-001')).toBe(s1 - 2));
+    expect(stock('P-ALG-002')).toBe(s2 - 1);
     await waitFor(() => expect(ds().data.etat).toBe('Traité'));
     await waitFor(() => expect(apiSite._etat().records.bts[prev.id].data.etat).toBe('En cours'));   // OT débloqué
   });

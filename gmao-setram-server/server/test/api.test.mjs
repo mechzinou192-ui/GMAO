@@ -180,14 +180,17 @@ test('numérotation : OT, OT préventif, plan, magasin et articles', async () =>
   assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0001`);
   assert.equal(await code('bts', { unit: 'Sétif', variant: 'prev' }), `OT-PREV-SET-${YEAR}-0002`);
   assert.equal(await code('planning', { unit: 'Sidi Bel Abbès' }), 'PREV-SBA-0001');
-  assert.equal(await code('dss', { unit: 'Alger' }), `DS-${YEAR}-0001`);
-  assert.equal(await code('bs', { unit: 'Alger' }), `BS-${YEAR}-0001`);
-  assert.equal(await code('brs', { unit: 'Alger' }), `BR-${YEAR}-0001`);
-  assert.equal(await code('decharges', { unit: 'Alger' }), `DCH-${YEAR}-0001`);
-  assert.equal(await code('dss', { unit: 'Oran' }), `DS-${YEAR}-0002`);            // magasin par unité, mais numéros uniques pour l'entreprise
-  assert.equal(await code('pieces', { unit: 'Alger', variant: 'P' }), 'P-001');
-  assert.equal(await code('pieces', { unit: 'Oran', variant: 'O' }), 'O-001');
-  assert.equal(await code('pieces', { unit: 'Oran', variant: 'P' }), 'P-002');
+  // magasin par unité : l'unité est dans le code et chaque unité a son compteur (comme les DI et les OT)
+  assert.equal(await code('dss', { unit: 'Alger' }), `DS-ALG-${YEAR}-0001`);
+  assert.equal(await code('bs', { unit: 'Alger' }), `BS-ALG-${YEAR}-0001`);
+  assert.equal(await code('brs', { unit: 'Alger' }), `BR-ALG-${YEAR}-0001`);
+  assert.equal(await code('decharges', { unit: 'Alger' }), `DCH-ALG-${YEAR}-0001`);
+  assert.equal(await code('dss', { unit: 'Oran' }), `DS-ORN-${YEAR}-0001`);
+  assert.equal(await code('dss', { unit: 'Alger' }), `DS-ALG-${YEAR}-0002`);
+  assert.equal(await code('pieces', { unit: 'Alger', variant: 'P' }), 'P-ALG-001');
+  assert.equal(await code('pieces', { unit: 'Oran', variant: 'O' }), 'O-ORN-001');
+  assert.equal(await code('pieces', { unit: 'Oran', variant: 'P' }), 'P-ORN-001');
+  assert.equal(await code('pieces', { unit: 'Alger', variant: 'P' }), 'P-ALG-002');
   assert.equal((await admin.call('POST', '/data/dss/next-code', {})).status, 400);       // unité de l'élément obligatoire
 });
 
@@ -396,7 +399,8 @@ test('numérotation : le millésime suit l’année civile d’Alger', () => {
   assert.equal(currentYear(new Date('2026-12-31T22:30:00Z')), 2026);   // 23h30 à Alger
   assert.equal(currentYear(new Date('2026-12-31T23:30:00Z')), 2027);   // 00h30 le 1er janvier à Alger
   assert.equal(formatCode(SEQUENCES.dis, { abbr: 'ALG', year: 2027, n: 42 }), 'DI-ALG-2027-0042');
-  assert.equal(formatCode(SEQUENCES['pieces:C'], { abbr: '', year: 2027, n: 7 }), 'C-007');
+  assert.equal(formatCode(SEQUENCES['pieces:C'], { abbr: 'ORN', year: 2027, n: 7 }), 'C-ORN-007');
+  assert.equal(formatCode(SEQUENCES.dss, { abbr: 'ALG', year: 2027, n: 12 }), 'DS-ALG-2027-0012');
   assert.equal(unitAbbr('Sidi Bel Abbès'), 'SBA');
   assert.equal(unitAbbr('Tizi Ouzou'), 'TIZ');                          // unité ajoutée via UNITS
 });
