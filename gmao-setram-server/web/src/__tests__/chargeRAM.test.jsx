@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 const exporterXlsx = vi.fn();
 vi.mock('../excel.js', async (orig) => ({ ...(await orig()), exporterXlsx: (...a) => exporterXlsx(...a) }));
@@ -46,7 +46,8 @@ describe('charge RAM mensuelle (Indicateurs → Ressources humaines)', () => {
   });
   it('export à deux angles : « Par intervenant » et « Par unité » (charge RAM sauvegardée)', () => {
     afficher({ chargesRAM: [{ code: 'RAM-Alger-' + mois, unit: 'Alger', mois, chargeRAM: 10 }] });
-    fireEvent.click(within(screen.getByTestId('rh-ram')).getByText(/Export/));
+    expect(screen.getAllByText(/Export/)).toHaveLength(1);                                    // un seul bouton d'export
+    fireEvent.click(screen.getByText(/Export/));
     expect(exporterXlsx).toHaveBeenCalledTimes(1);
     const { feuilles } = exporterXlsx.mock.calls[0][0];
     expect(feuilles.map((f) => f.nom)).toEqual(['Par intervenant', 'Par unité']);
@@ -55,5 +56,20 @@ describe('charge RAM mensuelle (Indicateurs → Ressources humaines)', () => {
     expect(unite.lignes).toHaveLength(13);                                                    // 12 mois + total de l'année
     expect(unite.lignes.find((l) => l[1].startsWith(NOM_MOIS))).toEqual(['Alger', NOM_MOIS + ' ' + now.getFullYear(), 8, 10, 80]);
     expect(feuilles[0].lignes.map((l) => l[0]).sort()).toEqual(['A. Haddad', 'M. Rahmani']);
+  });
+  it('export « Par unité » : une seule unité pour un agent d’unité, toutes les unités autorisées pour un expert / super administrateur', () => {
+    const EQ2 = { code: 'CFO.ORA.SST.01', unit: 'Oran', system: 'CFO', subCode: 'SST', nom: 'Transformateur Oran', sousEquip: [] };
+    const OT2 = { ...OT, code: 'OT-PREV-2', eq: EQ2.code, intervenants: [{ nom: 'K. Oran', fonction: 'Technicien', temps: 2, logistique: 0 }] };
+    const tous = { btsTous: [OT, OT2], equipementsTous: [EQ, EQ2], disTous: [], planningTous: [] };
+    const unitesExportees = () => exporterXlsx.mock.calls.at(-1)[0].feuilles[1].lignes.map((l) => l[0]);
+    afficher({ ...tous, unitesRH: ['Alger'] });
+    fireEvent.click(screen.getByText(/Export/));
+    expect(new Set(unitesExportees())).toEqual(new Set(['Alger']));
+    cleanup();
+    afficher({ ...tous, unitesRH: ['Alger', 'Oran'] });
+    fireEvent.click(screen.getByText(/Export/));
+    expect(new Set(unitesExportees())).toEqual(new Set(['Alger', 'Oran']));
+    const oran = exporterXlsx.mock.calls.at(-1)[0].feuilles[1].lignes.find((l) => l[0] === 'Oran' && l[1].startsWith(NOM_MOIS));
+    expect(oran[2]).toBe(2);                                                                  // la charge GMAO d'Oran vient des OT d'Oran
   });
 });
