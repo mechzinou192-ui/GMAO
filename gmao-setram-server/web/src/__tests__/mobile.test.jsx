@@ -67,7 +67,7 @@ describe('Affichage sur téléphone', () => {
     fireEvent.click(imprimer);
     expect(ouvrir).toHaveBeenCalled();
     const html = w.document.write.mock.calls[0][0];
-    expect(html).toContain('BON DE TRAVAIL'); expect(html).toContain(OT.code); expect(html).toContain('Poste HT');   // emplacement repris de l'équipement
+    expect(html).toContain('FICHE DE TRAVAIL'); expect(html).toContain(OT.code); expect(html).toContain('Poste HT');   // emplacement repris de l'équipement
     expect(html).toContain('Inspection'); expect(html).toContain('<!DOCTYPE html>');
   });
 });
