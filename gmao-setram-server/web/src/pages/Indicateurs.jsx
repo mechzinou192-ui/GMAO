@@ -8,6 +8,14 @@ import {KPI_NORME_DEFAUT,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,k
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Inp,Segment,SubTabs} from "../ui/base.jsx";
 
+// Cellule de saisie de la charge RAM d'un mois : enregistrée en quittant le champ (ou avec Entrée) ; vide = supprimée.
+function CelluleRAM({valeur,onSave,disabled,label}){
+ const [v,setV]=useState(valeur===null||valeur===undefined?"":String(valeur));
+ const valide=()=>{const n=v===""?null:Number(v); if(n!==null&&!(n>0)){setV(valeur===null||valeur===undefined?"":String(valeur));return;} if((n??null)!==(valeur??null)) onSave(n);};
+ if(disabled) return <span>{valeur===null||valeur===undefined?"—":fH(valeur,1)}</span>;
+ return <Inp type="number" min="0" step="any" inputMode="decimal" value={v} placeholder="h" aria-label={label} onChange={e=>setV(e.target.value)} onBlur={valide} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}} style={{maxWidth:110}}/>;
+}
+
 /* ===== Page : Indicateurs de performance ===== */
 export const KPI_ST={ok:{bg:"#ecfdf5",fg:"#047857",bd:"#a7f3d0",t:"Atteint"},warn:{bg:"#fffbeb",fg:"#b45309",bd:"#fde68a",t:"Proche"},bad:{bg:"#fff1f2",fg:"#be123c",bd:"#fecdd3",t:"Non atteint"},na:{bg:"#eef2f8",fg:"#64748b",bd:"#dde4ee",t:"Sans donnée"}};
 export const StChip=({st,txt})=>{const c=KPI_ST[st]||KPI_ST.na;return <span style={{background:c.bg,color:c.fg,border:"1px solid "+c.bd}} className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap">{txt||c.t}</span>;};
@@ -44,7 +52,7 @@ export const KPI_REFERENTIEL=[
  ["Équipements","Taux logistique / d'intervention (correctif)","Logistique ÷ (durée + logistique) · Durée ÷ (durée + logistique)","—","OT correctifs","—"],
  ["RH","Taux d'occupation d'un technicien","Charge réelle ÷ Norme. Norme = 108 h/mois × (jours de la période ÷ 30)","Surcharge > 105 % · équilibre 75–105 % · sous-charge < 75 %","Temps saisi par intervenant sur chaque OT","On utilise le temps réel de chaque intervenant (et non la durée globale de l'intervention répartie)."],
  ["RH","Besoin en effectif","Théorique = Charge totale ÷ Norme · Essentiel = arrondi supérieur · Écart = Essentiel − nb techniciens","—","Intervenants ayant des heures sur la période","—"],
- ["RH","Taux d'efficience","Charge totale calculée GMAO ÷ Charge RAM déclarée","≈ 100 %","Charge RAM saisie manuellement","Saisie sur la période affichée."],
+ ["RH","Taux d'efficience (mensuel, par unité)","Charge totale calculée GMAO du mois ÷ Charge RAM du mois","≈ 100 %","Charge RAM saisie chaque mois par le responsable maintenance (rapport d'activité)","Sauvegardée par unité et par mois ; export « Par intervenant » + « Par unité »."],
  ["Stock","Coût de consommation","Σ (quantité sortie × prix) ; coût moyen/mois = coût total ÷ nombre de mois de la période","—","Mouvements « Sortie » du magasin","Prix = prix actuel de l'article (pas d'historique de prix dans cette GMAO)."],
  ["Stock","Stock de sécurité","Conso. moyenne mensuelle × délai fournisseur (3 mois par défaut) ; alerte si stock < stock de sécurité","Stock ≥ stock de sécurité","Sorties de la période + stock actuel","Comparé aussi au seuil minimum saisi sur l'article."],
  ["Stock","Stock dormant / rotation","Dormant = aucune sortie depuis ≥ 365 jours et valeur de stock > 0 ; rotation = conso. des 12 derniers mois","Aucun article dormant","Mouvements + stock × prix","—"],
@@ -52,7 +60,7 @@ export const KPI_REFERENTIEL=[
  ["Fiabilité","Stratégie recommandée","Arbre de décision : C ≥ 16 ou G = 4 → MBF/RCM · G = 1 et C < 10 → Corrective · ND = 1 → Basée sur l'état · P ≥ 3 → Proactive · ND ≤ 2 → TPM · sinon Préventive","—","Résultat de l'AMDEC","—"],
 ];
 
-export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
+export function IndicateursPage({unit,unitesRH,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
  const pad=(n)=>String(n).padStart(2,"0");
  const ymd=(d)=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
  const now=new Date(); const d30=new Date(now); d30.setDate(d30.getDate()-29);
@@ -62,7 +70,7 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
  const [histo,setHisto]=useState(historiqueCharge()); const [histoBusy,setHistoBusy]=useState(false);
  const limHisto=(()=>{const d=new Date(now);d.setMonth(d.getMonth()-FENETRE_MOIS);return ymd(d);})();
  const [normeBase,setNormeBase]=useState(KPI_NORME_DEFAUT);
- const [chargeRAM,setChargeRAM]=useState("");
+ const [anneeRAM,setAnneeRAM]=useState(now.getFullYear());   // année affichée dans « Ressources humaines » (charge RAM mensuelle)
  const [delai,setDelai]=useState(3);
  const [seuilBT,setSeuilBT]=useState(0);
  const [parcMode,setParcMode]=useState("Équipements avec DI/OT");
@@ -95,7 +103,7 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
  const O=kpiObj(unit);
  const hasCorr=K.nbPannesTot>0, hasPrev=K.nbBTPrev>0, hasH=K.hTotal>0;
  const eqRows=useMemo(()=>kpiEquipements(ctx.corr,ctx.prev,per,equipements),[ctx,per,equipements]);
- const rh=useMemo(()=>kpiRH(ctx.corr,ctx.prev,per,Number(normeBase)||KPI_NORME_DEFAUT,Number(chargeRAM)||0),[ctx,per,normeBase,chargeRAM]);
+ const rh=useMemo(()=>kpiRH(ctx.corr,ctx.prev,per,Number(normeBase)||KPI_NORME_DEFAUT,0),[ctx,per,normeBase]);
  const stk=useMemo(()=>kpiStock(pieces,per,Math.max(0.1,Number(delai)||3),new Date()),[pieces,per,delai]);
  const amdec=useMemo(()=>kpiAmdec(ctx.corr,per,{groupBy,gravBase,equipements,nomSys,nomSub}),[ctx,per,groupBy,gravBase,equipements,systemsList,treeStruct]);
  const unites=useMemo(()=>UNITS.map(u=>{const c=kpiCollect(u,{dis,bts,planning,equipements},per,parcMode,{sys:fSys,sub:fSub});return {u,c,k:kpiCalc(c.corr,c.prev,per,c.nbEquip),o:kpiObj(u)};}).filter(x=>x.c.corr.length+x.c.prev.length>0),[dis,bts,planning,equipements,per,parcMode,fSys,fSub]);
@@ -124,9 +132,22 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
  const exportEquip=()=>exporterXlsx({fichier:"Indicateurs_equipements_"+unit,feuilles:[{nom:"Équipements",titre:"Indicateurs par équipement — "+unit+" — "+perLabel,
   colonnes:[{h:"Code"},{h:"Équipement"},{h:"Catégorie"},{h:"OT préventifs",t:"num"},{h:"DI correctives",t:"num"},{h:"Pannes",t:"num"},{h:"MTTR (h)",t:"num"},{h:"MTBF (h)",t:"num"},{h:"Disponibilité (%)",t:"num"},{h:"Taux logistique corr. (%)",t:"num"}],
   lignes:eqRows.map(e=>[e.code,e.nom,"Cat. "+e.cat,e.nbPrev,e.nbCorr,e.k.nbPannesTot,+e.k.mttr.toFixed(3),+e.k.mtbf.toFixed(1),+(e.k.dispo*100).toFixed(2),+(e.tauxLogCorr*100).toFixed(1)])}]});
- const exportRH=()=>exporterXlsx({fichier:"Charge_RH_"+unit,feuilles:[{nom:"Charge RH",titre:"Charge et taux d'occupation — "+unit+" — "+perLabel+" — norme "+fNum(rh.norme)+" h",
-  colonnes:[{h:"Technicien"},{h:"Fonction"},{h:"Interventions",t:"num"},{h:"Charge réelle (h)",t:"num"},{h:"Norme (h)",t:"num"},{h:"Taux d'occupation (%)",t:"num"},{h:"Écart (h)",t:"num"},{h:"Statut"}],
-  lignes:rh.techs.map(t=>[t.technicien,t.fonction,t.nbInterventions,+t.chargeReelle.toFixed(2),+t.norme.toFixed(1),+(t.taux*100).toFixed(1),+t.delta.toFixed(1),t.statut])}]});
+ // Export RH : deux feuilles — « Par intervenant » (période affichée) et « Par unité » (taux d'efficience mensuel de l'année, charge RAM sauvegardée)
+ const exportRH=()=>{
+  const lignesUnite=[];
+  for(const u of (unitesRH&&unitesRH.length?unitesRH:[unit])){
+   const ms=moisDe(u,anneeRAM);
+   ms.forEach(x=>lignesUnite.push([u,MOIS_LONGS[x.m]+" "+anneeRAM,+x.gmao.toFixed(2),x.ram===null?"":+x.ram.toFixed(2),x.eff===null?"":+(x.eff*100).toFixed(1)]));
+   const a=ms.filter(x=>x.ram!==null),g=a.reduce((t,x)=>t+x.gmao,0),r=a.reduce((t,x)=>t+x.ram,0);
+   lignesUnite.push([u,"Total "+anneeRAM+" (mois saisis)",+g.toFixed(2),a.length?+r.toFixed(2):"",r>0?+(g/r*100).toFixed(1):""]);
+  }
+  exporterXlsx({fichier:"Charge_RH_"+unit+"_"+anneeRAM,feuilles:[
+   {nom:"Par intervenant",titre:"Charge et taux d'occupation par intervenant — "+unit+" — "+perLabel+" — norme "+fNum(rh.norme)+" h",
+    colonnes:[{h:"Technicien"},{h:"Fonction"},{h:"Interventions",t:"num"},{h:"Charge réelle (h)",t:"num"},{h:"Norme (h)",t:"num"},{h:"Taux d'occupation (%)",t:"num"},{h:"Écart (h)",t:"num"},{h:"Statut"}],
+    lignes:rh.techs.map(t=>[t.technicien,t.fonction,t.nbInterventions,+t.chargeReelle.toFixed(2),+t.norme.toFixed(1),+(t.taux*100).toFixed(1),+t.delta.toFixed(1),t.statut])},
+   {nom:"Par unité",titre:"Charge mensuelle et taux d'efficience par unité — "+anneeRAM+" — charge GMAO ÷ charge RAM (rapport d'activité)",
+    colonnes:[{h:"Unité"},{h:"Mois"},{h:"Charge GMAO (h)",t:"num"},{h:"Charge RAM saisie (h)",t:"num"},{h:"Taux d'efficience (%)",t:"num"}],
+    lignes:lignesUnite}]});};
  const exportStock=()=>exporterXlsx({fichier:"Indicateurs_stock",feuilles:[
   {nom:"Stock de sécurité",titre:"Stock de sécurité — délai "+delai+" mois — "+perLabel,colonnes:[{h:"Code"},{h:"Désignation"},{h:"Catégorie"},{h:"Conso. moy./mois",t:"num"},{h:"Stock de sécurité",t:"num"},{h:"Stock actuel",t:"num"},{h:"Seuil min saisi",t:"num"},{h:"Alerte"}],
    lignes:stk.secu.map(x=>[x.code,x.nom,x.categorie,+x.avgMois.toFixed(2),+x.stockSecu.toFixed(1),x.stockActuel,x.min,x.sousSeuil?"Sous le stock de sécurité":"OK"])},
@@ -143,6 +164,18 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
  const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x));
  const sub=SUBS.includes(subRaw)?subRaw:(SUBS[0]||"");
  const eqSeuil=Number(seuilBT)||0;
+ // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
+ // Unité entière, sans filtre d'arborescence ; la charge RAM est sauvegardée par unité et par mois.
+ const moisDe=(u,an)=>{const data={dis,bts,planning,equipements};
+  return Array.from({length:12},(_,m)=>{
+   const p=kpiPeriode(ymd(new Date(an,m,1)),ymd(new Date(an,m+1,0)));
+   const c=kpiCollect(u,data,p,"Équipements avec DI/OT",{sys:"",sub:"",eq:"",se:""});
+   const gmao=kpiRH(c.corr,c.prev,p,KPI_NORME_DEFAUT,0).total;
+   const code=an+"-"+pad(m+1); const rec=(chargesRAM||[]).find(x=>x.unit===u&&x.mois===code);
+   const ram=rec&&Number(rec.chargeRAM)>0?Number(rec.chargeRAM):null;
+   return {m,mois:code,gmao,ram,eff:ram?gmao/ram:null,saisiPar:rec?rec.saisiPar:""};});};
+ const moisRAM=useMemo(()=>sub==="Ressources humaines"?moisDe(unit,anneeRAM):[],[sub,unit,anneeRAM,dis,bts,planning,equipements,chargesRAM]);
+ const totRAM=(()=>{const a=moisRAM.filter(x=>x.ram!==null);const g=a.reduce((t,x)=>t+x.gmao,0),r=a.reduce((t,x)=>t+x.ram,0);return {nb:a.length,gmao:g,ram:r,eff:r>0?g/r:null};})();
  const cats=[1,2,3].map(c=>eqRows.filter(e=>e.cat===c));
 
  return (<div className="space-y-4">
@@ -243,7 +276,6 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
    <div className="flex flex-wrap justify-between items-end gap-3">
     <div className="flex flex-wrap items-end gap-3">
      <div><div className="text-xs text-slate-400">Norme mensuelle (h / technicien)</div><Inp type="number" min="1" value={normeBase} onChange={e=>setNormeBase(e.target.value)}/></div>
-     <div><div className="text-xs text-slate-400">Charge RAM déclarée sur la période (h)</div><Inp type="number" min="0" value={chargeRAM} placeholder="optionnel" onChange={e=>setChargeRAM(e.target.value)}/></div>
     </div><ExportBtn onClick={exportRH}/>
    </div>
    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -252,7 +284,6 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
     <KpiCard label="Taux moyen d'occupation" value={rh.nbTech>0?fPct(rh.tauxMoyen):"—"} sub={rh.nbSurcharge+" surcharge · "+rh.nbEquil+" équilibre · "+rh.nbSous+" sous-charge"}/>
     <KpiCard label="Besoin en effectif" value={rh.nbTech>0?rh.besoin:"—"} sub={rh.nbTech>0?"théorique "+fNum(rh.besoinTheo,2)+" · écart "+(rh.delta>0?"+":"")+rh.delta:""}/>
    </div>
-   {rh.efficience!==null && <KpiCard label="Taux d'efficience" value={fPct(rh.efficience)} sub={"Charge GMAO "+fH(rh.total,1)+" / Charge RAM "+fH(Number(chargeRAM),1)}/>}
    <Card>
     {rh.techs.length===0?<KpiEmpty>Aucune heure d'intervenant saisie sur la période (le temps se renseigne à la clôture de l'OT).</KpiEmpty>:
     <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Technicien</Th><Th>Interventions</Th><Th>Charge réelle</Th><Th>Norme</Th><Th>Taux d'occupation</Th><Th>Écart</Th><Th>Statut</Th></tr></thead>
@@ -260,7 +291,28 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
      <td><div className="flex items-center gap-2"><div className="w-24 h-2 rounded bg-slate-700 overflow-hidden"><div style={{width:Math.min(100,t.taux*100)+"%",background:t.statut==="surcharge"?"#be123c":t.statut==="sous-charge"?"#b45309":"#047857"}} className="h-2"/></div>{fPct(t.taux)}</div></td>
      <td>{(t.delta>0?"+":"")+fNum(t.delta)} h</td><td><StChip st={t.statut==="surcharge"?"bad":t.statut==="sous-charge"?"warn":"ok"} txt={t.statut}/></td></tr>)}</tbody></table></div>}
    </Card>
-   <div className="text-xs text-slate-500">Statuts : surcharge &gt; 105 % · équilibre 75–105 % · sous-charge &lt; 75 %. La charge est le temps saisi par chaque intervenant sur les OT de l'unité.</div>
+   <Card>
+     <div className="flex flex-wrap justify-between items-end gap-3 mb-2" data-testid="rh-ram">
+      <div><div className="font-semibold text-slate-100">Taux d'efficience mensuel — {unit}</div>
+       <div className="text-xs text-slate-400">Chaque mois, saisissez la charge du rapport d'activité (RAM) : elle est sauvegardée pour l'unité. Taux = charge GMAO ÷ charge RAM.</div></div>
+      <div className="flex items-end gap-2"><div><div className="text-xs text-slate-400">Année</div><Inp type="number" min="2000" max="2100" value={anneeRAM} onChange={e=>setAnneeRAM(Number(e.target.value)||now.getFullYear())} data-testid="rh-annee"/></div><ExportBtn onClick={exportRH}/></div>
+     </div>
+     {!histo && new Date(anneeRAM,0,1)<new Date(limHisto) && <div className="text-xs text-amber-300 mb-2">Les OT clos depuis plus de {FENETRE_MOIS} mois ne sont pas chargés : chargez l'historique complet (bandeau en haut) pour des charges GMAO exactes.</div>}
+     <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Mois</Th><Th>Charge GMAO</Th><Th>Charge RAM (h)</Th><Th>Taux d'efficience</Th></tr></thead>
+      <tbody>{moisRAM.map(x=><tr key={x.mois} className="border-t border-slate-700" data-testid={"rh-mois-"+x.mois}><td className="py-1.5">{MOIS_LONGS[x.m]}</td><td>{fH(x.gmao,1)}</td>
+       <td><CelluleRAM key={x.mois+"|"+(x.ram??"")} valeur={x.ram} disabled={!peutSaisirRAM||!onSaveChargeRAM} onSave={(v)=>onSaveChargeRAM(unit,x.mois,v)} label={"Charge RAM "+MOIS_LONGS[x.m]}/></td>
+       <td>{x.eff===null?"—":fPct(x.eff)}</td></tr>)}
+       <tr className="border-t-2 border-slate-600 font-semibold"><td className="py-1.5">Total {anneeRAM} (mois saisis)</td><td>{fH(totRAM.gmao,1)}</td><td>{totRAM.nb?fH(totRAM.ram,1):"—"}</td><td>{totRAM.eff===null?"—":fPct(totRAM.eff)}</td></tr></tbody></table></div>
+     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+      <CarteGraphe titre="Charge GMAO et charge RAM par mois" sousTitre="Heures — la charge RAM n'apparaît que pour les mois saisis">
+       <BarresGroupees cats={moisRAM.map(x=>MOIS_COURTS[x.m])} series={[{nom:"Charge GMAO",coul:SERIES[0],vals:moisRAM.map(x=>x.gmao)},{nom:"Charge RAM",coul:SERIES[1],vals:moisRAM.map(x=>x.ram||0)}]} fmt={(v)=>String(Math.round(v))}/>
+      </CarteGraphe>
+      <CarteGraphe titre="Taux d'efficience mensuel" sousTitre="Charge GMAO ÷ charge RAM — cible ≈ 100 %">
+       <Courbe cats={moisRAM.map(x=>MOIS_COURTS[x.m])} nom="Taux d'efficience" vals={moisRAM.map(x=>x.eff===null?null:x.eff*100)} fmt={(v)=>Math.round(v)+" %"} cible={100} cibleLib="100 %" min={0}/>
+      </CarteGraphe>
+     </div>
+    </Card>
+    <div className="text-xs text-slate-500">Statuts : surcharge &gt; 105 % · équilibre 75–105 % · sous-charge &lt; 75 %. La charge est le temps saisi par chaque intervenant sur les OT de l'unité.</div>
   </div>}
 
   {sub==="Stock" && <div className="space-y-4">
@@ -312,6 +364,7 @@ export function IndicateursPage({unit,dis,bts,planning,equipements,pieces,system
 }
 
 /* ===== Tableau de bord graphique des indicateurs ===== */
+const MOIS_LONGS=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const MOIS_COURTS=["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
 const ymdD=(d)=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const varRel=(a,b)=>(b>0&&Number.isFinite(a)&&Number.isFinite(b))?(a-b)/b:null;
