@@ -34,6 +34,8 @@ export const COLLECTIONS = {
   organismes:   { volet: 8, shared: true, readVolets: [8, 6] },
   // rapports d'activité maintenance des UO (volet 7) : préparés par l'UO, revus et validés par la DG
   rapports:     { volet: 7, readVolets: [7], writeVolets: [7] },
+  // charge mensuelle du rapport d'activité (RAM) saisie par unité et par mois : sert au taux d'efficience (Indicateurs → Ressources humaines)
+  charge_ram:   { volet: 6, readVolets: [6] },
   // demandes d'expertise / d'assistance (onglet Validation) : chargé / responsable maintenance → expert DG
   demandes:     { volet: 2, readVolets: [2] },
   // profils créés par le super administrateur (organigramme) : lisibles par tous, modifiables par le super admin seul
