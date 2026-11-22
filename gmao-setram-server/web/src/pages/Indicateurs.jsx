@@ -60,7 +60,7 @@ export const KPI_REFERENTIEL=[
  ["Fiabilité","Stratégie recommandée","Arbre de décision : C ≥ 16 ou G = 4 → MBF/RCM · G = 1 et C < 10 → Corrective · ND = 1 → Basée sur l'état · P ≥ 3 → Proactive · ND ≤ 2 → TPM · sinon Préventive","—","Résultat de l'AMDEC","—"],
 ];
 
-export function IndicateursPage({unit,unitesRH,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
+export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equipementsTous,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
  const pad=(n)=>String(n).padStart(2,"0");
  const ymd=(d)=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
  const now=new Date(); const d30=new Date(now); d30.setDate(d30.getDate()-29);
@@ -166,7 +166,7 @@ export function IndicateursPage({unit,unitesRH,chargesRAM=[],onSaveChargeRAM,peu
  const eqSeuil=Number(seuilBT)||0;
  // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
  // Unité entière, sans filtre d'arborescence ; la charge RAM est sauvegardée par unité et par mois.
- const moisDe=(u,an)=>{const data={dis,bts,planning,equipements};
+ const moisDe=(u,an)=>{const data={dis:disTous||dis,bts:btsTous||bts,planning:planningTous||planning,equipements:equipementsTous||equipements};   // toutes les unités accessibles (l'export « Par unité » peut en lister plusieurs)
   return Array.from({length:12},(_,m)=>{
    const p=kpiPeriode(ymd(new Date(an,m,1)),ymd(new Date(an,m+1,0)));
    const c=kpiCollect(u,data,p,"Équipements avec DI/OT",{sys:"",sub:"",eq:"",se:""});
@@ -174,7 +174,7 @@ export function IndicateursPage({unit,unitesRH,chargesRAM=[],onSaveChargeRAM,peu
    const code=an+"-"+pad(m+1); const rec=(chargesRAM||[]).find(x=>x.unit===u&&x.mois===code);
    const ram=rec&&Number(rec.chargeRAM)>0?Number(rec.chargeRAM):null;
    return {m,mois:code,gmao,ram,eff:ram?gmao/ram:null,saisiPar:rec?rec.saisiPar:""};});};
- const moisRAM=useMemo(()=>sub==="Ressources humaines"?moisDe(unit,anneeRAM):[],[sub,unit,anneeRAM,dis,bts,planning,equipements,chargesRAM]);
+ const moisRAM=useMemo(()=>sub==="Ressources humaines"?moisDe(unit,anneeRAM):[],[sub,unit,anneeRAM,dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,chargesRAM]);
  const totRAM=(()=>{const a=moisRAM.filter(x=>x.ram!==null);const g=a.reduce((t,x)=>t+x.gmao,0),r=a.reduce((t,x)=>t+x.ram,0);return {nb:a.length,gmao:g,ram:r,eff:r>0?g/r:null};})();
  const cats=[1,2,3].map(c=>eqRows.filter(e=>e.cat===c));
 
@@ -295,7 +295,7 @@ export function IndicateursPage({unit,unitesRH,chargesRAM=[],onSaveChargeRAM,peu
      <div className="flex flex-wrap justify-between items-end gap-3 mb-2" data-testid="rh-ram">
       <div><div className="font-semibold text-slate-100">Taux d'efficience mensuel — {unit}</div>
        <div className="text-xs text-slate-400">Chaque mois, saisissez la charge du rapport d'activité (RAM) : elle est sauvegardée pour l'unité. Taux = charge GMAO ÷ charge RAM.</div></div>
-      <div className="flex items-end gap-2"><div><div className="text-xs text-slate-400">Année</div><Inp type="number" min="2000" max="2100" value={anneeRAM} onChange={e=>setAnneeRAM(Number(e.target.value)||now.getFullYear())} data-testid="rh-annee"/></div><ExportBtn onClick={exportRH}/></div>
+      <div className="flex items-end gap-2"><div><div className="text-xs text-slate-400">Année</div><Inp type="number" min="2000" max="2100" value={anneeRAM} onChange={e=>setAnneeRAM(Number(e.target.value)||now.getFullYear())} data-testid="rh-annee"/></div></div>
      </div>
      {!histo && new Date(anneeRAM,0,1)<new Date(limHisto) && <div className="text-xs text-amber-300 mb-2">Les OT clos depuis plus de {FENETRE_MOIS} mois ne sont pas chargés : chargez l'historique complet (bandeau en haut) pour des charges GMAO exactes.</div>}
      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Mois</Th><Th>Charge GMAO</Th><Th>Charge RAM (h)</Th><Th>Taux d'efficience</Th></tr></thead>
