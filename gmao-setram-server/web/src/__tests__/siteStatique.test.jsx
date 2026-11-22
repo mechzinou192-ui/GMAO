@@ -199,6 +199,7 @@ describe('application complète en mode site statique', () => {
     await seConnecter('Responsable maintenance');
     await waitFor(() => expect(document.body.textContent).toContain('Compteurs : plans à déclencher'));     // alerte sur l'accueil
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Planning Préventif' }));
     fireEvent.click(await screen.findByText('Compteurs (km, heures)'));
     await waitFor(() => expect(document.body.textContent).toContain('Révision bogie (30 000 km)'));
     expect(document.body.textContent).toContain('MR.ALG.BOG.01-KM');
@@ -218,7 +219,7 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(within(lignePlan).getByText('Déclencher'));
     const ot = await waitFor(() => { const b = Object.values(apiSite._etat().records.bts || {}).find((r) => r.data.plan && r.data.etat === 'En cours' && r.data.eq === 'MR.ALG.BOG.02'); if (!b) throw new Error('OT'); return b; }, { timeout: 4000 });
     expect(ot.id).toMatch(/^OT-PREV-ALG-/);
-    onglet(/Ordres de travail/);
+    onglet(/Préventif/);
     fireEvent.click((await screen.findAllByText(ot.id))[0]);
     const bloc = await screen.findByTestId('releve-cloture');
     expect(bloc.textContent).toContain('Obligatoire pour clôturer');
@@ -233,7 +234,7 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(await screen.findByText('OT correctifs'));
     await waitFor(() => expect(document.body.textContent).toContain(corr.id));
     expect(document.body.textContent).not.toContain(prev.id);
-    onglet(/Ordres de travail/);
+    onglet(/Préventif/);
     await waitFor(() => expect(document.body.textContent).toContain(prev.id));
     expect(document.body.textContent).not.toContain(corr.id);
     onglet(/Arborescence/);
@@ -263,6 +264,7 @@ describe('application complète en mode site statique', () => {
   it('calendrier préventif : vue « Année complète » (plans × 12 mois), retour au mois par un clic sur une visite', async () => {
     await seConnecter('Responsable maintenance');
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Planning Préventif' }));
     fireEvent.click(await screen.findByText(/Calendrier \/ Agenda/));
     fireEvent.change(await screen.findByTestId('calendrier-vue'), { target: { value: 'annee' } });
     const vue = await screen.findByTestId('vue-annuelle');
@@ -291,6 +293,7 @@ describe('application complète en mode site statique', () => {
   it('préventif : filtre des plans par intervenant', async () => {
     await seConnecter('Responsable maintenance');
     onglet(/Préventif/);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Planning Préventif' }));
     const filtre = within(await screen.findByTestId('filtre-intervenant')).getByRole('combobox');
     const noms = [...filtre.options].map((o) => o.value).filter(Boolean);
     expect(noms.length).toBeGreaterThan(1);
@@ -403,7 +406,7 @@ describe('application complète en mode site statique', () => {
     prev.data = { ...prev.data, piecesPrevues: [{ code: 'P-001', qte: 2 }, { code: 'P-002', qte: 1 }, { code: 'P-003', qte: 500 }] };
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await seConnecter('Super administrateur');
-    onglet(/Ordres de travail/);
+    onglet(/Préventif/);
     fireEvent.click((await screen.findAllByText(prev.id))[0]);
     const bouton = await screen.findByTestId('ds-globale');
     expect(bouton.textContent).toContain('3 pièces');
@@ -728,5 +731,16 @@ describe('application complète en mode site statique', () => {
     fireEvent.click(within(fiche2).getByText('Répondre et clore'));
     await waitFor(() => expect(dem().data).toMatchObject({ etat: 'Traitée', reponse: 'Contrôler le câble du départ 3' }), { timeout: 4000 });
     expect((apiSite._etat().notifications || []).some((n) => n.userId === 'demo.charge' && /traitée/.test(n.texte))).toBe(true);
+  });
+  it('menu : plus d’onglet « Ordres de travail » ; Préventif propose « OT préventifs » avant « Planning Préventif »', async () => {
+    await seConnecter('Super administrateur');
+    const menu = [...screen.getByTestId('menu-lateral').querySelectorAll('nav button')].map((b) => b.textContent);
+    expect(menu.some((t) => /Ordres de travail/.test(t))).toBe(false);
+    onglet(/Préventif/);
+    const onglets = (await screen.findAllByRole('tab')).map((t) => t.textContent);
+    expect(onglets).toEqual(['OT préventifs', 'Planning Préventif']);
+    expect(screen.getByRole('tab', { name: 'OT préventifs' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Planning Préventif' }));
+    expect(screen.getByRole('tab', { name: 'Planning Préventif' }).getAttribute('aria-selected')).toBe('true');
   });
 });
