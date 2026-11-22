@@ -19,10 +19,12 @@ describe('fiche de travail imprimable', () => {
   it('reprend les informations saisies mais AUCUN prix ni coût', () => {
     const h = btImprimableHtml(CORR, { pieces: PIECES, equipements: EQ, imprimeLe: QUAND });
     for (const t of ['OT-ALG-2026-0007', 'FICHE DE TRAVAIL CORRECTIVE', 'Transformateur T1', 'Poste HT — Alger', 'DI-ALG-2026-0042', 'K. Belaïd', 'Nuit', '<b>OUI — nécessaire</b>',
-      'Consigner la cellule HTA', 'Contrôler la température', 'Borne desserrée', 'Surchauffe', 'Ventilation obstruée', '3 h', '1 h',
+      'Consigner la cellule HTA', 'Surchauffe', 'Ventilation obstruée', '3 h', '1 h',
       'Technicien CFO', 'Fusible 10A', 'Clé dynamométrique', 'imprimée le 06/10/2026 14:05', 'Exploitation — consignation'])
       expect(h, t).toContain(t);
     expect(h).not.toMatch(/DA|Total|Montant|Taux|3 000|5 000|360/);
+    expect(h).not.toContain('Tâches à réaliser'); expect(h).not.toContain('Contrôler la température');   // pas de tâches en correctif
+    expect(h).toContain('Durée d\'intervention'); expect(h).toContain('Temps logistique');
   });
   it('OT préventif : plan affiché, tâches à cocher à la main, pas de rubrique « Constat »', () => {
     const h = btImprimableHtml({ code: 'OT-PREV-ALG-2026-0001', etat: 'En cours', type: 'Préventive', plan: 'PREV-ALG-0003', eq: 'CFO.ALG.SST.01', taches: [{ lib: 'Graissage' }] }, { pieces: PIECES, equipements: EQ });
@@ -31,14 +33,14 @@ describe('fiche de travail imprimable', () => {
   });
   it('OT vierge à remplir sur le terrain : lignes vides et durées à compléter', () => {
     const h = btImprimableHtml({ code: 'OT-1', etat: 'En cours', type: 'Corrective', eq: 'X', taches: [] }, { pieces: [], equipements: [] });
-    expect(h).toContain('Aucune tâche définie.'); expect(h).toContain('……… h'); expect((h.match(/class="vide"/g) || []).length).toBe(9);
+    expect(h).not.toContain('Aucune tâche'); expect(h).toContain('……… h'); expect(h).toContain('…… / 4'); expect((h.match(/class="vide"/g) || []).length).toBe(9);
     expect(h).not.toContain('DA');
   });
   it('les intervenants assignés et les pièces prévues sont pré-remplis, les champs de constat vides restent à écrire', () => {
     const h = btImprimableHtml({ code: 'OT-2', etat: 'En cours', type: 'Corrective', eq: 'X', assigne: 'A. Haddad, M. Rahmani', panne: '-', cause: '-', effet: '-', detection: 0, gravite: 0,
       piecesPrevues: [{ code: 'P-001', qte: 2 }], taches: [{ lib: 'Remplacer' }] }, { pieces: PIECES, equipements: EQ });
     expect(h).toContain('A. Haddad'); expect(h).toContain('M. Rahmani'); expect(h).toContain('Fusible 10A'); expect(h).toContain('Pièce prévue');
-    expect(h).not.toContain('>-<'); expect(h).not.toMatch(/class="cer on"/);
+    expect(h).not.toContain('>-<'); expect(h).not.toContain('0/4'); expect(h).toContain('…… / 4');
   });
   it('échappe tout texte saisi par un utilisateur (aucune injection HTML ou script)', () => {
     const h = btImprimableHtml({ ...CORR, nom: '<img src=x onerror=alert(1)>', consigne: '<script>alert("x")</script>', taches: [{ lib: '"><svg onload=1>', com: '<b>&' }],
