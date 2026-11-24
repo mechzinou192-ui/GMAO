@@ -1,10 +1,10 @@
 // Indicateurs de performance (MTBF, MTTR, disponibilité, AMDEC…).
 import React,{useState,useMemo,useEffect} from "react";
-import {Anneau,BarresGroupees,BarresH,CarteGraphe,Courbe,SERIES,TuileChiffre} from "../ui/graphes.jsx";
+import {Anneau,BarresGroupees,BarresH,CarteGraphe,COULEURS_ABC,Courbe,ParetoChart,SERIES,TuileChiffre} from "../ui/graphes.jsx";
 import {FENETRE_MOIS,chargerHistorique,historiqueCharge} from "../sync.js";
 import {exporterXlsx} from "../excel.js";
 import {frDate} from "../lib/dates.js";
-import {KPI_NORME_DEFAUT,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
+import {KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Inp,Segment,SubTabs} from "../ui/base.jsx";
 
@@ -75,6 +75,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const [seuilBT,setSeuilBT]=useState(0);
  const [parcMode,setParcMode]=useState("Équipements avec DI/OT");
  const [groupBy,setGroupBy]=useState("Équipement");
+ const [paretoCrit,setParetoCrit]=useState("nbDI"), [paretoPortee,setParetoPortee]=useState("Corrective");
  const [gravBase,setGravBase]=useState("Gravité saisie (OT)");
  const [fSys,setFSys]=useState(""), [fSub,setFSub]=useState(""), [fEq,setFEq]=useState(""), [fSe,setFSe]=useState("");
  useEffect(()=>{setFSys("");setFSub("");setFEq("");setFSe("");},[unit]);
@@ -106,6 +107,23 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const rh=useMemo(()=>kpiRH(ctx.corr,ctx.prev,per,Number(normeBase)||KPI_NORME_DEFAUT,0),[ctx,per,normeBase]);
  const stk=useMemo(()=>kpiStock(pieces,per,Math.max(0.1,Number(delai)||3),new Date()),[pieces,per,delai]);
  const amdec=useMemo(()=>kpiAmdec(ctx.corr,per,{groupBy,gravBase,equipements,nomSys,nomSub}),[ctx,per,groupBy,gravBase,equipements,systemsList,treeStruct]);
+ // Pareto / ABC : cumul par équipement des 6 critères, puis classement selon le critère choisi
+ const paretoRows=useMemo(()=>kpiParetoEquipements(ctx.corr,ctx.prev,pieces,paretoPortee,equipements),[ctx,pieces,paretoPortee,equipements]);
+ const paretoCrit1=KPI_PARETO_CRITERES.find(c=>c.id===paretoCrit)||KPI_PARETO_CRITERES[0];
+ const pareto=useMemo(()=>kpiPareto(paretoRows,paretoCrit),[paretoRows,paretoCrit]);
+ const paretoTous=useMemo(()=>KPI_PARETO_CRITERES.map(c=>({c,p:kpiPareto(paretoRows,c.id)})),[paretoRows]);
+ const parts=paretoCrit1.parts||null;   // critères décomposables : Temps d'intervention (durée + logistique) · Coût total (humain + matériel)
+ const critOf=(id)=>KPI_PARETO_CRITERES.find(c=>c.id===id)||paretoCrit1;
+ const sommeParts=(liste)=>parts?parts.map(pt=>liste.reduce((t,r)=>t+(Number(r.row[pt.id])||0),0)):[];
+ const decoClasses=parts?[["A"],["B"],["C"],["A","B","C"]].map(cl=>{const l=pareto.items.filter(r=>cl.includes(r.classe)); return {lib:cl.length>1?"Total":"Classe "+cl[0],n:l.length,vals:sommeParts(l),tot:l.reduce((t,r)=>t+r.value,0)};}):[];
+ const fParetoVal=(v,c)=>c.unite==="DA"?fDA(v):c.unite==="h"?fH(v,2):String(Math.round(v));
+ const exportPareto=()=>exporterXlsx({fichier:"Pareto_ABC_"+unit,feuilles:[
+  {nom:"Pareto "+paretoCrit1.lib.slice(0,20),titre:"Pareto ABC — "+paretoCrit1.lib+" ("+paretoPortee.toLowerCase()+") — "+unit+" — "+perLabel,
+   colonnes:[{h:"Rang",t:"num"},{h:"Code équipement"},{h:"Équipement"},{h:paretoCrit1.lib+(paretoCrit1.unite?" ("+paretoCrit1.unite+")":""),t:"num"},{h:"% du total",t:"num"},{h:"% cumulé",t:"num"},{h:"Classe"},...(parts||[]).map(pt=>({h:pt.lib+(critOf(pt.id).unite?" ("+critOf(pt.id).unite+")":""),t:"num"}))],
+   lignes:pareto.items.map(r=>[r.rang,r.code,r.nom,Number(r.value.toFixed(2)),Number((r.pct*100).toFixed(2)),Number((r.cum*100).toFixed(2)),r.classe,...(parts||[]).map(pt=>Number((Number(r.row[pt.id])||0).toFixed(2)))])},
+  {nom:"Synthèse critères",titre:"Pareto ABC — nombre d'équipements par seuil — "+unit+" — "+perLabel,
+   colonnes:[{h:"Critère"},{h:"Total",t:"num"},{h:"Équipements concernés",t:"num"},{h:"Classe A — 80 %",t:"num"},{h:"Jusqu'à B — 95 %",t:"num"},{h:"Jusqu'à C — 100 %",t:"num"}],
+   lignes:paretoTous.map(({c,p})=>[c.lib+(c.unite?" ("+c.unite+")":""),Number(p.total.toFixed(2)),p.n100,p.n80,p.n95,p.n100])}]});
  // Comparatif : toutes les unités accessibles à l'utilisateur (volet Indicateurs), comme l'export RH « Par unité » —
  // une seule pour un agent d'unité ; plusieurs pour un expert / le responsable DG ; toutes pour le super administrateur
  const unitesComp=unitesRH&&unitesRH.length?unitesRH:[unit];
@@ -167,7 +185,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
 
  const Th=({children,cls})=><th className={"py-1 "+(cls||"")}>{children}</th>;
  // « Tableau de bord » (graphiques) : visible dès que la Synthèse l'est
- const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x));
+ const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Pareto (ABC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x==="Pareto (ABC)"?"Criticité (AMDEC)":x));
  const sub=SUBS.includes(subRaw)?subRaw:(SUBS[0]||"");
  const eqSeuil=Number(seuilBT)||0;
  // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
@@ -365,6 +383,44 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
      <td><StChip st={g.band.cls} txt={g.crit+" — "+g.band.label}/></td><td title={g.strat.why}><span className="px-2 py-0.5 rounded-full text-xs bg-slate-700">{g.strat.id}</span><div className="text-xs text-slate-500 max-w-xs mt-0.5">{g.strat.why}</div></td></tr>)}</tbody></table></div>}
    </Card>
    <div className="text-xs text-slate-500">C = G × P × ND · Majeure ≥ 16 · Modérée ≥ 10 · Acceptable &lt; 10. P est extrapolée sur 365 jours à partir de la période affichée. G « Gravité saisie (OT) » = moyenne arrondie des gravités 1 à 4 saisies dans le compte-rendu des OT ; * G = durée d'arrêt quand aucune gravité n'est saisie ; * ND = 2 par défaut quand la détection n'est pas saisie sur les OT.</div>
+  </div>}
+
+  {sub==="Pareto (ABC)" && <div className="space-y-4" data-testid="kpi-pareto">
+   <div className="flex flex-wrap justify-between items-end gap-3">
+    <div className="flex flex-wrap items-end gap-3">
+     <div><div className="text-xs text-slate-400">Critère</div><Segment value={paretoCrit1.lib} options={KPI_PARETO_CRITERES.map(c=>c.lib)} onChange={v=>setParetoCrit((KPI_PARETO_CRITERES.find(c=>c.lib===v)||KPI_PARETO_CRITERES[0]).id)}/></div>
+     <div><div className="text-xs text-slate-400">Maintenance</div><Segment value={paretoPortee} options={["Corrective","Préventive","Toutes"]} onChange={setParetoPortee}/></div>
+    </div><ExportBtn onClick={exportPareto}/>
+   </div>
+   {pareto.items.length===0?<Card><KpiEmpty>Aucune donnée pour ce critère sur la période.</KpiEmpty></Card>:<>
+   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <KpiCard label={"Total — "+paretoCrit1.lib} value={fParetoVal(pareto.total,paretoCrit1)} sub={pareto.n100+" équipement(s) concerné(s)"}/>
+    <KpiCard label="Classe A — 80 %" value={pareto.n80+" équip."} sub={fPct(pareto.n80/pareto.n100,0)+" des équipements concernés"}/>
+    <KpiCard label="Jusqu'à la classe B — 95 %" value={pareto.n95+" équip."} sub={fPct(pareto.n95/pareto.n100,0)+" des équipements concernés"}/>
+    <KpiCard label="Jusqu'à la classe C — 100 %" value={pareto.n100+" équip."} sub="tous les équipements concernés"/>
+   </div>
+   <CarteGraphe titre={"Pareto — "+paretoCrit1.lib} sousTitre={"Équipements classés du plus au moins pénalisant · lignes pointillées : 80 % et 95 %"+(pareto.items.length>30?" · 30 premiers affichés":"")}>
+    <ParetoChart items={pareto.items} fmt={v=>paretoCrit1.unite==="DA"?Math.round(v).toLocaleString("fr-FR"):fNum(v,paretoCrit1.unite==="h"?1:0)} unite={paretoCrit1.unite} titre={"Pareto — "+paretoCrit1.lib}/>
+    <div className="flex gap-4 text-xs text-slate-400 mt-1">{["A","B","C"].map(c=><span key={c} className="flex items-center gap-1"><span style={{background:COULEURS_ABC[c],width:10,height:10,borderRadius:2,display:"inline-block"}}/>Classe {c} ({c==="A"?"jusqu'à 80 %":c==="B"?"80 à 95 %":"95 à 100 %"})</span>)}</div>
+   </CarteGraphe>
+   {parts&&<Card data-testid="pareto-deco">
+    <KpiTitle sub={paretoCrit1.id==="tempsTotal"?"Temps d'intervention = durée d'intervention + temps logistique":"Coût total = coût humain + coût matériel"}>{"Décomposition — "+paretoCrit1.lib}</KpiTitle>
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th></Th><Th>Équipements</Th>{parts.map(pt=><Th key={pt.id}>{pt.lib}</Th>)}<Th>{paretoCrit1.lib}</Th></tr></thead>
+    <tbody>{decoClasses.map(d=><tr key={d.lib} className={"border-t border-slate-700"+(d.lib==="Total"?" font-semibold":"")}><td className="py-1.5">{d.lib}</td><td>{d.n}</td>
+     {d.vals.map((v,i)=><td key={parts[i].id}>{fParetoVal(v,critOf(parts[i].id))}{d.tot>0&&<span className="text-xs text-slate-400"> ({fPct(v/d.tot,0)})</span>}</td>)}<td>{fParetoVal(d.tot,paretoCrit1)}</td></tr>)}</tbody></table></div>
+   </Card>}
+   <Card>
+    <KpiTitle sub="Classe A : équipements qui expliquent les 80 % premiers % du critère · B : jusqu'à 95 % · C : jusqu'à 100 %">Classement des équipements</KpiTitle>
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Rang</Th><Th>Équipement</Th><Th>{paretoCrit1.lib}</Th><Th>% du total</Th><Th>% cumulé</Th><Th>Classe</Th>{parts&&parts.map(pt=><Th key={pt.id}>{pt.lib}</Th>)}</tr></thead>
+    <tbody>{pareto.items.map(r=><tr key={r.code} className="border-t border-slate-700"><td className="py-1.5">{r.rang}</td><td>{r.nom}<br/><span className="text-xs text-slate-400">{r.code}</span></td><td>{fParetoVal(r.value,paretoCrit1)}</td><td>{fPct(r.pct)}</td><td>{fPct(r.cum)}</td>
+     <td><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{background:COULEURS_ABC[r.classe]+"22",color:COULEURS_ABC[r.classe],border:"1px solid "+COULEURS_ABC[r.classe]}}>{r.classe}</span></td>{parts&&parts.map(pt=><td key={pt.id}>{fParetoVal(Number(r.row[pt.id])||0,critOf(pt.id))}{r.value>0&&<span className="text-xs text-slate-400"> ({fPct((Number(r.row[pt.id])||0)/r.value,0)})</span>}</td>)}</tr>)}</tbody></table></div>
+   </Card></>}
+   <Card>
+    <KpiTitle sub="Combien d'équipements faut-il traiter pour couvrir 80 %, 95 % et 100 % de chaque critère ? Le classement change d'un critère à l'autre.">Comparaison des critères</KpiTitle>
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Critère</Th><Th>Total</Th><Th>Équipements à 80 % (A)</Th><Th>à 95 % (A+B)</Th><Th>à 100 % (A+B+C)</Th></tr></thead>
+    <tbody>{paretoTous.map(({c,p})=><tr key={c.id} className="border-t border-slate-700"><td className="py-1.5">{c.lib}</td><td>{p.n100?fParetoVal(p.total,c):"—"}</td><td>{p.n100?p.n80:"—"}</td><td>{p.n100?p.n95:"—"}</td><td>{p.n100?p.n100:"—"}</td></tr>)}</tbody></table></div>
+   </Card>
+   <div className="text-xs text-slate-500">Temps d'intervention = durée d'intervention + temps logistique ; il se décompose en ses deux parts, comme le coût total (humain + matériel). Les coûts viennent des OT : coût humain = (durée d'intervention + temps logistique) × taux horaire de chaque intervenant ; coût matériel = pièces + outillage + consommables au prix du stock. « Nombre de DI » compte les DI correctives non annulées (en maintenance préventive ou « Toutes », chaque OT préventif compte pour une intervention). Un équipement est de classe A tant que le cumul avant lui est inférieur à 80 %, de classe B jusqu'à 95 %, puis C.</div>
   </div>}
 
   {sub==="Référentiel" && <div className="space-y-3">
