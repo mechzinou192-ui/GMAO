@@ -1,5 +1,6 @@
 // Indicateurs de performance (KPI) : MTTR, MTBF, disponibilité, RH, stock, AMDEC... Calculs purs, testés.
 import {UNIT_ABBR} from "./unites.js";
+import {coutBT} from "./couts.js";
 export const KPI_UNIT_CODE={"Alger":"ALG","Oran":"ORN","Constantine":"CST","Sidi Bel Abbès":"SBA","Ouargla":"ORG","Sétif":"STF","Mostaganem":"MGM"};
 export const KPI_NEW_UNITS=["SBA","ORG","STF","MGM"]; // « nouvelles » unités : cibles plus exigeantes (comme getOBJ de l'ancienne appli)
 export const kpiIsNew=(unit)=>KPI_NEW_UNITS.includes(KPI_UNIT_CODE[unit]);
@@ -301,4 +302,43 @@ export function kpiAmdec(corr,per,opt){
   const crit=f*gs*d;
   return {...g,exemples:[...g.exemples],annual:Math.round(annual*10)/10,avgMin:Math.round(avgMin),f,g:gs,gDefaut,nbGrav:g.grav.length,gMin:g.grav.length?Math.min(...g.grav):0,gMax:g.grav.length?Math.max(...g.grav):0,d,dDefaut:dSaisie===null,crit,band:kpiBand(crit),strat:kpiStrategie(f,gs,d,crit)};
  }).sort((a,b)=>b.crit-a.crit||b.count-a.count);
+}
+
+
+/* ---------- Pareto / méthode ABC des équipements ---------- */
+// Six critères au choix. Le classement, les cumuls et les classes A / B / C changent avec le critère retenu.
+export const KPI_PARETO_CRITERES=[
+ {id:"nbDI",lib:"Nombre de DI",unite:"DI"},
+ {id:"tempsTotal",lib:"Temps d'intervention",unite:"h",parts:[{id:"duree",lib:"Durée d'intervention"},{id:"logistique",lib:"Temps logistique"}]},   // = durée d'intervention + temps logistique
+ {id:"duree",lib:"Durée d'intervention",unite:"h"},
+ {id:"logistique",lib:"Temps logistique",unite:"h"},
+ {id:"coutTotal",lib:"Coût total",unite:"DA",parts:[{id:"coutHum",lib:"Coût humain"},{id:"coutMat",lib:"Coût matériel"}]},
+ {id:"coutHum",lib:"Coût humain",unite:"DA"},
+ {id:"coutMat",lib:"Coût matériel",unite:"DA"},
+];
+// Cumule, par équipement, les six critères. portee : "Corrective" (DI + OT correctifs) · "Préventive" (OT préventifs) · "Toutes".
+// « Nombre de DI » compte les DI correctives ; en portée Préventive / Toutes, chaque OT préventif compte pour une intervention.
+export function kpiParetoEquipements(corr,prev,pieces,portee,equipements){
+ const map={};
+ const ligne=(code,nom)=>map[code]||(map[code]={code,nom:nom||code,nbDI:0,tempsTotal:0,duree:0,logistique:0,coutTotal:0,coutMat:0,coutHum:0});
+ const ajoute=(l,bt)=>{ if(!bt) return; const c=coutBT(bt,pieces||[]);
+  l.duree+=Number(bt.dureeIntervention)||0; l.logistique+=Number(bt.tempsLogistique)||0; l.tempsTotal=l.duree+l.logistique;
+  l.coutTotal+=c.total; l.coutMat+=c.mat; l.coutHum+=c.mo; };
+ const nomEq=(code,defaut)=>{const e=(equipements||[]).find(x=>x.code===code); return (e&&e.nom)||defaut||code;};
+ if(portee!=="Préventive") (corr||[]).filter(r=>r.di.etat!=="Annulé").forEach(r=>{const l=ligne(r.di.eq,nomEq(r.di.eq,r.di.nom)); l.nbDI+=1; ajoute(l,r.bt);});
+ if(portee!=="Corrective") (prev||[]).forEach(b=>{const l=ligne(b.eq,nomEq(b.eq,b.nom)); l.nbDI+=1; ajoute(l,b);});
+ return Object.values(map);
+}
+// Classement décroissant + cumul + classe ABC. Un équipement est en A tant que le cumul AVANT lui est < 80 %,
+// en B tant qu'il est < 95 %, en C ensuite (l'équipement qui franchit le seuil appartient à la classe du seuil).
+export function kpiPareto(rows,critere,seuilA=0.8,seuilB=0.95){
+ const eps=1e-9;
+ const items=rows.map(r=>({code:r.code,nom:r.nom,value:Number(r[critere])||0,row:r})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value||String(a.code).localeCompare(String(b.code)));
+ const total=items.reduce((s,r)=>s+r.value,0);
+ let cumV=0;
+ items.forEach((r,i)=>{ const avant=total>0?cumV/total:0; cumV+=r.value;
+  r.rang=i+1; r.pct=total>0?r.value/total:0; r.cum=total>0?Math.min(1,cumV/total):0;
+  r.classe=avant<seuilA-eps?"A":avant<seuilB-eps?"B":"C"; });
+ const n80=items.filter(r=>r.classe==="A").length, n95=items.filter(r=>r.classe!=="C").length;
+ return {items,total,n80,n95,n100:items.length,nbA:n80,nbB:n95-n80,nbC:items.length-n95};
 }
