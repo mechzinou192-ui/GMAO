@@ -1,5 +1,25 @@
 # Journal des modifications
 
+## Non publié — arborescence à profondeur illimitée
+- **Profondeur illimitée sous l'équipement** : sous-équipement → sous-sous-équipement → niveau 6 → niveau 7 → … autant de niveaux
+  que nécessaire. Chaque niveau reste **facultatif** : un nœud n'a des enfants que si l'utilisateur en crée.
+  Le code d'un enfant est celui du parent + `.NN` (ex. `CFO.ALG.SST.01.01.01.01.01`).
+- **Écran** : l'arbre se déplie à tous les niveaux (composant récursif) ; la fiche de chaque nœud a « + Sous-niveau », « Modifier »,
+  « Créer une DI » et la suppression ; le menu clic droit (DI, fiche) marche à tout niveau ; QR codes et export Excel
+  (une feuille par profondeur : Sous-sous-équipements, Niveau 6, Niveau 7…) suivent.
+- **DI, OT et plans préventifs** : peuvent viser un nœud de n'importe quelle profondeur (nouveau champ `noeud` ; `se` et `ss`
+  restent renseignés, donc indicateurs et historiques existants inchangés). Suppression refusée tant qu'un nœud ou un descendant
+  est utilisé par une DI, un OT ou un plan.
+- **Import Excel** : la feuille « Sous-sous-équipements » accepte maintenant un parent à n'importe quel niveau (repère d'une ligne
+  précédente de la même feuille, repère de « Sous-équipements », ou code GMAO d'un nœud existant) et une colonne « Repère » :
+  tout l'arbre s'importe en une fois. Les anciens fichiers restent valables.
+- **Droits** : nouveau niveau de droit « Niveaux plus profonds (6 et suivants) » (Administration → Profils : création des DI et des
+  plans préventifs). Les profils sans restriction l'ont d'office ; un profil dont la liste de niveaux a été cochée à la main doit
+  cocher cette nouvelle case pour viser les niveaux 6 et plus. Le serveur refuse les niveaux non autorisés.
+- **Migration `011_arbre_profondeur_illimitee.sql`** (automatique au démarrage, idempotente) : `sousSousEquip` devient `enfants`,
+  mêmes codes et mêmes données. Les anciennes données restent aussi lues telles quelles.
+- Nouveau module partagé `server/src/arbre-core.js` ; tests `profondeurIllimitee.test.jsx` ; `server/public/` et `web/dist-demo/` recompilés.
+
 ## Non publié — magasin par unité ; comparatif des unités sur toutes les unités accessibles
 - **Magasin par unité** : articles, DS, BS, BR et décharges ne sont plus communs à toutes les unités. Chaque unité a son
   magasin ; le gestionnaire de stock d'une unité ne voit et ne modifie que le sien (contrôlé par le serveur). L'écran
