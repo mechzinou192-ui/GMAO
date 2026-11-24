@@ -36,13 +36,13 @@ export const KpiEmpty=({children})=><div className="text-sm text-slate-500 py-3"
 export const KpiSelect=({value,onChange,options})=><select value={value} onChange={e=>onChange(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">{options.map(o=><option key={o}>{o}</option>)}</select>;
 
 export const KPI_REFERENTIEL=[
- ["Ingénierie","MTTR","Σ durée d'intervention (OT) des pannes réparées ÷ nombre de pannes réparées","Pas de cible directe (suivi via μ = 1/MTTR)","DI « Traité » + durée d'intervention saisie sur l'OT lié","La durée vient du compte-rendu de l'OT (en heures), plus d'import de fichier en minutes."],
- ["Ingénierie","MTBF","(Temps théorique du parc − Indisponibilité cumulée) ÷ nombre de pannes","Pas de cible directe (suivi via λ = 1/MTBF)","DI correctives « Traité », « Transmis », « À Transmettre » (annulées exclues)","Parc = équipements distincts ayant une DI/OT sur la période (méthode d'origine) ; option : tous les équipements de l'arborescence de l'unité."],
- ["Ingénierie","Disponibilité","(Temps théorique du parc − Indisponibilité) ÷ Temps théorique du parc. Temps théorique = heures de la période × nombre d'équipements","> 97 % (nouvelles unités) · > 95 % (anciennes unités)","Date événement de la DI → clôture de l'OT","Indisponibilité = clôture OT − date événement DI, bornée à la période ; à défaut de date de fin ou si écart négatif : durée d'intervention + temps logistique ; panne > 1,5 × période ignorée."],
- ["Ingénierie","λ — Taux de panne (1/MTBF)","1 ÷ MTBF","≤ 5×10⁻⁴ /h (nouvelles) · ≤ 3×10⁻⁴ /h (anciennes)","Idem MTBF","—"],
- ["Ingénierie","μ — Taux de réparation (1/MTTR)","1 ÷ MTTR","≥ 4×10⁻¹ /h (nouvelles) · ≥ 2,5×10⁻¹ /h (anciennes)","Idem MTTR","—"],
- ["Réalisation","TCP — Taux de charge préventive","Heures préventives ÷ (heures préventives + correctives), heures = durée d'intervention + temps logistique","> 80 % (nouvelles) · > 70 % (anciennes)","OT préventifs (plan) / OT correctifs (DI)","Les OT préventifs sont datés par leur date de génération (à défaut clôture, ou date du plan)."],
- ["Réalisation","TCC — Taux de charge corrective","Heures correctives ÷ (heures préventives + correctives)","< 20 % (nouvelles) · < 30 % (anciennes)","Idem TCP","—"],
+ ["Réalisation","MTTR","Σ durée d'intervention (OT) des pannes réparées ÷ nombre de pannes réparées","Pas de cible directe (suivi via μ = 1/MTTR)","DI « Traité » + durée d'intervention saisie sur l'OT lié","La durée vient du compte-rendu de l'OT (en heures), plus d'import de fichier en minutes."],
+ ["Réalisation","MTBF","(Temps théorique du parc − Indisponibilité cumulée) ÷ nombre de pannes","Pas de cible directe (suivi via λ = 1/MTBF)","DI correctives « Traité », « Transmis », « À Transmettre » (annulées exclues)","Parc = équipements distincts ayant une DI/OT sur la période (méthode d'origine) ; option : tous les équipements de l'arborescence de l'unité."],
+ ["Réalisation","Disponibilité","(Temps théorique du parc − Indisponibilité) ÷ Temps théorique du parc. Temps théorique = heures de la période × nombre d'équipements","> 97 % (nouvelles unités) · > 95 % (anciennes unités)","Date événement de la DI → clôture de l'OT","Indisponibilité = clôture OT − date événement DI, bornée à la période ; à défaut de date de fin ou si écart négatif : durée d'intervention + temps logistique ; panne > 1,5 × période ignorée."],
+ ["Réalisation","λ — Taux de panne (1/MTBF)","1 ÷ MTBF","≤ 5×10⁻⁴ /h (nouvelles) · ≤ 3×10⁻⁴ /h (anciennes)","Idem MTBF","—"],
+ ["Réalisation","μ — Taux de réparation (1/MTTR)","1 ÷ MTTR","≥ 4×10⁻¹ /h (nouvelles) · ≥ 2,5×10⁻¹ /h (anciennes)","Idem MTTR","—"],
+ ["Ingénierie","TCP — Taux de charge préventive","Heures préventives ÷ (heures préventives + correctives), heures = durée d'intervention + temps logistique","> 80 % (nouvelles) · > 70 % (anciennes)","OT préventifs (plan) / OT correctifs (DI)","Les OT préventifs sont datés par leur date de génération (à défaut clôture, ou date du plan)."],
+ ["Ingénierie","TCC — Taux de charge corrective","Heures correctives ÷ (heures préventives + correctives)","< 20 % (nouvelles) · < 30 % (anciennes)","Idem TCP","—"],
  ["Réalisation","TMP — Taux de maintenance préventive","OT préventifs clôturés ÷ OT préventifs générés (hors annulés)","100 %","OT préventifs : état « Clôturé » / « En cours » / « En attente pièce »","Seuls les OT déjà générés comptent (comme dans l'ancienne appli)."],
  ["Réalisation","TMC — Taux de maintenance corrective","DI correctives traitées ÷ (traitées + transmises + à transmettre)","> 90 % (nouvelles) · > 85 % (anciennes)","DI : état « Traité » / « Transmis » / « À Transmettre »","Le cas « travaux divers » n'existe plus dans cette GMAO."],
  ["Taux","Taux de panne théorique","Heures correctives ÷ temps théorique du parc","Bon < 0,5 % · alerte 0,5–1 % · critique ≥ 1 %","OT correctifs","—"],
@@ -52,7 +52,7 @@ export const KPI_REFERENTIEL=[
  ["Équipements","Taux logistique / d'intervention (correctif)","Logistique ÷ (durée + logistique) · Durée ÷ (durée + logistique)","—","OT correctifs","—"],
  ["RH","Taux d'occupation d'un technicien","Charge réelle ÷ Norme. Norme = 108 h/mois × (jours de la période ÷ 30)","Surcharge > 105 % · équilibre 75–105 % · sous-charge < 75 %","Temps saisi par intervenant sur chaque OT","On utilise le temps réel de chaque intervenant (et non la durée globale de l'intervention répartie)."],
  ["RH","Besoin en effectif","Théorique = Charge totale ÷ Norme · Essentiel = arrondi supérieur · Écart = Essentiel − nb techniciens","—","Intervenants ayant des heures sur la période","—"],
- ["RH","Taux d'efficience (mensuel, par unité)","Charge totale calculée GMAO du mois ÷ Charge RAM du mois","≈ 100 %","Charge RAM saisie chaque mois par le responsable maintenance (rapport d'activité)","Sauvegardée par unité et par mois ; export « Par intervenant » + « Par unité »."],
+ ["Ingénierie","Taux d'efficience (mensuel, par unité)","Charge totale calculée GMAO du mois ÷ Charge RAM du mois","≈ 100 %","Charge RAM saisie chaque mois par le responsable maintenance (rapport d'activité)","Sauvegardée par unité et par mois ; export « Par intervenant » + « Par unité »."],
  ["Stock","Coût de consommation","Σ (quantité sortie × prix) ; coût moyen/mois = coût total ÷ nombre de mois de la période","—","Mouvements « Sortie » du magasin","Prix = prix actuel de l'article (pas d'historique de prix dans cette GMAO)."],
  ["Stock","Stock de sécurité","Conso. moyenne mensuelle × délai fournisseur (3 mois par défaut) ; alerte si stock < stock de sécurité","Stock ≥ stock de sécurité","Sorties de la période + stock actuel","Comparé aussi au seuil minimum saisi sur l'article."],
  ["Stock","Stock dormant / rotation","Dormant = aucune sortie depuis ≥ 365 jours et valeur de stock > 0 ; rotation = conso. des 12 derniers mois","Aucun article dormant","Mouvements + stock × prix","—"],
@@ -120,15 +120,16 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const statTxt=(st)=>(KPI_ST[st]||KPI_ST.na).t;
  const exportSynthese=()=>exporterXlsx({fichier:"Indicateurs_synthese_"+unit,feuilles:[
   {nom:"Synthèse",titre:"Indicateurs de performance — "+unit+" — "+perLabel,colonnes:[{h:"Famille"},{h:"Indicateur"},{h:"Valeur"},{h:"Cible"},{h:"Statut"}],lignes:[
-   ["Ingénierie","MTTR",hasCorr?fH(K.mttr,3):"—","—","—"],
-   ["Ingénierie","MTBF",hasCorr?fH(K.mtbf,1):"—","—","—"],
-   ["Ingénierie","Disponibilité",fPct(K.dispo,2),O.dispo.label,statTxt(kpiStatus(O.dispo,K.dispo,true))],
-   ["Ingénierie","λ = 1/MTBF (/h)",fSci(K.tauxPanne),O.tauxPanne.label,statTxt(kpiStatus(O.tauxPanne,K.tauxPanne,hasCorr))],
-   ["Ingénierie","μ = 1/MTTR (/h)",fSci(K.tauxRep),O.tauxRep.label,statTxt(kpiStatus(O.tauxRep,K.tauxRep,K.nbPannesRep>0))],
-   ["Réalisation","TCP",fPct(K.tcp),O.tcp.label,statTxt(kpiStatus(O.tcp,K.tcp,hasH))],
-   ["Réalisation","TCC",fPct(K.tcc),O.tcc.label,statTxt(kpiStatus(O.tcc,K.tcc,hasH))],
-   ["Réalisation","TMP",fPct(K.tmp),O.tmp.label,statTxt(kpiStatus(O.tmp,K.tmp,hasPrev))],
-   ["Réalisation","TMC",fPct(K.tmc),O.tmc.label,statTxt(kpiStatus(O.tmc,K.tmc,hasCorr))],
+   ["Ingénierie","TCP — charge préventive",fPct(K.tcp),O.tcp.label,statTxt(kpiStatus(O.tcp,K.tcp,hasH))],
+   ["Ingénierie","TCC — charge corrective",fPct(K.tcc),O.tcc.label,statTxt(kpiStatus(O.tcc,K.tcc,hasH))],
+   ["Ingénierie","Taux d'efficience",effPeriode.eff===null?"—":fPct(effPeriode.eff),O.efficience.label,effPeriode.eff===null?"—":statTxt(kpiStatus(O.efficience,effPeriode.eff,true))],
+   ["Réalisation","TMP — maintenance préventive",fPct(K.tmp),O.tmp.label,statTxt(kpiStatus(O.tmp,K.tmp,hasPrev))],
+   ["Réalisation","TMC — maintenance corrective",fPct(K.tmc),O.tmc.label,statTxt(kpiStatus(O.tmc,K.tmc,hasCorr))],
+   ["Réalisation","Disponibilité",fPct(K.dispo,2),O.dispo.label,statTxt(kpiStatus(O.dispo,K.dispo,true))],
+   ["Réalisation","λ = 1/MTBF (/h)",fSci(K.tauxPanne),O.tauxPanne.label,statTxt(kpiStatus(O.tauxPanne,K.tauxPanne,hasCorr))],
+   ["Réalisation","μ = 1/MTTR (/h)",fSci(K.tauxRep),O.tauxRep.label,statTxt(kpiStatus(O.tauxRep,K.tauxRep,K.nbPannesRep>0))],
+   ["Réalisation","MTBF",hasCorr?fH(K.mtbf,1):"—","—","—"],
+   ["Réalisation","MTTR",hasCorr?fH(K.mttr,3):"—","—","—"],
    ["Taux","Taux de panne théorique",fPct(K.lambdaTheo,2),"< 0,5 % Bon · < 1 % alerte",lblRate(ratePanne)],
    ["Taux","Taux d'intervention",fPct(K.tauxInterv,2),"< 1 % Bon · < 5 % alerte",lblRate(rateInterv)],
    ["Taux","Taux de récurrence",fPct(K.tauxRecurrence),"< 15 % Bon · < 30 % alerte",lblRate(rateRec)]]},
@@ -171,14 +172,19 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const eqSeuil=Number(seuilBT)||0;
  // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
  // Unité entière, sans filtre d'arborescence ; la charge RAM est sauvegardée par unité et par mois.
- const moisDe=(u,an)=>{const data={dis:disTous||dis,bts:btsTous||bts,planning:planningTous||planning,equipements:equipementsTous||equipements};   // toutes les unités accessibles (l'export « Par unité » peut en lister plusieurs)
-  return Array.from({length:12},(_,m)=>{
-   const p=kpiPeriode(ymd(new Date(an,m,1)),ymd(new Date(an,m+1,0)));
-   const c=kpiCollect(u,data,p,"Équipements avec DI/OT",{sys:"",sub:"",eq:"",se:""});
-   const gmao=kpiRH(c.corr,c.prev,p,KPI_NORME_DEFAUT,0).total;
-   const code=an+"-"+pad(m+1); const rec=(chargesRAM||[]).find(x=>x.unit===u&&x.mois===code);
-   const ram=rec&&Number(rec.chargeRAM)>0?Number(rec.chargeRAM):null;
-   return {m,mois:code,gmao,ram,eff:ram?gmao/ram:null,saisiPar:rec?rec.saisiPar:""};});};
+ // Charge GMAO / charge RAM / taux d'efficience d'un mois (unité entière, sans filtre d'arborescence).
+ const chargeMois=(u,an,m)=>{const data={dis:disTous||dis,bts:btsTous||bts,planning:planningTous||planning,equipements:equipementsTous||equipements};
+  const p=kpiPeriode(ymd(new Date(an,m,1)),ymd(new Date(an,m+1,0)));
+  const c=kpiCollect(u,data,p,"Équipements avec DI/OT",{sys:"",sub:"",eq:"",se:""});
+  const gmao=kpiRH(c.corr,c.prev,p,KPI_NORME_DEFAUT,0).total;
+  const code=an+"-"+pad(m+1); const rec=(chargesRAM||[]).find(x=>x.unit===u&&x.mois===code);
+  const ram=rec&&Number(rec.chargeRAM)>0?Number(rec.chargeRAM):null;
+  return {m,mois:code,gmao,ram,eff:ram?gmao/ram:null,saisiPar:rec?rec.saisiPar:""};};
+ const moisDe=(u,an)=>Array.from({length:12},(_,m)=>chargeMois(u,an,m));
+ // Taux d'efficience de la période affichée : somme des charges GMAO ÷ somme des charges RAM des mois (saisis) qui chevauchent la période.
+ const effPeriode=useMemo(()=>{let g=0,r=0,nb=0;const d=new Date(per.start.getFullYear(),per.start.getMonth(),1);
+  while(d<=per.end){const x=chargeMois(unit,d.getFullYear(),d.getMonth()); if(x.ram!==null){g+=x.gmao;r+=x.ram;nb++;} d.setMonth(d.getMonth()+1);}
+  return {nb,gmao:g,ram:r,eff:r>0?g/r:null};},[unit,per,dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,chargesRAM]);   // eslint-disable-line
  const moisRAM=useMemo(()=>sub==="Ressources humaines"?moisDe(unit,anneeRAM):[],[sub,unit,anneeRAM,dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,chargesRAM]);
  const totRAM=(()=>{const a=moisRAM.filter(x=>x.ram!==null);const g=a.reduce((t,x)=>t+x.gmao,0),r=a.reduce((t,x)=>t+x.ram,0);return {nb:a.length,gmao:g,ram:r,eff:r>0?g/r:null};})();
  const cats=[1,2,3].map(c=>eqRows.filter(e=>e.cat===c));
@@ -211,23 +217,24 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
   </Card>
   <SubTabs value={sub} onChange={setSub} items={SUBS.map(s=>[s,s])}/>
 
-  {sub==="Tableau de bord" && <GraphiquesKPI unit={unit} dis={dis} bts={bts} planning={planning} equipements={equipements} per={per} start={start} end={end} parcMode={parcMode} flt={flt} fSys={fSys} subOpts={subOpts} sysOpts={sysOpts} K={K} O={O} eqRows={eqRows} unites={unites}/>}
+  {sub==="Tableau de bord" && <GraphiquesKPI kpiOk={kpiOk} unit={unit} dis={dis} bts={bts} planning={planning} equipements={equipements} per={per} start={start} end={end} parcMode={parcMode} flt={flt} fSys={fSys} subOpts={subOpts} sysOpts={sysOpts} K={K} O={O} eqRows={eqRows} unites={unites} effPeriode={effPeriode} chargeMois={chargeMois}/>}
   {sub==="Synthèse" && <div className="space-y-4">
    <div className="flex justify-between items-center"><div className="text-xs text-slate-500">{K.nbDI} DI correctives · {K.nbBTPrev} OT préventifs sur la période{K.nbPerturb>0?" · "+K.nbPerturb+" avec perturbation d'exploitation":""}</div><ExportBtn onClick={exportSynthese}/></div>
-   {kpiOk("syn:ing")&&<div><KpiTitle sub="Fiabilité du parc (méthode d'origine : MTTR / MTBF / disponibilité / λ / μ)">Indicateurs d'ingénierie</KpiTitle>
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-     <KpiCard label="MTTR" value={hasCorr&&K.nbPannesRep>0?fH(K.mttr,3):"—"} sub={K.nbPannesRep+" panne(s) réparée(s)"}/>
-     <KpiCard label="MTBF" value={hasCorr?fH(K.mtbf,1):"—"} sub={K.nbPannesTot+" panne(s) · indispo. "+fH(K.indispoH,1)}/>
+   {kpiOk("syn:ing")&&<div><KpiTitle sub="Répartition de la charge de travail et rendement de l'équipe">Indicateurs d'ingénierie</KpiTitle>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+     <KpiCard label="TCP — charge préventive" value={hasH?fPct(K.tcp):"—"} st={kpiStatus(O.tcp,K.tcp,hasH)} cible={O.tcp.label} sub={fH(K.hPrev,1)+" sur "+fH(K.hTotal,1)}/>
+     <KpiCard label="TCC — charge corrective" value={hasH?fPct(K.tcc):"—"} st={kpiStatus(O.tcc,K.tcc,hasH)} cible={O.tcc.label} sub={fH(K.hCorr,1)+" sur "+fH(K.hTotal,1)}/>
+     <KpiCard label="Taux d'efficience" value={effPeriode.eff===null?"—":fPct(effPeriode.eff)} st={effPeriode.eff===null?"na":kpiStatus(O.efficience,effPeriode.eff,true)} cible={O.efficience.label} sub={effPeriode.nb?fH(effPeriode.gmao,1)+" GMAO ÷ "+fH(effPeriode.ram,1)+" RAM ("+effPeriode.nb+" mois saisi(s))":"Charge RAM non saisie (onglet Ressources humaines)"}/>
+    </div></div>}
+   {kpiOk("syn:real")&&<div><KpiTitle sub="Avancement des interventions et fiabilité du parc (MTBF / MTTR / disponibilité / λ / μ)">Indicateurs de réalisation</KpiTitle>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+     <KpiCard label="TMP — maintenance préventive" value={hasPrev?fPct(K.tmp):"—"} st={kpiStatus(O.tmp,K.tmp,hasPrev)} cible={O.tmp.label} sub={K.btClosed+" OT clôturé(s) / "+K.btDenom}/>
+     <KpiCard label="TMC — maintenance corrective" value={hasCorr?fPct(K.tmc):"—"} st={kpiStatus(O.tmc,K.tmc,hasCorr)} cible={O.tmc.label} sub={K.diDone+" DI traitée(s) / "+K.diDenom}/>
      <KpiCard label="Disponibilité" value={fPct(K.dispo,2)} st={kpiStatus(O.dispo,K.dispo,true)} cible={O.dispo.label} sub={"TBF "+fH(K.tbf,0)+" / "+fH(K.hoursFlotte,0)}/>
      <KpiCard label="λ = 1/MTBF" value={hasCorr?fSci(K.tauxPanne):"—"} st={kpiStatus(O.tauxPanne,K.tauxPanne,hasCorr)} cible={O.tauxPanne.label} sub="taux de panne"/>
      <KpiCard label="μ = 1/MTTR" value={K.nbPannesRep>0?fSci(K.tauxRep):"—"} st={kpiStatus(O.tauxRep,K.tauxRep,K.nbPannesRep>0)} cible={O.tauxRep.label} sub="taux de réparation"/>
-    </div></div>}
-   {kpiOk("syn:real")&&<div><KpiTitle sub="Répartition de la charge et avancement des interventions">Indicateurs de réalisation</KpiTitle>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-     <KpiCard label="TCP — charge préventive" value={hasH?fPct(K.tcp):"—"} st={kpiStatus(O.tcp,K.tcp,hasH)} cible={O.tcp.label} sub={fH(K.hPrev,1)+" sur "+fH(K.hTotal,1)}/>
-     <KpiCard label="TCC — charge corrective" value={hasH?fPct(K.tcc):"—"} st={kpiStatus(O.tcc,K.tcc,hasH)} cible={O.tcc.label} sub={fH(K.hCorr,1)+" sur "+fH(K.hTotal,1)}/>
-     <KpiCard label="TMP — maintenance préventive" value={hasPrev?fPct(K.tmp):"—"} st={kpiStatus(O.tmp,K.tmp,hasPrev)} cible={O.tmp.label} sub={K.btClosed+" OT clôturé(s) / "+K.btDenom}/>
-     <KpiCard label="TMC — maintenance corrective" value={hasCorr?fPct(K.tmc):"—"} st={kpiStatus(O.tmc,K.tmc,hasCorr)} cible={O.tmc.label} sub={K.diDone+" DI traitée(s) / "+K.diDenom}/>
+     <KpiCard label="MTBF" value={hasCorr?fH(K.mtbf,1):"—"} sub={K.nbPannesTot+" panne(s) · indispo. "+fH(K.indispoH,1)}/>
+     <KpiCard label="MTTR" value={hasCorr&&K.nbPannesRep>0?fH(K.mttr,3):"—"} sub={K.nbPannesRep+" panne(s) réparée(s)"}/>
     </div></div>}
    {kpiOk("syn:taux")&&<div><KpiTitle sub="Échelle qualitative : Bon / Seuil d'alerte / Seuil critique">Taux de panne, d'intervention et de récurrence</KpiTitle>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -373,7 +380,7 @@ const MOIS_LONGS=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Ao
 const MOIS_COURTS=["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
 const ymdD=(d)=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const varRel=(a,b)=>(b>0&&Number.isFinite(a)&&Number.isFinite(b))?(a-b)/b:null;
-export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,parcMode,flt,fSys,subOpts,sysOpts,K,O,eqRows,unites}){
+export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,parcMode,flt,fSys,subOpts,sysOpts,K,O,eqRows,unites,effPeriode,chargeMois,kpiOk=()=>true}){
  const data={dis,bts,planning,equipements};
  // période précédente de même durée
  const Kprev=useMemo(()=>{const s=new Date(per.start);s.setDate(s.getDate()-per.days);const e=new Date(per.start);e.setDate(e.getDate()-1);
@@ -382,8 +389,10 @@ export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,p
  const mois=useMemo(()=>{const fin=new Date(per.end);const out=[];
   for(let k=11;k>=0;k--){const a=new Date(fin.getFullYear(),fin.getMonth()-k,1);const b=new Date(fin.getFullYear(),fin.getMonth()-k+1,0);
    const p=kpiPeriode(ymdD(a),ymdD(b)); const c=kpiCollect(unit,data,p,parcMode,flt); const k2=kpiCalc(c.corr,c.prev,p,c.nbEquip);
-   out.push({lib:MOIS_COURTS[a.getMonth()]+(a.getMonth()===0||k===11?" "+String(a.getFullYear()).slice(2):""),k:k2,actif:c.corr.length+c.prev.length>0});}
+   out.push({lib:MOIS_COURTS[a.getMonth()]+(a.getMonth()===0||k===11?" "+String(a.getFullYear()).slice(2):""),k:k2,actif:c.corr.length+c.prev.length>0,an:a.getFullYear(),mo:a.getMonth()});}
   return out;},[unit,dis,bts,planning,equipements,per,parcMode,flt]);
+ // taux d'efficience mensuel (unité entière) : charge GMAO ÷ charge RAM saisie — null si la charge RAM du mois n'est pas saisie
+ const effMois=useMemo(()=>mois.map(m=>chargeMois(unit,m.an,m.mo).eff),[mois,unit,chargeMois]);
  const parGroupe=useMemo(()=>{
   const groupes=fSys?subOpts.map(s=>({code:s.code,lib:s.code+" — "+s.sub,f:{...flt,sub:s.code,eq:"",se:""}})):sysOpts.map(([c,n])=>({code:c,lib:c+" — "+n,f:{sys:c,sub:"",eq:"",se:""}}));
   return groupes.map(g=>{const c=kpiCollect(unit,data,per,parcMode,g.f);const k=kpiCalc(c.corr,c.prev,per,c.nbEquip);return {lib:g.lib,val:k.nbPannesTot,note:"MTTR "+fH(k.mttr,2)+" · disponibilité "+fPct(k.dispo,2)};})
@@ -393,7 +402,33 @@ export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,p
  const st=(o,v,has)=>{const s=kpiStatus(o,v,has);return s==="ok"?"ok":s==="warn"?"warn":s==="bad"?"bad":"";};
  const has=K.nbPannesTot>0;
  const cats=mois.map(m=>m.lib);
+ const pctF=(d=0)=>(v)=>v.toFixed(d).replace(".",",")+" %";
+ const mm=(f,ok)=>mois.map(m=>ok(m)?f(m.k):null);
+ const sciUnit=1e4;   // λ affiché en ×10⁻⁴ /h sur l'axe pour rester lisible
+ const evoIng=[
+  {id:"tcp",lib:"TCP — charge préventive",val:K.hTotal>0?fPct(K.tcp):"—",st:kpiStatus(O.tcp,K.tcp,K.hTotal>0),cible:O.tcp.label,vals:mm(k=>k.tcp*100,m=>m.k.hTotal>0),fmt:pctF(0),min:0,max:100,cv:O.tcp.val*100},
+  {id:"tcc",lib:"TCC — charge corrective",val:K.hTotal>0?fPct(K.tcc):"—",st:kpiStatus(O.tcc,K.tcc,K.hTotal>0),cible:O.tcc.label,vals:mm(k=>k.tcc*100,m=>m.k.hTotal>0),fmt:pctF(0),min:0,max:100,cv:O.tcc.val*100},
+  {id:"eff",lib:"Taux d'efficience",val:effPeriode&&effPeriode.eff!==null?fPct(effPeriode.eff):"—",st:effPeriode&&effPeriode.eff!==null?kpiStatus(O.efficience,effPeriode.eff,true):"na",cible:O.efficience.label,vals:effMois.map(v=>v===null?null:v*100),fmt:pctF(0),min:0,cv:100,note:"Unité entière · mois dont la charge RAM est saisie"},
+ ];
+ const evoReal=[
+  {id:"tmp",lib:"TMP — maintenance préventive",val:K.nbBTPrev>0?fPct(K.tmp):"—",st:kpiStatus(O.tmp,K.tmp,K.nbBTPrev>0),cible:O.tmp.label,vals:mm(k=>k.tmp*100,m=>m.k.nbBTPrev>0),fmt:pctF(0),min:0,max:100,cv:100},
+  {id:"tmc",lib:"TMC — maintenance corrective",val:has?fPct(K.tmc):"—",st:kpiStatus(O.tmc,K.tmc,has),cible:O.tmc.label,vals:mm(k=>k.tmc*100,m=>m.k.nbPannesTot>0),fmt:pctF(0),min:0,max:100,cv:O.tmc.val*100},
+  {id:"dispo",lib:"Disponibilité",val:fPct(K.dispo,2),st:kpiStatus(O.dispo,K.dispo,true),cible:O.dispo.label,vals:mm(k=>k.dispo*100,m=>m.actif),fmt:pctF(1),min:Math.max(0,Math.floor(Math.min(O.dispo.val*100,...mois.filter(m=>m.actif).map(m=>m.k.dispo*100))/5)*5-5),max:100,cv:O.dispo.val*100},
+  {id:"lambda",lib:"λ = 1/MTBF",val:has?fSci(K.tauxPanne):"—",st:kpiStatus(O.tauxPanne,K.tauxPanne,has),cible:O.tauxPanne.label,vals:mois.map(m=>m.k.nbPannesTot>0?m.k.tauxPanne*sciUnit:null),fmt:(v)=>fNum(v,1),min:0,cv:O.tauxPanne.val*sciUnit,cibleLib:"Cible "+O.tauxPanne.label,unite:"×10⁻⁴ /h"},
+  {id:"mu",lib:"μ = 1/MTTR",val:K.nbPannesRep>0?fSci(K.tauxRep):"—",st:kpiStatus(O.tauxRep,K.tauxRep,K.nbPannesRep>0),cible:O.tauxRep.label,vals:mois.map(m=>m.k.nbPannesRep>0?m.k.tauxRep:null),fmt:(v)=>fNum(v,2),min:0,cv:O.tauxRep.val,cibleLib:"Cible "+O.tauxRep.label,unite:"/h"},
+  {id:"mtbf",lib:"MTBF",val:has?fH(K.mtbf,1):"—",vals:mois.map(m=>m.k.nbPannesTot>0?m.k.mtbf:null),fmt:(v)=>fNum(v,0),min:0,unite:"heures"},
+  {id:"mttr",lib:"MTTR",val:has&&K.nbPannesRep>0?fH(K.mttr,3):"—",vals:mois.map(m=>m.k.nbPannesRep>0?m.k.mttr:null),fmt:(v)=>fNum(v,1),min:0,unite:"heures"},
+ ];
+ const CarteEvo=({e})=><CarteGraphe titre={e.lib} sousTitre={"Évolution mensuelle — 12 derniers mois"+(e.unite?" ("+e.unite+")":"")+(e.note?" · "+e.note:"")}>
+  <div className="flex items-center justify-between gap-2 mb-1"><div className="text-2xl font-bold" style={{color:e.st&&e.st!=="na"?KPI_ST[e.st].fg:undefined}}>{e.val}</div>{e.st&&<StChip st={e.st}/>}</div>
+  {e.cible&&<div className="text-xs text-slate-400 mb-1">Cible : {e.cible}</div>}
+  <Courbe cats={cats} nom={e.lib} coul={SERIES[0]} vals={e.vals} fmt={e.fmt} min={e.min} max={e.max} cible={e.cv} cibleLib={e.cibleLib||(e.cible?"Cible "+e.cible:undefined)} hauteur={190}/>
+ </CarteGraphe>;
  return (<div className="space-y-4" data-testid="kpi-graphiques">
+  {kpiOk("syn:ing")&&<div data-testid="kpi-evo-ing"><KpiTitle sub="Charge préventive / corrective et efficience — valeur de la période et évolution sur 12 mois">Indicateurs d'ingénierie</KpiTitle>
+   <div className="gm-charts">{evoIng.map(e=><CarteEvo key={e.id} e={e}/>)}</div></div>}
+  {kpiOk("syn:real")&&<div data-testid="kpi-evo-real"><KpiTitle sub="Avancement des interventions et fiabilité du parc — valeur de la période et évolution sur 12 mois">Indicateurs de réalisation</KpiTitle>
+   <div className="gm-charts">{evoReal.map(e=><CarteEvo key={e.id} e={e}/>)}</div></div>}
   <div className="gm-stats">
    <TuileChiffre lib="Disponibilité" valeur={fPct(K.dispo,2)} variation={varRel(K.dispo,Kprev.dispo)} statut={st(O.dispo,K.dispo,true)} note={"Cible "+O.dispo.label}/>
    <TuileChiffre lib="MTBF" valeur={has?fH(K.mtbf,1):"—"} variation={has?varRel(K.mtbf,Kprev.mtbf):null} note="Temps moyen entre pannes"/>
@@ -404,12 +439,6 @@ export function GraphiquesKPI({unit,dis,bts,planning,equipements,per,start,end,p
   <div className="gm-charts">
    <CarteGraphe cls="is-wide" titre="Activité de maintenance — 12 derniers mois" sousTitre="Pannes (DI correctives) et OT préventifs, par mois">
     <BarresGroupees cats={cats} series={[{nom:"Pannes",coul:SERIES[0],vals:mois.map(m=>m.k.nbPannesTot)},{nom:"OT préventifs",coul:SERIES[1],vals:mois.map(m=>m.k.nbBTPrev)}]} fmt={(v)=>String(Math.round(v))}/>
-   </CarteGraphe>
-   <CarteGraphe titre="Disponibilité mensuelle" sousTitre="Part du temps où le parc est disponible">
-    <Courbe cats={cats} nom="Disponibilité" vals={mois.map(m=>m.actif?m.k.dispo*100:null)} fmt={(v)=>v.toFixed(1).replace(".",",")+" %"} min={Math.max(0,Math.floor(Math.min(O.dispo.val*100,...mois.filter(m=>m.actif).map(m=>m.k.dispo*100))/5)*5-5)} max={100} cible={O.dispo.val*100} cibleLib={"Cible "+O.dispo.label}/>
-   </CarteGraphe>
-   <CarteGraphe titre="MTTR mensuel" sousTitre="Temps moyen de réparation (heures), mois avec pannes réparées">
-    <Courbe cats={cats} nom="MTTR" coul={SERIES[2]} vals={mois.map(m=>m.k.nbPannesRep>0?m.k.mttr:null)} fmt={(v)=>v.toFixed(1).replace(".",",")+" h"}/>
    </CarteGraphe>
    <CarteGraphe titre="Charge préventive / corrective" sousTitre="Heures d'intervention sur la période">
     <Anneau parts={[{nom:"Préventif",val:K.hPrev,coul:SERIES[0]},{nom:"Correctif",val:K.hCorr,coul:SERIES[1]}]} centre={K.hTotal>0?fPct(K.tcp,0):"—"} centreLib="préventif" fmt={(v)=>fNum(v,1)+" h"}/>
