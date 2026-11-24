@@ -15,11 +15,13 @@ export function kpiObj(unit){
   dispo:{val:n?0.97:0.95,dir:"up",label:n?"> 97 %":"> 95 %"},
   tauxPanne:{val:n?5e-4:3e-4,dir:"down",label:n?"≤ 5×10⁻⁴ /h":"≤ 3×10⁻⁴ /h"},
   tauxRep:{val:n?0.4:0.25,dir:"up",label:n?"≥ 4×10⁻¹ /h":"≥ 2,5×10⁻¹ /h"},
+  efficience:{val:1,dir:"around",tol:0.1,label:"≈ 100 % (90–110 %)"},   // charge GMAO ÷ charge RAM
  };
 }
 /* Statut vs cible (objClass de l'ancienne appli) : ok = atteint ; warn = à moins de 20 % de la cible ; bad = au-delà */
 export function kpiStatus(o,val,has){
  if(!o||!has||val===null||val===undefined||isNaN(val)) return "na";
+ if(o.dir==="around"){const e=Math.abs(val-o.val); return e<=o.tol?"ok":e<=o.tol*2?"warn":"bad";}   // cible centrée : ± tol = atteint, ± 2 tol = proche
  if(o.dir==="up") return val>=o.val?"ok":val>=o.val*0.8?"warn":"bad";
  return val<=o.val?"ok":val<=o.val*1.2?"warn":"bad";
 }
