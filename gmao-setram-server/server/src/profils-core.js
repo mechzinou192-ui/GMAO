@@ -1,5 +1,6 @@
 import { controleRapport } from './rapports-core.js';
 import { COLLECTIONS } from './rights-core.js';
+import { NIVEAU_PROFOND, cleNiveauProfondeur, profondeur } from './arbre-core.js';
 // Profils utilisateurs : logique PURE (sans base de données), partagée avec la démonstration en navigateur.
 //
 // Le profil (colonne users.role) fixe CE QUE la personne peut faire ; les droits (users.droits) fixent OÙ :
@@ -48,12 +49,17 @@ export const NOMS_PROFILS = Object.keys(PROFILS);
 export const NIVEAUX_DI = [
   ['systeme', 'Système'], ['sousSysteme', 'Sous-système'], ['equipement', 'Équipement'],
   ['sousEquipement', 'Sous-équipement'], ['sousSousEquipement', 'Sous-sous-équipement'],
+  // niveau 6 et plus (profondeur illimitée) : un seul droit pour tous les niveaux plus profonds
+  [NIVEAU_PROFOND, 'Niveaux plus profonds (6 et suivants)'],
 ];
 export const CLES_NIVEAUX_DI = NIVEAUX_DI.map(([k]) => k);
 export const libelleNiveau = (k) => (NIVEAUX_DI.find(([c]) => c === k) || [k, k])[1];
+// Libellé précis d'un nœud selon sa profondeur (« Niveau 7 » plutôt que « Niveaux plus profonds »)
+export { libelleProfondeur } from './arbre-core.js';
 // Niveau visé par une DI, déduit de ses données (le serveur ne se fie pas seulement au champ « niveau » envoyé).
 export function niveauDI(d) {
   if (!d) return null;
+  if (d.noeud && d.eq) return cleNiveauProfondeur(profondeur(d.eq, d.noeud)) ;   // profondeur lue dans le code du nœud visé
   if (d.ss) return 'sousSousEquipement';
   if (d.se) return 'sousEquipement';
   if (d.niveau === 'systeme' || d.niveau === 'sousSysteme') return d.niveau;
@@ -224,14 +230,14 @@ export function controleProfil(user, collection, cur, next) {
   // DI : niveau de l'arborescence autorisé par le super administrateur (création, ou changement de l'élément visé)
   if (collection === 'dis' && next && Array.isArray(p.niveauxDI)) {
     const niv = niveauDI(next);
-    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '');
+    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '') || (cur.noeud || '') !== (next.noeud || '');
     if (change && !p.niveauxDI.includes(niv)) return `Profil ${nom} : création de DI non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxDI.map(libelleNiveau).join(', ') || 'aucun'}).`;
   }
 
   // Plan préventif : même contrôle (création, ou changement du nœud visé)
   if (collection === 'planning' && next && Array.isArray(p.niveauxPlan)) {
     const niv = niveauDI(next);
-    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '');
+    const change = !cur || niveauDI(cur) !== niv || cur.eq !== next.eq || (cur.se || '') !== (next.se || '') || (cur.ss || '') !== (next.ss || '') || (cur.noeud || '') !== (next.noeud || '');
     if (change && !p.niveauxPlan.includes(niv)) return `Profil ${nom} : création de plan préventif non autorisée au niveau « ${libelleNiveau(niv)} » (niveaux permis : ${p.niveauxPlan.map(libelleNiveau).join(', ') || 'aucun'}).`;
   }
 
