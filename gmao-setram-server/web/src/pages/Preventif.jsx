@@ -11,7 +11,7 @@ import {PERIODES,avancement,datesFuturesPlan,datesPlanDansPlage,isPeriodePlan,oc
 import {Badge,Btn,Card,ExportBtn,Field,HoraireConsignation,Inp,KPI,LienFMP,MateriauxSection,Modal,MultiInter,ProgressBar,Segment,SubTabs} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 import {CompteursPage,statutBadge} from "./Compteurs.jsx";
-import {noeudsSelectionnables} from "../lib/arbre.js";
+import {noeudsSelectionnables,nomComposeNoeud} from "../lib/arbre.js";
 import SelecteurNoeud from "../ui/SelecteurNoeud.jsx";
 import {CLES_NIVEAUX_DI,niveauDI} from "../../../server/src/profils-core.js";
 
@@ -345,8 +345,8 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
  const [cf,setCf]=useState(isEdit&&isCompteurPlan(item)?{declenchement:"Compteur",compteur:item.compteur||"",pas:String(item.pas||""),seuil:String(item.seuil||SEUIL_DEFAUT),valeurDernier:String(item.valeurDernier??"")}
   :{declenchement:"Calendrier",compteur:"",pas:"",seuil:String(SEUIL_DEFAUT),valeurDernier:""});
  const parCpt=cf.declenchement==="Compteur";
- const [f,setF]=useState(isEdit?{code:item.code,sys:item.sys,eq:item.eq,se:item.se||"",ss:item.ss||"",nom:item.nom,periode:item.periode,date:item.date,assignes:item.assignes||(item.assigne?[item.assigne]:[]),exc:!!item.exc,motifExc:item.motifExc||"",horaire:item.horaire||"Jour",consignation:item.consignation||"Non"}
-  :{code:null,sys:"",eq:"",se:"",ss:"",nom:"",periode:"Mensuel",date:todayStr(),assignes:[],exc:false,motifExc:"",horaire:"Jour",consignation:"Non"});
+ const [f,setF]=useState(isEdit?{code:item.code,sys:item.sys,eq:item.eq,se:item.se||"",ss:item.ss||"",noeud:item.noeud||"",nom:item.nom,periode:item.periode,date:item.date,assignes:item.assignes||(item.assigne?[item.assigne]:[]),exc:!!item.exc,motifExc:item.motifExc||"",horaire:item.horaire||"Jour",consignation:item.consignation||"Non"}
+  :{code:null,sys:"",eq:"",se:"",ss:"",noeud:"",nom:"",periode:"Mensuel",date:todayStr(),assignes:[],exc:false,motifExc:"",horaire:"Jour",consignation:"Non"});
  const [taches,setTaches]=useState(isEdit?[...item.taches]:[]);
  const [outil,setOutil]=useState(isEdit?[...(item.outillage||[])]:[]);
  const [conso,setConso]=useState(isEdit?[...(item.consommables||[])]:[]);
@@ -355,13 +355,13 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
  const selCls="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
  // nœuds de l'arborescence du système choisi, limités aux niveaux que le profil peut viser
  const noeuds=useMemo(()=>noeudsSelectionnables({equipements:equipements.filter(e=>e.system===f.sys),systemsList:systemsList.filter(([c])=>c===f.sys),treeStruct,unit,niveaux}),[equipements,systemsList,treeStruct,unit,niveaux,f.sys]);
- const noeudCourant=f.eq?noeuds.find(x=>niveauDI({eq:f.eq,se:f.se,ss:f.ss})===x.niveau&&(x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code===f.eq:x.eq===f.eq&&x.se===(f.se||"")&&x.ss===(f.ss||""))):null;
+ const noeudCourant=f.eq?noeuds.find(x=>niveauDI({eq:f.eq,se:f.se,ss:f.ss,noeud:f.noeud})===x.niveau&&(x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code===f.eq:x.eq===f.eq&&(x.noeud||"")===(f.noeud||f.ss||f.se||""))):null;
  const choisirNoeud=(cle)=>{
   const x=noeuds.find(y=>y.cle===cle);
-  if(!x){setF({...f,eq:"",se:"",ss:"",nom:""});return;}
-  const e=equipements.find(y=>y.code===x.eq), se=e&&(e.sousEquip||[]).find(y=>y.code===x.se), ss=se&&(se.sousSousEquip||[]).find(y=>y.code===x.ss);
-  const nom=x.niveau==="systeme"||x.niveau==="sousSysteme"?x.nom:e.nom+(se?" — "+se.code+" "+se.nom:"")+(ss?" — "+ss.code+" "+ss.nom:"");
-  setF({...f,eq:x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code:x.eq,se:x.se,ss:x.ss,nom});
+  if(!x){setF({...f,eq:"",se:"",ss:"",noeud:"",nom:""});return;}
+  const e=equipements.find(y=>y.code===x.eq);
+  const nom=x.niveau==="systeme"||x.niveau==="sousSysteme"?x.nom:nomComposeNoeud(e,x.noeud);
+  setF({...f,eq:x.niveau==="systeme"||x.niveau==="sousSysteme"?x.code:x.eq,se:x.se,ss:x.ss,noeud:x.noeud||"",nom});
  };
  function addT(){ if(!nt.trim()) return; setTaches(l=>[...l,nt.trim()]); setNt(""); }
  function valider(){
@@ -390,7 +390,7 @@ export function PlanForm({mode,item,compteurs=[],systemsList,equipements,inter,p
  return (<div>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
    <Field label="Système">
-    <select value={f.sys} onChange={e=>setF({...f,sys:e.target.value,eq:"",se:"",ss:"",nom:""})} className={selCls}>
+    <select value={f.sys} onChange={e=>setF({...f,sys:e.target.value,eq:"",se:"",ss:"",noeud:"",nom:""})} className={selCls}>
      <option value="">— Choisir un système —</option>{systemsList.map(([c,n])=><option key={c} value={c}>{c} — {n}</option>)}
     </select>
    </Field>

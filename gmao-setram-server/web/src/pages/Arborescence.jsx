@@ -6,16 +6,52 @@ import {noeudsSelectionnables} from "../lib/arbre.js";
 import {exporterXlsx} from "../excel.js";
 import {expStatus} from "../lib/echeances.js";
 import {UNIT_ABBR} from "../lib/unites.js";
-import {codeSysteme,codeSousSysteme} from "../lib/arbre.js";
+import {codeSysteme,codeSousSysteme,champsNoeud,nomComposeNoeud} from "../lib/arbre.js";
+import {enfantsDe,cleNiveauProfondeur,libelleProfondeur,prochainCodeEnfant} from "../../../server/src/arbre-core.js";
 import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 import {Btn,Card,ExportBtn,Field,Inp,SubTabs,fmtFourn} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
 
-export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,onSupprimerCtrl,onSupprimerOrg,mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,onOpenSousSous,niveauxDI=CLES_NIVEAUX_DI,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
+// Feuilles d'export « Sous-sous-équipements », « Niveau 6 », « Niveau 7 »… : une feuille par profondeur rencontrée (rien si vide)
+function feuillesProfondes(eqs,unit){
+ const parProf=new Map();
+ const descendre=(e,liste,ancetres)=>liste.forEach(n=>{
+  const prof=ancetres.length+1;
+  if(prof>=2){ if(!parProf.has(prof)) parProf.set(prof,[]); parProf.get(prof).push([e.code,ancetres[ancetres.length-1].code,ancetres[ancetres.length-1].nom,n.code,n.nom,fmtFourn(n.fournisseurs)]); }
+  descendre(e,enfantsDe(n),[...ancetres,n]);
+ });
+ eqs.forEach(e=>descendre(e,e.sousEquip||[],[]));
+ return [...parProf.keys()].sort((a,b)=>a-b).map(prof=>{const lib=libelleProfondeur(prof); return {nom:prof===2?"Sous-sous-équipements":lib,titre:"Arborescence Technique — "+lib+" (Unité "+unit+")",
+  colonnes:[{h:"Code équipement"},{h:"Code parent"},{h:"Parent"},{h:"Code "+lib.toLowerCase()},{h:"Désignation"},{h:"Fournisseur(s)"}],lignes:parProf.get(prof)};});
+}
+
+export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,onSupprimerCtrl,onSupprimerOrg,mode="arbo",unit,equipements,systemsList,treeStruct,onAddEquip,onCreateDI,onOpenEquip,onEditSystem,onEditSubSystem,onAddSystem,onAddSubSystem,onAddSousEquip,onOpenSousEquip,onRemoveSousEquip,onOpenSousSous,onOpenNoeud,niveauxDI=CLES_NIVEAUX_DI,mesureList,onAddMesure,onEditMesure,ctrlList,onAddCtrl,onEditCtrl,organismes,onAddOrg,onEditOrg}){
  const [openSys,setOpenSys]=useState(null);
  const [openSub,setOpenSub]=useState(null);
  const [openEq,setOpenEq]=useState(null);
- const [openSe,setOpenSe]=useState(null);
+ const [openN,setOpenN]=useState({});   // nœuds ouverts sous un équipement (clé « code équipement|code nœud »), profondeur illimitée
+ const setOpenSe=()=>setOpenN({});
+ const basculer=(k)=>setOpenN(o=>({...o,[k]:!o[k]}));
+ const libNiv=(niv,prof)=>prof>=3?libelleProfondeur(prof):libelleNiveau(niv);
+ // ouvre la fiche d'un nœud : sous-équipement (profondeur 1) ou nœud plus profond
+ const ouvrirNoeud=(e,chemin)=>{
+  if(chemin.length===1) return onOpenSousEquip(e,chemin[0]);
+  if(onOpenNoeud) return onOpenNoeud(e,chemin);
+  if(onOpenSousSous&&chemin.length===2) onOpenSousSous(e,chemin[0],chemin[1]);
+ };
+ const supprimerNoeud=(e,chemin)=>{const se=chemin[0]; if(onSupprimerSousEquip) onSupprimerSousEquip(e,se); else if(onRemoveSousEquip) onRemoveSousEquip(e.code,se.code);};
+ // lignes récursives : chaque nœud s'ouvre sur ses propres enfants, sans limite de profondeur
+ const lignesNoeuds=(e,liste,ancetres)=>liste.map(n=>{
+  const chemin=[...ancetres,n]; const prof=chemin.length; const k=e.code+"|"+n.code; const ouvert=!!openN[k]; const enf=enfantsDe(n);
+  return <li key={n.code} className="text-xs text-slate-500 py-0.5"><div onContextMenu={ev=>menu(ev,{niveau:cleNiveauProfondeur(prof),equip:e,chemin})} className="flex justify-between items-center group">
+   <button className="text-slate-500 hover:text-sky-400" title="Niveau suivant" aria-label={"Ouvrir "+n.code} aria-expanded={ouvert} onClick={()=>basculer(k)}>{fleche(ouvert)}</button>
+   <span className="flex-1 cursor-pointer hover:text-sky-400" onClick={()=>ouvrirNoeud(e,chemin)}><span className="text-slate-400">{n.code}</span> — {n.nom}</span>
+   {enf.length>0 && <span className="text-slate-600 mr-1">{enf.length} {prof===1?"sous-sous-équip.":"sous-niveau"+(enf.length>1?"x":"")}</span>}
+   {prof===1&&(onSupprimerSousEquip||onRemoveSousEquip)&&<button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+n.code} onClick={ev=>{ev.stopPropagation();supprimerNoeud(e,chemin);}}>{I.x}</button>}
+  </div>
+  {ouvert && <ul className="pl-4 border-l border-slate-800 ml-2">{lignesNoeuds(e,enf,chemin)}
+   {enf.length===0 && <li className="py-0.5 pl-4 text-slate-700">{prof===1?"Aucun sous-sous-équipement (à ajouter depuis la fiche du sous-équipement).":"Aucun sous-niveau (à ajouter depuis la fiche de ce nœud)."}</li>}</ul>}
+  </li>;});
  const diOk=(niv)=>!!onCreateDI&&niveauxDI.includes(niv);
  // menu contextuel (clic droit) d'un nœud : DI au niveau du nœud si le profil le permet
  const menu=(ev,c)=>{ev.preventDefault();ev.stopPropagation();setCtx({x:ev.clientX,y:ev.clientY,...c});};
@@ -59,9 +95,7 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
    {nom:"Sous-équipements",titre:"Arborescence Technique — Sous-équipements (Unité "+unit+")",
     colonnes:[{h:"Code équipement"},{h:"Équipement"},{h:"Code sous-équipement"},{h:"Désignation"},{h:"Fournisseur(s)"}],
     lignes:eqs.flatMap(e=>(e.sousEquip||[]).map(se=>[e.code,e.nom,se.code,se.nom,fmtFourn(se.fournisseurs)]))},
-   ...(eqs.some(e=>(e.sousEquip||[]).some(se=>(se.sousSousEquip||[]).length))?[{nom:"Sous-sous-équipements",titre:"Arborescence Technique — Sous-sous-équipements (Unité "+unit+")",
-    colonnes:[{h:"Code équipement"},{h:"Code sous-équipement"},{h:"Sous-équipement"},{h:"Code sous-sous-équipement"},{h:"Désignation"},{h:"Fournisseur(s)"}],
-    lignes:eqs.flatMap(e=>(e.sousEquip||[]).flatMap(se=>(se.sousSousEquip||[]).map(ss=>[e.code,se.code,se.nom,ss.code,ss.nom,fmtFourn(ss.fournisseurs)])))}]:[])]});
+   ...feuillesProfondes(eqs,unit)]});
  };
  return (<div className="space-y-4">
   {mode!=="arbo" && <SubTabs value={tab} onChange={setTab} items={[["mesure","Appareils de mesure"],["ctrl","Contrôles réglementaires"],["org","Organismes"]]}/>}
@@ -108,22 +142,13 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
            const eqOpen=openEq===e.code; const sousList=e.sousEquip||[];
            return <li key={e.code} className="py-0.5">
             <div className="flex items-center text-xs text-slate-400" onContextMenu={ev=>menu(ev,{niveau:"equipement",equip:e})}>
-             <button className="text-slate-500 hover:text-sky-400" title="Sous-équipements" aria-label={"Ouvrir "+e.code} aria-expanded={eqOpen} onClick={()=>{setOpenEq(eqOpen?null:e.code);setOpenSe(null);}}>{fleche(eqOpen)}</button>
+             <button className="text-slate-500 hover:text-sky-400" title="Sous-équipements" aria-label={"Ouvrir "+e.code} aria-expanded={eqOpen} onClick={()=>{setOpenEq(eqOpen?null:e.code);}}>{fleche(eqOpen)}</button>
              <span onClick={()=>onOpenEquip(e)} className="flex-1 py-1 cursor-pointer hover:text-sky-400"><span className="text-slate-300">{e.code}</span> — {e.nom}</span>
              {sousList.length>0 && <span className="text-slate-600 mr-1">{sousList.length} sous-équip.</span>}
              {onSupprimerEquip && <button className="text-slate-600 hover:text-rose-400 px-1" title="Supprimer cet équipement (créé par erreur)" aria-label={"Supprimer "+e.code} onClick={()=>onSupprimerEquip(e)}>{I.x}</button>}
             </div>
             {eqOpen && <div className="pl-4 border-l border-slate-800 ml-2">
-             <ul>{sousList.map(se=>{const seKey=e.code+"|"+se.code; const seOpen=openSe===seKey; const ssList=se.sousSousEquip||[];
-              return <li key={se.code} className="text-xs text-slate-500 py-0.5"><div onContextMenu={ev=>menu(ev,{niveau:"sousEquipement",equip:e,sous:se})} className="flex justify-between items-center group">
-              <button className="text-slate-500 hover:text-sky-400" title="Sous-sous-équipements" aria-label={"Ouvrir "+se.code} aria-expanded={seOpen} onClick={()=>setOpenSe(seOpen?null:seKey)}>{fleche(seOpen)}</button>
-              <span className="flex-1 cursor-pointer hover:text-sky-400" onClick={()=>onOpenSousEquip(e,se)}><span className="text-slate-400">{se.code}</span> — {se.nom}</span>
-              {ssList.length>0 && <span className="text-slate-600 mr-1">{ssList.length} sous-sous-équip.</span>}
-              {(onSupprimerSousEquip||onRemoveSousEquip)&&<button className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 px-1" title="Retirer" aria-label={"Supprimer "+se.code} onClick={ev=>{ev.stopPropagation();onSupprimerSousEquip?onSupprimerSousEquip(e,se):onRemoveSousEquip(e.code,se.code);}}>{I.x}</button>}
-              </div>
-              {seOpen && <ul className="pl-4 border-l border-slate-800 ml-2">{ssList.map(ss=><li key={ss.code} onContextMenu={ev=>menu(ev,{niveau:"sousSousEquipement",equip:e,sous:se,ss})} onClick={()=>onOpenSousSous&&onOpenSousSous(e,se,ss)} className={"py-0.5 pl-4 text-slate-500"+(onOpenSousSous?" cursor-pointer hover:text-sky-400":"")}><span className="text-slate-400">{ss.code}</span> — {ss.nom}</li>)}
-               {ssList.length===0 && <li className="py-0.5 pl-4 text-slate-700">Aucun sous-sous-équipement (à ajouter depuis la fiche du sous-équipement).</li>}</ul>}
-             </li>;})}
+             <ul>{lignesNoeuds(e,sousList,[])}
              {sousList.length===0 && <li className="text-xs text-slate-700 py-0.5">Aucun sous-équipement.</li>}
              </ul>
              {onAddSousEquip&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs mt-1" onClick={()=>onAddSousEquip(e)}>+ Ajouter un sous-équipement</Btn>}
@@ -185,22 +210,21 @@ export function Arbo({onSupprimerEquip,onSupprimerSousEquip,onSupprimerMesure,on
 
   {ctx && (()=>{
    const n=ctx.niveau||"equipement";
-   const prefill=n==="systeme"?{eq:ctx.code,nom:ctx.nom,niveau:n}
-    :n==="sousSysteme"?{eq:ctx.code,nom:ctx.nom,niveau:n}
+   const ch=ctx.chemin||[]; const feuille=ch[ch.length-1];
+   const prof=ch.length;
+   const prefill=n==="systeme"||n==="sousSysteme"?{eq:ctx.code,nom:ctx.nom,niveau:n}
     :n==="equipement"?{eq:ctx.equip.code,nom:ctx.equip.nom,niveau:n}
-    :n==="sousEquipement"?{eq:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom,se:ctx.sous.code,niveau:n}
-    :{eq:ctx.equip.code,nom:ctx.equip.nom+" — "+ctx.sous.code+" "+ctx.sous.nom+" — "+ctx.ss.code+" "+ctx.ss.nom,se:ctx.sous.code,ss:ctx.ss.code,niveau:n};
-   const cible=n==="sousSousEquipement"?ctx.ss.code:n==="sousEquipement"?ctx.sous.code:n==="equipement"?ctx.equip.code:ctx.code;
+    :{eq:ctx.equip.code,nom:nomComposeNoeud(ctx.equip,feuille.code),...champsNoeud(ctx.equip,feuille.code),niveau:n};
+   const cible=prof?feuille.code:n==="equipement"?ctx.equip.code:ctx.code;
    const item="block w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-100";
    return <>
    <div className="fixed inset-0 z-40" onClick={()=>setCtx(null)} onContextMenu={ev=>{ev.preventDefault();setCtx(null);}}></div>
    <div className="fixed z-50 bg-slate-800 border border-slate-600 rounded-lg shadow-xl text-xs overflow-hidden" style={{left:ctx.x,top:ctx.y}}>
-    <div className="px-3 py-1.5 text-slate-500 border-b border-slate-700">{libelleNiveau(n)} {cible}</div>
+    <div className="px-3 py-1.5 text-slate-500 border-b border-slate-700">{prof?libNiv(n,prof):libelleNiveau(n)} {cible}</div>
     {diOk(n)?<button className={item} onClick={()=>{onCreateDI(prefill);setCtx(null);}}>Créer une DI pour {cible}</button>
      :<div className="px-3 py-2 text-slate-500">DI non autorisée à ce niveau pour votre profil</div>}
-    {n==="sousEquipement" && <button className={item+" border-t border-slate-700"} onClick={()=>{onOpenSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Voir la fiche {ctx.sous.code}</button>}
-    {n==="sousSousEquipement" && onOpenSousSous && <button className={item+" border-t border-slate-700"} onClick={()=>{onOpenSousSous(ctx.equip,ctx.sous,ctx.ss);setCtx(null);}}>Voir la fiche {ctx.ss.code}</button>}
-    {n==="sousEquipement" && onSupprimerSousEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerSousEquip(ctx.equip,ctx.sous);setCtx(null);}}>Supprimer {ctx.sous.code}…</button>}
+    {prof>0 && <button className={item+" border-t border-slate-700"} onClick={()=>{ouvrirNoeud(ctx.equip,ch);setCtx(null);}}>Voir la fiche {feuille.code}</button>}
+    {prof===1 && onSupprimerSousEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerSousEquip(ctx.equip,feuille);setCtx(null);}}>Supprimer {feuille.code}…</button>}
     {n==="equipement" && onSupprimerEquip && <button className="block w-full text-left px-3 py-2 hover:bg-slate-700 text-rose-400 border-t border-slate-700" onClick={()=>{onSupprimerEquip(ctx.equip);setCtx(null);}}>Supprimer {ctx.equip.code}…</button>}
    </div>
   </>;})()}
@@ -279,13 +303,16 @@ export function SousEquipForm({modal,count,onSubmit}){
  </div>);
 }
 
+// Création / modification d'un nœud situé sous un sous-équipement, à n'importe quelle profondeur.
+// `modal.parent` = nœud parent (sinon, ancien format : `modal.se`) ; `modal.chemin` = ancêtres (facultatif, pour l'affichage).
 export function SousSousEquipForm({modal,onSubmit}){
  const isEdit=modal.mode==="edit";
- const {equip,se}=modal;
+ const {equip}=modal;
+ const parent=modal.parent||modal.se;
  const ss=isEdit?modal.ss:null;
- const existants=se.sousSousEquip||[];
- const prochain=Math.max(0,...existants.map(x=>parseInt(String(x.code).split(".").pop(),10)||0))+1;
- const code=isEdit?ss.code:(se.code+"."+String(prochain).padStart(2,"0"));
+ const code=isEdit?ss.code:prochainCodeEnfant(parent);
+ const prof=code.split(".").length-equip.code.split(".").length;
+ const lib=libelleProfondeur(prof);
  const [f,setF]=useState({nom:ss?ss.nom:""});
  const [fournisseurs,setFournisseurs]=useState(ss?(ss.fournisseurs||[]):[]);
  const [fNom,setFNom]=useState(""); const [fTel,setFTel]=useState(""); const [fEmail,setFEmail]=useState("");
@@ -296,9 +323,10 @@ export function SousSousEquipForm({modal,onSubmit}){
  }
  return (<div>
   <div className="text-xs text-slate-400 mb-1">Équipement : {equip.code} — {equip.nom}</div>
-  <div className="text-xs text-slate-400 mb-1">Sous-équipement parent : {se.code} — {se.nom}</div>
+  {(modal.chemin||[]).slice(0,-1).map(a=><div key={a.code} className="text-xs text-slate-500 mb-1">{a.code} — {a.nom}</div>)}
+  <div className="text-xs text-slate-400 mb-1">{isEdit?"Parent":"Parent"} : {parent.code} — {parent.nom}</div>
   <Field label="Code GMAO"><Inp value={code} disabled className="opacity-60"/></Field>
-  <Field label="Nom du sous-sous-équipement"><Inp value={f.nom} onChange={e=>setF({...f,nom:e.target.value})} placeholder="ex: Roulement"/></Field>
+  <Field label={"Nom du "+lib.toLowerCase()}><Inp value={f.nom} onChange={e=>setF({...f,nom:e.target.value})} placeholder="ex: Roulement"/></Field>
 
   <div className="text-xs text-slate-400 mt-3 font-medium">Fournisseur(s) — un ou plusieurs</div>
   {fournisseurs.map((fr,idx)=><div key={idx} className="text-xs flex justify-between bg-slate-900 rounded px-2 py-1 mt-1"><span>{fr.nom} — {fr.tel} — {fr.email}</span><button className="text-rose-400" onClick={()=>setFournisseurs(l=>l.filter((_,i)=>i!==idx))}>✕</button></div>)}
@@ -309,7 +337,7 @@ export function SousSousEquipForm({modal,onSubmit}){
    <Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={ajouterFournisseur}>+ Ajouter</Btn>
   </div>
 
-  <div className="flex justify-end mt-3"><Btn onClick={()=>{ if(!f.nom.trim()) return; onSubmit({parentCode:equip.code,seCode:se.code,code,nom:f.nom.trim(),fournisseurs:fournisseurs.length?fournisseurs:[{nom:"Non renseigné",tel:"",email:""}]}); }}>{isEdit?"Enregistrer les modifications":"Créer le sous-sous-équipement"}</Btn></div>
+  <div className="flex justify-end mt-3"><Btn onClick={()=>{ if(!f.nom.trim()) return; onSubmit({parentCode:equip.code,seCode:parent.code,code,nom:f.nom.trim(),fournisseurs:fournisseurs.length?fournisseurs:[{nom:"Non renseigné",tel:"",email:""}]}); }}>{isEdit?"Enregistrer les modifications":"Créer le "+lib.toLowerCase()}</Btn></div>
  </div>);
 }
 

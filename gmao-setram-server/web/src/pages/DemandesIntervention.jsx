@@ -4,7 +4,8 @@ import PiecesJointes from "../PiecesJointes.jsx";
 import {exporterXlsx} from "../excel.js";
 import {Badge,Btn,Card,ExportBtn,Field,Info,Inp,KPI,ouiNon,typeLabel,ETATS_MANUELS,StatutManuel} from "../ui/base.jsx";
 import {I} from "../ui/icones.jsx";
-import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte,noeudsSelectionnables} from "../lib/arbre.js";
+import {cheminTexte,codeSysteme,codeSousSysteme,noeudDI,noeudTexte,noeudsSelectionnables,champsNoeud,nomComposeNoeud} from "../lib/arbre.js";
+import {cleNiveauProfondeur,profondeur} from "../../../server/src/arbre-core.js";
 import SelecteurNoeud from "../ui/SelecteurNoeud.jsx";
 import {CLES_NIVEAUX_DI,libelleNiveau} from "../../../server/src/profils-core.js";
 
@@ -108,11 +109,11 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
  };
  const preSeg=String(prefill?.eq||"").split(".");
  // nœud imposé par l'arborescence (système, sous-système, sous-équipement, sous-sous-équipement) : affiché, non modifiable
- const depuisArbo=!!(prefill&&(prefill.niveau==="systeme"||prefill.niveau==="sousSysteme"||prefill.se||prefill.ss));
+ const depuisArbo=!!(prefill&&(prefill.niveau==="systeme"||prefill.niveau==="sousSysteme"||prefill.se||prefill.ss||prefill.noeud));
  const [n,setN]=useState({
   sys:pre?pre.system:(prefill?.niveau==="systeme"||prefill?.niveau==="sousSysteme"?preSeg[0]:""),
   sub:pre?pre.subCode:(prefill?.niveau==="sousSysteme"?preSeg[2]:""),
-  eq:pre?pre.code:"",se:prefill?.se||"",ss:prefill?.ss||""});
+  eq:pre?pre.code:"",se:prefill?.se||"",ss:prefill?.ss||"",noeud:prefill?.noeud||prefill?.ss||prefill?.se||""});
  const [f,setF]=useState({emplacement:pre?pre.emplacement:"",designation:"",dateEvt:new Date().toISOString().slice(0,16).replace("T"," ")});
  const [fromFiche,setFromFiche]=useState(!!(pre&&pre.emplacement));
  const [perturb,setPerturb]=useState("Non");
@@ -120,16 +121,15 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
  const [sousType,setSousType]=useState("Curative");
  const [err,setErr]=useState("");
  const cur=equipements.find(e=>e.code===n.eq);
- const seCur=cur&&(cur.sousEquip||[]).find(y=>y.code===n.se);
- const ssCur=seCur&&(seCur.sousSousEquip||[]).find(y=>y.code===n.ss);
- const niveau=n.ss?"sousSousEquipement":n.se?"sousEquipement":n.eq?"equipement":n.sub?"sousSysteme":n.sys?"systeme":null;
+ const profN=n.noeud&&n.eq?profondeur(n.eq,n.noeud):0;   // profondeur du nœud visé sous l'équipement (illimitée)
+ const niveau=n.noeud&&n.eq?cleNiveauProfondeur(profN):n.eq?"equipement":n.sub?"sousSysteme":n.sys?"systeme":null;
  const niveauOk=niveau&&niveaux.includes(niveau);
  // tous les nœuds de l'arborescence que le profil a le droit de viser (un seul champ, filtré par niveaux autorisés)
  const noeuds=useMemo(()=>noeudsSelectionnables({equipements,systemsList:systemes,treeStruct,unit:unite,niveaux}),[equipements,systemsList,treeStruct,unite,niveaux]);
- const cleCourante=niveau?(noeuds.find(x=>x.niveau===niveau&&x.sys===n.sys&&(x.sub||"")===(n.sub||"")&&x.eq===n.eq&&x.se===n.se&&x.ss===n.ss)||{}).cle||"":"";
+ const cleCourante=niveau?(noeuds.find(x=>x.niveau===niveau&&x.sys===n.sys&&(x.sub||"")===(n.sub||"")&&x.eq===n.eq&&(x.noeud||"")===(n.noeud||""))||{}).cle||"":"";
  const choisirEquipement=(cle)=>{
   const x=noeuds.find(y=>y.cle===cle);
-  setN(x?{sys:x.sys,sub:x.sub,eq:x.eq,se:x.se,ss:x.ss}:{sys:"",sub:"",eq:"",se:"",ss:""});
+  setN(x?{sys:x.sys,sub:x.sub,eq:x.eq,se:x.se,ss:x.ss,noeud:x.noeud||""}:{sys:"",sub:"",eq:"",se:"",ss:"",noeud:""});
   setErr("");
   setF(v=>({...v,emplacement:x?x.emplacement||"":""})); setFromFiche(!!(x&&x.emplacement));
  };
@@ -137,7 +137,7 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
  const noeud=()=>{
   if(niveau==="systeme") return {eq:codeSysteme(n.sys,unite),nom:(systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys};
   if(niveau==="sousSysteme"){const s=sousSystemes(n.sys).find(x=>x.code===n.sub);return {eq:codeSousSysteme(n.sys,unite,n.sub),nom:((systemes.find(x=>x[0]===n.sys)||[])[1]||n.sys)+" — "+(s&&s.nom||n.sub)};}
-  return {eq:cur.code,nom:cur.nom+(seCur?" — "+seCur.code+" "+seCur.nom:"")+(ssCur?" — "+ssCur.code+" "+ssCur.nom:"")};
+  return {eq:cur.code,nom:n.noeud?nomComposeNoeud(cur,n.noeud):cur.nom};
  };
  const sel="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm mt-1";
  const valider=()=>{
@@ -145,7 +145,8 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
   if(!f.designation.trim()){setErr("La désignation (description du constat) est obligatoire : la DI ne peut pas être créée sans elle.");return;}
   if(!niveauOk){setErr("Votre profil ne permet pas de créer une DI au niveau « "+libelleNiveau(niveau)+" ». Niveaux permis : "+(niveaux.map(libelleNiveau).join(", ")||"aucun")+".");return;}
   const {eq,nom}=noeud();
-  onSubmit({eq,nom,se:niveau==="sousEquipement"||niveau==="sousSousEquipement"?n.se:"",ss:niveau==="sousSousEquipement"?n.ss:"",niveau,emplacement:f.emplacement,designation:f.designation.trim(),dateEvt:f.dateEvt,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType});
+  const sousEq=profN>0?champsNoeud(cur,n.noeud):{se:"",ss:"",noeud:""};   // se / ss = ancêtres de 1er et 2e niveau, noeud = nœud visé
+  onSubmit({eq,nom,...sousEq,niveau,emplacement:f.emplacement,designation:f.designation.trim(),dateEvt:f.dateEvt,dateCreation,perturb,demandeur,typeMaintenance:typeM,sousType});
  };
  return (<div>
   <Field label="Demandeur (automatique)"><Inp value={demandeur} disabled className="opacity-60"/></Field>

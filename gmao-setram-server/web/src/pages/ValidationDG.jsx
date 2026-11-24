@@ -6,6 +6,7 @@
 // Le serveur contrôle chaque changement (profils-core.js) ; toute modification ultérieure par une unité remet
 // l'élément « À valider ».
 import React,{useState} from "react";
+import {parcourir,libelleProfondeur} from "../../../server/src/arbre-core.js";
 import {Badge,Btn,Card,KPI} from "../ui/base.jsx";
 import {DemandesExpertise} from "./DemandesExpertise.jsx";
 
@@ -51,9 +52,9 @@ export function ValidationDG({user,bts,equipements,planning,treeStruct,uniteDe,s
  const ots=bts.filter(b=>b.etat==="Clôturé"&&enAttente(b.validationDG))   // un OT « à reprendre » revient « À clôturer » : il réapparaît à sa nouvelle clôture
  .map(b=>({code:b.code,v:b.validationDG,unite:uniteDe(b.eq),systeme:systemeDe(b.eq),date:b.dateCloture||"",
   titre:b.eq+" — "+(b.nom||""),detail:[b.type,b.panne&&b.panne!=="-"?"Panne : "+b.panne:"",b.cause&&b.cause!=="-"?"Cause : "+b.cause:"",b.effet&&b.effet!=="-"?"Action : "+b.effet:""].filter(Boolean).join(" · "),obj:b}));
- // Arborescence : UNE seule validation pour tout ce qui a été ajouté dans l'arbre, du sous-système jusqu'au sous-sous-équipement
+ // Arborescence : UNE seule validation pour tout ce qui a été ajouté dans l'arbre, du sous-système jusqu'au niveau le plus profond
  // (valider un équipement valide aussi ses sous-équipements et sous-sous-équipements, qui en font partie).
- const feuilles=(e)=>(e.sousEquip||[]).flatMap(se=>[{niveau:"Sous-équipement",code:se.code,nom:se.nom},...(se.sousSousEquip||[]).map(ss=>({niveau:"Sous-sous-équipement",code:ss.code,nom:ss.nom}))]);
+ const feuilles=(e)=>{const l=[];parcourir(e,(n,anc,prof)=>l.push({niveau:libelleProfondeur(prof),code:n.code,nom:n.nom}));return l;};
  const arboEq=equipements.filter(e=>enAttente(e.validationDG)).map(e=>({kind:"equipement",niveau:"Équipement",code:e.code,v:e.validationDG,unite:e.unit,systeme:e.system,date:String(e.validationDG.depuis||"").slice(0,10),
   titre:"Équipement · "+e.nom,detail:feuilles(e).map(x=>x.niveau+" "+x.code+(x.nom?" — "+x.nom:"")).join(" ; "),obj:e}));
  const arboSous=Object.entries(treeStruct||{}).flatMap(([sys,l])=>(l||[]).filter(s=>enAttente(s.validationDG)).map(s=>({kind:"sousSysteme",niveau:"Sous-système",code:sys+"."+s.code,v:s.validationDG,unite:"Toutes",systeme:sys,date:String(s.validationDG.depuis||"").slice(0,10),titre:"Sous-système · "+s.sub,obj:{sys,s}})));
