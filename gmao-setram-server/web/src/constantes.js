@@ -52,6 +52,6 @@ export function posteOptions(systemsList){
 
 /* ================= ACCÈS : connexion + droits par unité / système / volet ================= */
 export const KPI_VUES=[["Synthèse","Synthèse"],["Équipements","Équipements"],["Ressources humaines","Ressources humaines"],["Stock","Stock"],["Criticité (AMDEC)","Criticité (AMDEC)"],["Référentiel","Référentiel"]];
-export const KPI_BLOCS=[["syn:ing","Synthèse › Indicateurs d'ingénierie (MTTR, MTBF, disponibilité…)"],["syn:real","Synthèse › Indicateurs de réalisation (TCP, TCC, TMP, TMC)"],["syn:taux","Synthèse › Taux de panne, d'intervention, récurrence"],["syn:comp","Synthèse › Comparatif des unités"]];
+export const KPI_BLOCS=[["syn:ing","Synthèse › Indicateurs d'ingénierie (TCP, TCC, taux d'efficience)"],["syn:real","Synthèse › Indicateurs de réalisation (TMP, TMC, disponibilité, λ, μ, MTBF, MTTR)"],["syn:taux","Synthèse › Taux de panne, d'intervention, récurrence"],["syn:comp","Synthèse › Comparatif des unités"]];
 export const KPI_ALL=[...KPI_VUES,...KPI_BLOCS].map(x=>x[0]);
 export const VOLETS=["Arborescence technique","Demandes d'Intervention (DI)","Ordres de Travail (OT)","Planning Préventif","Gestion de stock","Gestion du personnel","Indicateurs de performance","Rapports d'activité maintenance (UO / DG)","Gestion et suivi des matériaux"];
