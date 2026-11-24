@@ -214,3 +214,42 @@ export function TuileChiffre({ lib, valeur, variation, sens = "hausse-bonne", no
   } else if (variation === 0) fl = <span className="gm-delta"><small>stable vs période préc.</small></span>;
   return <div className={"gm-stat" + (statut ? " is-" + statut : "")}><div className="gm-stat-lib">{lib}</div><div className="gm-stat-val">{valeur}</div>{fl}{note && <div className="gm-stat-note">{note}</div>}</div>;
 }
+
+
+// Diagramme de Pareto : barres (valeur) triées + courbe des pourcentages cumulés, repères 80 % et 95 %, couleur par classe ABC.
+export const COULEURS_ABC = { A: "#D32F2F", B: "#F59E0B", C: "#2E9E5B" };   // A rouge · B orange · C vert
+export function ParetoChart({ items, fmt = (v) => String(v), unite = "", maxBarres = 30, hauteur = 280, titre = "Diagramme de Pareto" }) {
+  const [ref, W] = useLargeur(640);
+  const [montrer, cacher, rendu] = useInfobulle(ref);
+  const data = items.slice(0, maxBarres);
+  const m = { g: 52, d: 44, h: 14, b: 26 };
+  const iw = Math.max(120, W - m.g - m.d), ih = hauteur - m.h - m.b;
+  const vmax = Math.max(...data.map((r) => r.value), 1);
+  const bw = iw / Math.max(data.length, 1);
+  const X = (i) => m.g + i * bw, Yv = (v) => m.h + ih - (v / vmax) * ih, Yp = (p) => m.h + ih - p * ih;
+  const pts = data.map((r, i) => [X(i) + bw / 2, Yp(r.cum)]);
+  const ligne = pts.map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join(" ");
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <svg width={W} height={hauteur} role="img" aria-label={titre + " — " + items.length + " équipement(s)"} onMouseLeave={cacher}>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <g key={t}>
+            <line x1={m.g} x2={m.g + iw} y1={Yp(t)} y2={Yp(t)} stroke={GRILLE} />
+            <text x={m.g - 6} y={Yp(t) + 4} textAnchor="end" fontSize="10" fill={DISCRET}>{fmt(vmax * t)}</text>
+            <text x={m.g + iw + 6} y={Yp(t) + 4} fontSize="10" fill={DISCRET}>{Math.round(t * 100)} %</text>
+          </g>
+        ))}
+        {[0.8, 0.95].map((t) => (<line key={t} x1={m.g} x2={m.g + iw} y1={Yp(t)} y2={Yp(t)} stroke="#475569" strokeDasharray="5 4" strokeWidth="1" />))}
+        {data.map((r, i) => (
+          <rect key={r.code} x={X(i) + bw * 0.12} y={Yv(r.value)} width={Math.max(bw * 0.76, 1)} height={Math.max(m.h + ih - Yv(r.value), 0)} rx="2" fill={COULEURS_ABC[r.classe]}
+            tabIndex={0} onMouseMove={(e) => montrer(e, r.nom + " — " + fmt(r.value) + (unite ? " " + unite : "") + " (" + (r.pct * 100).toFixed(1).replace(".", ",") + " %, cumul " + (r.cum * 100).toFixed(1).replace(".", ",") + " %) · classe " + r.classe)}
+            onFocus={(e) => montrer(e, r.nom + " — " + fmt(r.value) + " · classe " + r.classe)} onBlur={cacher} />
+        ))}
+        <path d={ligne} fill="none" stroke="#1f2a44" strokeWidth="1.6" />
+        {pts.map((q, i) => <circle key={i} cx={q[0]} cy={q[1]} r="2.4" fill="#1f2a44" />)}
+        {data.map((r, i) => (bw >= 14 || i % 2 === 0) && <text key={"x" + r.code} x={X(i) + bw / 2} y={hauteur - 8} textAnchor="middle" fontSize="10" fill={DISCRET}>{r.rang}</text>)}
+      </svg>
+      {rendu}
+    </div>
+  );
+}
