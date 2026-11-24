@@ -197,9 +197,9 @@ describe('sous-sous-équipements', () => {
     expect(p.erreurs).toEqual([]);
     const eq = p.collections.equipements[0].data;
     expect(eq.sousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.01', 'CFO.ALG.SST.01.02']);
-    expect(eq.sousEquip[0].sousSousEquip.map((x) => `${x.code} ${x.nom}`)).toEqual(['CFO.ALG.SST.01.01.01 Bobinage', 'CFO.ALG.SST.01.01.02 Isolant']);
-    expect(eq.sousEquip[0].sousSousEquip[0].fournisseurs[0].nom).toBe('ElecPro');
-    expect(eq.sousEquip[1].sousSousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.02.01']);
+    expect(eq.sousEquip[0].enfants.map((x) => `${x.code} ${x.nom}`)).toEqual(['CFO.ALG.SST.01.01.01 Bobinage', 'CFO.ALG.SST.01.01.02 Isolant']);
+    expect(eq.sousEquip[0].enfants[0].fournisseurs[0].nom).toBe('ElecPro');
+    expect(eq.sousEquip[1].enfants.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.02.01']);
     expect(p.resume.find((r) => r.cle === 'sousSous')).toMatchObject({ lignes: 3, nouveaux: 3 });
   });
 
@@ -211,7 +211,7 @@ describe('sous-sous-équipements', () => {
     expect(p.erreurs).toEqual([]);
     const r = p.collections.equipements[0];
     expect(r.ecrase).toBe(true);
-    expect(r.data.sousEquip[0].sousSousEquip.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.01.01', 'CFO.ALG.SST.01.01.02']);   // « Fil » reconnu, « Vernis » ajouté
+    expect(r.data.sousEquip[0].enfants.map((x) => x.code)).toEqual(['CFO.ALG.SST.01.01.01', 'CFO.ALG.SST.01.01.02']);   // « Fil » reconnu, « Vernis » ajouté
     expect(p.resume.find((x) => x.cle === 'sousSous')).toMatchObject({ nouveaux: 1, existants: 1 });
   });
 
@@ -235,7 +235,7 @@ describe('sous-sous-équipements', () => {
     expect(msgs.some((m) => /Sous-équipements:3:.*déjà utilisé/.test(m))).toBe(true);
     expect(msgs.some((m) => /Sous-sous-équipements:2:.*« ZZ » est introuvable/.test(m))).toBe(true);
     expect(msgs.some((m) => /Sous-sous-équipements:3:.*est un équipement, pas un sous-équipement/.test(m))).toBe(true);
-    expect(msgs.some((m) => /Sous-sous-équipements:4:.*ne commence pas par le code du sous-équipement parent/.test(m))).toBe(true);
+    expect(msgs.some((m) => /Sous-sous-équipements:4:.*ne commence pas par le code du parent/.test(m))).toBe(true);
   });
 
   it('mode « mettre à jour » : renomme le sous-sous-équipement existant', async () => {
@@ -244,7 +244,7 @@ describe('sous-sous-équipements', () => {
     const lec = await lire({ 'Sous-sous-équipements': [SS_H, ['CFO.ALG.SST.01.01', 'Fil de cuivre', 'Cuivrex', 'CFO.ALG.SST.01.01.01']] });
     const p = preparerImport(lec, ctx({ equipements: [parent] }), { onConflict: 'update' });
     expect(p.erreurs).toEqual([]);
-    const ss = p.collections.equipements[0].data.sousEquip[0].sousSousEquip;
+    const ss = p.collections.equipements[0].data.sousEquip[0].enfants;
     expect(ss).toHaveLength(1);
     expect(ss[0]).toMatchObject({ code: 'CFO.ALG.SST.01.01.01', nom: 'Fil de cuivre' });
     expect(ss[0].fournisseurs[0].nom).toBe('Cuivrex');

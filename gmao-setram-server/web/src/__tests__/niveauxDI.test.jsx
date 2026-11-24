@@ -39,7 +39,7 @@ describe('niveau d\'une DI et chemin complet', () => {
 describe('profils : niveaux où créer une DI', () => {
   const user = { role: 'Exploitation' };
   it('sans réglage : tous les niveaux', () => {
-    expect(niveauxDIAutorises(user)).toHaveLength(5);
+    expect(niveauxDIAutorises(user)).toHaveLength(6);
     expect(controleProfil(user, 'dis', null, { eq: 'CFO.ALG', etat: 'À Transmettre' })).toBeNull();
   });
   it('profil de base restreint au sous-sous-équipement par le super admin : le serveur refuse les autres niveaux', () => {
