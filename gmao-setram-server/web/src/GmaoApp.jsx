@@ -18,7 +18,8 @@ import Assistant from "./pages/Assistant.jsx";
 import {ValidationDG} from "./pages/ValidationDG.jsx";
 import {api} from "./api.js";
 import {peutCloturer,peutCreerOT,peutValider,peutValiderOT,peutDemander,peutRepondreDemandes,accesValidation,nomProfil,enConsultation,roleRapports,definirProfilsPersonnalises,catalogue,niveauxDIAutorises,niveauxPlanAutorises,profilDe,peutFaire,peutSupprimerRapports} from "../../server/src/profils-core.js";
-import {cheminDI,noeudsSelectionnables} from "./lib/arbre.js";
+import {cheminDI,noeudsSelectionnables,champsNoeud,nomComposeNoeud} from "./lib/arbre.js";
+import {enfantsDe,trouverNoeud,appliquerSurEquipement,cleNiveauProfondeur,libelleProfondeur} from "../../server/src/arbre-core.js";
 import {RapportsPage} from "./pages/Rapports.jsx";
 import {posteCouvre} from "./lib/equipes.js";
 import {Arbo,CtrlForm,EquipForm,MesureForm,OrgForm,SousEquipForm,SousSousEquipForm,SubSystemForm,SystemForm} from "./pages/Arborescence.jsx";
@@ -178,33 +179,35 @@ export function GmaoApp({session,onLogout}){
   const {parentCode,...se}=payload;
   setEquipements(list=>list.map(e=>{
    if(e.code!==parentCode) return e;
-   const cur=e.sousEquip||[];
-   const exists=cur.some(x=>x.code===se.code);
-   return {...e,sousEquip:exists?cur.map(x=>x.code===se.code?{...x,...se}:x):[...cur,se]};
+   const exists=(e.sousEquip||[]).some(x=>x.code===se.code);
+   return appliquerSurEquipement(e,exists?{type:"modifier",noeud:se}:{type:"ajouter",parentCode:"",noeud:se});
   }));
   setSousEquipModal(null);
  }
+ // nœud à partir du 2e niveau (sous-sous-équipement, niveau 6, 7… sans limite) : parent = payload.seCode (code du nœud parent)
  function saveSousSousEquip(payload){
   const {parentCode,seCode,...ss}=payload;
   setEquipements(list=>list.map(e=>{
    if(e.code!==parentCode) return e;
-   return {...e,sousEquip:(e.sousEquip||[]).map(se=>{
-    if(se.code!==seCode) return se;
-    const cur=se.sousSousEquip||[];
-    const exists=cur.some(x=>x.code===ss.code);
-    return {...se,sousSousEquip:exists?cur.map(x=>x.code===ss.code?{...x,...ss}:x):[...cur,ss]};
-   })};
+   const existe=!!trouverNoeud(e,ss.code);
+   return appliquerSurEquipement(e,existe?{type:"modifier",noeud:ss}:{type:"ajouter",parentCode:seCode,noeud:ss});
   }));
   setSousSousModal(null);
-  setSousEquipDetail({equip:{code:parentCode},se:{code:seCode}});
+  rouvrirParent(parentCode,seCode);
  }
  function removeSousSousEquip(parentCode,seCode,code){
-  setEquipements(list=>list.map(e=>e.code!==parentCode?e:{...e,sousEquip:(e.sousEquip||[]).map(se=>se.code!==seCode?se:{...se,sousSousEquip:(se.sousSousEquip||[]).filter(x=>x.code!==code)})}));
+  setEquipements(list=>list.map(e=>e.code!==parentCode?e:appliquerSurEquipement(e,{type:"retirer",code})));
   setSousSousModal(null);
-  setSousEquipDetail({equip:{code:parentCode},se:{code:seCode}});
+  rouvrirParent(parentCode,seCode);
+ }
+ // après une création / suppression : retour à la fiche du parent (sous-équipement ou nœud plus profond)
+ function rouvrirParent(eqCode,parentCode){
+  const e=equipements.find(x=>x.code===eqCode); const r=e&&trouverNoeud(e,parentCode);
+  if(r&&r.profondeur>1) setSousSousModal({mode:!arboModif?"voir":"edit",equip:{code:eqCode},chemin:[...r.ancetres],ss:r.noeud});
+  else setSousEquipDetail({equip:{code:eqCode},se:{code:parentCode}});
  }
  function removeSousEquip(parentCode,code){
-  setEquipements(list=>list.map(e=>e.code===parentCode?{...e,sousEquip:(e.sousEquip||[]).filter(x=>x.code!==code)}:e));
+  setEquipements(list=>list.map(e=>e.code===parentCode?appliquerSurEquipement(e,{type:"retirer",code}):e));
  }
 
  function saveMesure(payload){
@@ -418,9 +421,9 @@ const [notice,setNotice]=useState(null);
   }
   if(!noeud||!(sa||sysOk(noeud.sys))) return avis("QR code : nœud « "+code+" » introuvable ou hors de vos droits d'accès.");
   if(!sa && !((session.droits[unite]||{}).volets||[]).includes(1)) return avis("QR code "+code+" : vous n'avez pas le droit de créer une demande d'intervention pour cette unité.");
-  const e=equipements.find(x=>x.code===noeud.eq), se=e&&(e.sousEquip||[]).find(x=>x.code===noeud.se), ss=se&&(se.sousSousEquip||[]).find(x=>x.code===noeud.ss);
+  const e=equipements.find(x=>x.code===noeud.eq);
   const prefill=noeud.niveau==="systeme"||noeud.niveau==="sousSysteme"?{eq:noeud.code,nom:noeud.nom,niveau:noeud.niveau}
-   :{eq:e.code,nom:e.nom+(se?" — "+se.code+" "+se.nom:"")+(ss?" — "+ss.code+" "+ss.nom:""),...(se?{se:se.code}:{}),...(ss?{ss:ss.code}:{}),niveau:noeud.niveau};
+   :{eq:e.code,nom:noeud.noeud?nomComposeNoeud(e,noeud.noeud):e.nom,...(noeud.noeud?champsNoeud(e,noeud.noeud):{}),niveau:noeud.niveau};
   setUnit(unite); setTab(1); setDiModal({prefill});
  },[sEq,sPie,sMes,sCtrl,equipements,pieces,mesureList,ctrlList]);  // eslint-disable-line
  const [syncErr,setSyncErr]=useState(null);
@@ -578,8 +581,10 @@ const [notice,setNotice]=useState(null);
   // un système (et ses sous-systèmes) se supprime tant qu'aucun équipement n'y est rattaché, dans aucune unité
   systeme:(code)=>{const e=equipements.filter(x=>x.system===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités) : déplacez-les, supprimez-les ou videz ce système (Administration › Repartir de zéro, un seul système)"]);},
   sousSysteme:(sys,code)=>{const e=equipements.filter(x=>x.system===sys&&x.subCode===code).length;return raisons([e&&nb(e,"équipement")+" rattaché(s) (toutes unités)"]);},
-   sousSous:(eq,ss)=>{const d=dis.filter(x=>x.eq===eq&&x.ss===ss).length;return raisons([d&&"utilisé par "+nb(d,"DI"),d&&"l'historique de maintenance doit être conservé"]);},
-   sousEquip:(eq,se)=>{const d=dis.filter(x=>x.eq===eq&&x.se===se).length,o=bts.filter(x=>x.eq===eq&&x.se===se).length;return raisons([d&&"utilisé par "+nb(d,"DI"),o&&nb(o,"OT"),(d||o)&&"l'historique de maintenance doit être conservé"]);},
+   // un nœud (à toute profondeur) ou l'un de ses descendants est visé par une DI, un OT ou un plan : suppression refusée
+   noeud:(eq,code)=>{const vise=(x)=>x.eq===eq&&[x.noeud,x.ss,x.se].some(c=>c&&(c===code||String(c).startsWith(code+".")));
+    const d=dis.filter(vise).length,o=bts.filter(vise).length,p=planning.filter(vise).length;
+    return raisons([d&&"utilisé par "+nb(d,"DI"),o&&nb(o,"OT"),p&&nb(p,"plan")+" préventif(s)",(d||o)&&"l'historique de maintenance doit être conservé"]);},
  di:(d)=>bts.some(b=>b.di===d.code)?"un OT a été généré depuis cette DI : supprimez d'abord l'OT (s'il n'est pas clôturé).":d.etat!=="À Transmettre"?"seule une DI « À transmettre » peut être supprimée.":null,
   ot:(b)=>b.etat==="Clôturé"?"un OT clôturé fait partie de l'historique (indicateurs MTBF / MTTR, coûts).":dss.some(x=>x.bt===b.code&&x.etat!=="Annulé")?"des demandes de sortie (DS) sont rattachées à cet OT : annulez-les d'abord.":null,
   plan:(p)=>{const o=bts.filter(b=>b.plan===p.code&&OUVERT(b)).length;return o?"un OT ouvert est issu de ce plan ("+bts.filter(b=>b.plan===p.code&&OUVERT(b)).map(b=>b.code).join(", ")+") : clôturez-le ou supprimez-le d'abord.":null;},
@@ -748,7 +753,8 @@ const [notice,setNotice]=useState(null);
      onOpenEquip={setEquipDetail}
      onSupprimerEquip={!arboSuppr?undefined:(e)=>setEquipModal({mode:"edit",equip:e,supprimer:true})} onSupprimerSousEquip={!(arboModif&&arboSuppr)?undefined:(equip,se)=>setSousEquipDetail({equip,se,supprimer:true})}
      onCreateDI={!creerDI||!tabOk(1)?undefined:(prefill)=>setDiModal({prefill})} niveauxDI={niveauxDI}
-     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:!arboModif?"voir":"edit",equip,se,ss})}
+     onOpenSousSous={(equip,se,ss)=>setSousSousModal({mode:!arboModif?"voir":"edit",equip,chemin:[se],ss})}
+     onOpenNoeud={(equip,chemin)=>setSousSousModal({mode:!arboModif?"voir":"edit",equip,chemin:chemin.slice(0,-1),ss:chemin[chemin.length-1]})}
      onAddSousEquip={!arboModif?undefined:(equip)=>setSousEquipModal({mode:"add",equip})}
      onOpenSousEquip={(equip,se)=>setSousEquipDetail({equip,se})}
      onRemoveSousEquip={!(arboModif&&arboSuppr)?undefined:removeSousEquip}
@@ -872,22 +878,38 @@ const [notice,setNotice]=useState(null);
   </Modal>}
 
   {sousSousModal && (()=>{
+   // nœud situé sous un sous-équipement, à n'importe quelle profondeur (sous-sous-équipement, niveau 6, 7…)
    const parent=equipements.find(x=>x.code===sousSousModal.equip.code)||sousSousModal.equip;
-   const se=(parent.sousEquip||[]).find(x=>x.code===sousSousModal.se.code)||sousSousModal.se;
-   const m={...sousSousModal,equip:parent,se};
-   const fiche=m.mode!=="add";   // « edit » (modification) ou « voir » (consultation : exploitation, DI seulement…)
-   const ssCur=fiche?((se.sousSousEquip||[]).find(x=>x.code===m.ss.code)||m.ss):null;
+   const m0=sousSousModal;
+   const fiche=m0.mode!=="add";   // « edit » (modification) ou « voir » (consultation : exploitation, DI seulement…)
+   const rn=fiche?trouverNoeud(parent,m0.ss.code):null;
+   const ssCur=fiche?(rn?rn.noeud:m0.ss):null;
+   const ancetres=fiche?(rn?rn.ancetres:(m0.chemin||[])):(m0.chemin||[]);   // du sous-équipement au parent direct
+   const parentNoeud=fiche?ancetres[ancetres.length-1]:((trouverNoeud(parent,m0.parent.code)||{}).noeud||m0.parent);
+   const cheminAjout=fiche?[...ancetres,ssCur]:(m0.chemin||[parentNoeud]);
+   const prof=fiche?ancetres.length+1:cheminAjout.length+1;
+   const lib=libelleProfondeur(prof);
+   const m={...m0,equip:parent,parent:parentNoeud,chemin:fiche?ancetres:cheminAjout,ss:ssCur};
    const fournSS=fiche?(ssCur.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné"):[];
-   return <Modal title={fiche?"Sous-sous-équipement — "+m.ss.code:"Créer un sous-sous-équipement — "+se.code} onClose={()=>{setSousSousModal(null);setSousEquipDetail({equip:parent,se});}}>
+   const retour=()=>{setSousSousModal(null);rouvrirParent(parent.code,parentNoeud.code);};
+   const enf=fiche?enfantsDe(ssCur):[];
+   const niveauDroit=cleNiveauProfondeur(prof);
+   return <Modal title={fiche?lib+" — "+ssCur.code:"Créer un "+lib.toLowerCase()+" — "+parentNoeud.code} onClose={retour}>
     {m.mode==="voir"
      ? <div className="text-sm space-y-3" data-testid="fiche-sous-sous">
-        <div className="text-xs text-slate-500">Équipement : <span className="text-sky-400">{parent.code}</span> — {parent.nom}<br/>Sous-équipement parent : <span className="text-sky-400">{se.code}</span> — {se.nom}</div>
+        <div className="text-xs text-slate-500">Équipement : <span className="text-sky-400">{parent.code}</span> — {parent.nom}<br/>Parent : <span className="text-sky-400">{parentNoeud.code}</span> — {parentNoeud.nom}</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Code :</span> {ssCur.code}</div><div><span className="text-slate-500">Nom :</span> {ssCur.nom}</div></div>
         <div className="border-t border-slate-700 pt-2 text-xs text-slate-300"><div className="text-slate-400 font-medium mb-1">Fournisseur(s)</div>{fournSS.length===0?<div className="text-slate-600">Non renseigné.</div>:fournSS.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom}{f.tel?" — "+f.tel:""}{f.email?" — "+f.email:""}</div>)}</div>
        </div>
      : <SousSousEquipForm modal={m} onSubmit={saveSousSousEquip}/>}
-    {fiche && diAu("sousSousEquipement") && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom+" — "+m.ss.code+" "+m.ss.nom,se:se.code,ss:m.ss.code,niveau:"sousSousEquipement"}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
-    {m.mode==="edit" && <ZoneSuppression quoi={"le sous-sous-équipement "+m.ss.code} bloque={blocage.sousSous(parent.code,m.ss.code)} onSupprimer={()=>removeSousSousEquip(parent.code,se.code,m.ss.code)}/>}
+    {fiche && <div className="border-t border-slate-700 pt-2 mt-3 text-xs text-slate-300" data-testid="sous-niveaux">
+     <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-niveaux ({enf.length})</div>
+      {arboModif&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>setSousSousModal({mode:"add",equip:parent,parent:ssCur,chemin:[...ancetres,ssCur]})}>+ Sous-niveau</Btn>}</div>
+     {enf.map(c=><div key={c.code} onClick={()=>setSousSousModal({mode:!arboModif?"voir":"edit",equip:parent,chemin:[...ancetres,ssCur],ss:c})} className="py-0.5 cursor-pointer hover:text-sky-400">▫ <span className="text-slate-400">{c.code}</span> — {c.nom}{enfantsDe(c).length>0&&<span className="text-slate-500"> · {enfantsDe(c).length} sous-niveau(x)</span>}</div>)}
+     {enf.length===0 && <div className="text-slate-600">Aucun sous-niveau.</div>}
+    </div>}
+    {fiche && diAu(niveauDroit) && <div className="flex justify-end mt-3"><Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:nomComposeNoeud(parent,ssCur.code),...champsNoeud(parent,ssCur.code),niveau:niveauDroit}});setSousSousModal(null);}}>Créer une DI</Btn></div>}
+    {m.mode==="edit" && <ZoneSuppression quoi={"le "+lib.toLowerCase()+" "+ssCur.code+(enf.length?" et ses "+enf.length+" sous-niveau(x)":"")} bloque={blocage.noeud(parent.code,ssCur.code)} onSupprimer={()=>removeSousSousEquip(parent.code,parentNoeud.code,ssCur.code)}/>}
    </Modal>;})()}
 
   {sousEquipDetail && (()=>{
@@ -905,17 +927,17 @@ const [notice,setNotice]=useState(null);
      {se.fournisseurs.map((f,idx)=><div key={idx} className="py-0.5">{idx+1}. {f.nom} — {f.tel} — {f.email}</div>)}
     </div>
     <div className="border-t border-slate-700 pt-2 text-xs text-slate-300">
-     <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-sous-équipements ({(se.sousSousEquip||[]).length})</div>
-      {arboModif&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,se});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn>}</div>
-     {(se.sousSousEquip||[]).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:!arboModif?"voir":"edit",equip:parent,se,ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title={lectureArbo?"Voir la fiche / créer une DI":"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
-     {(se.sousSousEquip||[]).length===0 && <div className="text-slate-600">Aucun sous-sous-équipement.</div>}
+     <div className="flex justify-between items-center mb-1"><div className="text-slate-400 font-medium">Sous-sous-équipements ({enfantsDe(se).length})</div>
+      {arboModif&&<Btn cls="bg-slate-700 hover:bg-slate-600 text-xs" onClick={()=>{setSousSousModal({mode:"add",equip:parent,parent:se,chemin:[se]});setSousEquipDetail(null);}}>+ Sous-sous-équipement</Btn>}</div>
+     {enfantsDe(se).map(ss=><div key={ss.code} onClick={()=>{setSousSousModal({mode:!arboModif?"voir":"edit",equip:parent,chemin:[se],ss});setSousEquipDetail(null);}} className="py-0.5 cursor-pointer hover:text-sky-400" title={lectureArbo?"Voir la fiche / créer une DI":"Voir / modifier / supprimer"}>▫ <span className="text-slate-400">{ss.code}</span> — {ss.nom}{(ss.fournisseurs||[]).filter(f=>f.nom&&f.nom!=="Non renseigné").length>0&&<span className="text-slate-500"> · {ss.fournisseurs.filter(f=>f.nom&&f.nom!=="Non renseigné").map(f=>f.nom).join(", ")}</span>}</div>)}
+     {enfantsDe(se).length===0 && <div className="text-slate-600">Aucun sous-sous-équipement.</div>}
     </div>
     <div className="flex justify-end gap-2">
      <Btn cls="bg-slate-700 hover:bg-slate-600" onClick={()=>setSousEquipDetail(null)}>Fermer</Btn>
      {arboModif&&<Btn cls="bg-amber-600 hover:bg-amber-500" onClick={()=>{setSousEquipModal({mode:"edit",equip:parent,se});setSousEquipDetail(null);}}>Modifier</Btn>}
      {diAu("sousEquipement") && <Btn onClick={()=>{setDiModal({prefill:{eq:parent.code,nom:parent.nom+" — "+se.code+" "+se.nom,se:se.code,niveau:"sousEquipement"}});setSousEquipDetail(null);}}>Créer une DI</Btn>}
     </div>
-    {arboModif&&arboSuppr&&<ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.sousEquip(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>}
+    {arboModif&&arboSuppr&&<ZoneSuppression ouverte={!!sousEquipDetail.supprimer} quoi={"le sous-équipement "+se.code} bloque={blocage.noeud(parent.code,se.code)} onSupprimer={()=>{removeSousEquip(parent.code,se.code);setSousEquipDetail(null);}}/>}
    </div>
   </Modal>;})()}
 
