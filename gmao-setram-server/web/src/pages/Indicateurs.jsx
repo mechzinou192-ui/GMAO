@@ -5,6 +5,7 @@ import {FENETRE_MOIS,chargerHistorique,historiqueCharge} from "../sync.js";
 import {exporterXlsx} from "../excel.js";
 import {frDate} from "../lib/dates.js";
 import {optimiserMaintenance,OPTI_SEUILS_DEFAUT} from "../lib/optimisation.js";
+import {predireMaintenance} from "../lib/predictif.js";
 import {KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Inp,Segment,SubTabs} from "../ui/base.jsx";
@@ -77,6 +78,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const [parcMode,setParcMode]=useState("Équipements avec DI/OT");
  const [groupBy,setGroupBy]=useState("Équipement");
  const anneeDefaut=(()=>{const d=new Date(); return d.getMonth()===0?d.getFullYear()-1:d.getFullYear();})();   // en janvier : analyse de l'année écoulée
+ const [predHor,setPredHor]=useState("30 jours"), [predHist,setPredHist]=useState("Tout"), [predFiltre,setPredFiltre]=useState("Tous");
  const [optiAnnee,setOptiAnnee]=useState(String(anneeDefaut)), [optiSeuil,setOptiSeuil]=useState(String(OPTI_SEUILS_DEFAUT.seuilPannes)), [optiBas,setOptiBas]=useState(String(OPTI_SEUILS_DEFAUT.seuilBas)), [optiFiltre,setOptiFiltre]=useState("Tous");
  const [paretoCrit,setParetoCrit]=useState("nbDI"), [paretoPortee,setParetoPortee]=useState("Corrective");
  const [gravBase,setGravBase]=useState("Gravité saisie (OT)");
@@ -127,6 +129,14 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
   {nom:"Synthèse critères",titre:"Pareto ABC — nombre d'équipements par seuil — "+unit+" — "+perLabel,
    colonnes:[{h:"Critère"},{h:"Total",t:"num"},{h:"Équipements concernés",t:"num"},{h:"Classe A — 80 %",t:"num"},{h:"Jusqu'à B — 95 %",t:"num"},{h:"Jusqu'à C — 100 %",t:"num"}],
    lignes:paretoTous.map(({c,p})=>[c.lib+(c.unite?" ("+c.unite+")":""),Number(p.total.toFixed(2)),p.n100,p.n80,p.n95,p.n100])}]});
+ // Maintenance prédictive : prévision des prochaines pannes par équipement (historique des DI / OT correctifs)
+ const pred=useMemo(()=>predireMaintenance({unit,dis,bts,planning,equipements,pieces,flt,horizonJours:parseInt(predHor,10)||30,fenetreMois:predHist==="Tout"?0:parseInt(predHist,10)||0}),[unit,dis,bts,planning,equipements,pieces,flt,predHor,predHist]);   // eslint-disable-line
+ const predLignes=pred.lignes.filter(l=>predFiltre==="Tous"||l.risque===predFiltre);
+ const PRED_COUL={"Élevé":"#D32F2F","Moyen":"#F59E0B","Faible":"#2E9E5B"};
+ const fJ=(j)=>(Math.round(j*10)/10).toString().replace(".",",")+" j";
+ const exportPred=()=>exporterXlsx({fichier:"Maintenance_predictive_"+unit,feuilles:[{nom:"Prévisions de pannes",titre:"Maintenance prédictive — probabilité de panne sous "+predHor+" — historique : "+predHist+" — "+unit,
+  colonnes:[{h:"Risque"},{h:"Code équipement"},{h:"Équipement"},{h:"Pannes (historique)",t:"num"},{h:"MTBF (jours)",t:"num"},{h:"Dernière panne"},{h:"Prochaine panne prévue"},{h:"Probabilité de panne (%)",t:"num"},{h:"Tendance"},{h:"Modèle"},{h:"Durée moyenne d'arrêt (h)",t:"num"},{h:"Pannes prévues sur 12 mois",t:"num"},{h:"Arrêt prévu sur 12 mois (h)",t:"num"},{h:"Coût prévu sur 12 mois (DA)",t:"num"},{h:"Cause probable"},{h:"Pièces à prévoir"},{h:"Action recommandée"}],
+  lignes:pred.lignes.map(l=>[l.risque,l.eq,l.nom,l.pannes,Number(l.mtbfJours.toFixed(1)),l.derniere,l.prochaine+(l.enRetard?" (dépassée)":""),Number((l.proba*100).toFixed(1)),l.tendance,l.modele,Number(l.heuresMoy.toFixed(1)),Number(l.pannes12.toFixed(1)),Number(l.arret12.toFixed(1)),Math.round(l.cout12),l.cause,l.pieces.map(x=>x.qte+" × "+x.nom).join(" ; "),l.action])}]});
  // Optimisation de la maintenance : analyse annuelle automatique (espacer / renforcer / créer des plans préventifs)
  const opti=useMemo(()=>optimiserMaintenance({unit,annee:Number(optiAnnee),dis,bts,planning,equipements,pieces,flt,seuilPannes:Math.max(1,Number(optiSeuil)||OPTI_SEUILS_DEFAUT.seuilPannes),seuilBas:Math.max(0,Number(optiBas)||0)}),[unit,optiAnnee,dis,bts,planning,equipements,pieces,flt,optiSeuil,optiBas]);   // eslint-disable-line
  const optiLignes=opti.lignes.filter(l=>optiFiltre==="Tous"||l.statut===optiFiltre);
@@ -201,7 +211,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
 
  const Th=({children,cls})=><th className={"py-1 "+(cls||"")}>{children}</th>;
  // « Tableau de bord » (graphiques) : visible dès que la Synthèse l'est
- const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Optimisation de la maintenance","Stock","Criticité (AMDEC)","Pareto (ABC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x==="Pareto (ABC)"||x==="Optimisation de la maintenance"?"Criticité (AMDEC)":x));
+ const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Maintenance prédictive","Optimisation de la maintenance","Stock","Criticité (AMDEC)","Pareto (ABC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x==="Pareto (ABC)"||x==="Optimisation de la maintenance"||x==="Maintenance prédictive"?"Criticité (AMDEC)":x));
  const sub=SUBS.includes(subRaw)?subRaw:(SUBS[0]||"");
  const eqSeuil=Number(seuilBT)||0;
  // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
@@ -359,6 +369,40 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
      </div>
     </Card>
     <div className="text-xs text-slate-500">Statuts : surcharge &gt; 105 % · équilibre 75–105 % · sous-charge &lt; 75 %. La charge est le temps saisi par chaque intervenant sur les OT de l'unité.</div>
+  </div>}
+
+  {sub==="Maintenance prédictive" && <div className="space-y-4" data-testid="kpi-predictif">
+   <div className="flex flex-wrap justify-between items-end gap-3">
+    <div className="flex flex-wrap items-end gap-3">
+     <div><div className="text-xs text-slate-400">Prévoir les pannes sous</div><Segment value={predHor} options={["30 jours","60 jours","90 jours"]} onChange={setPredHor}/></div>
+     <div><div className="text-xs text-slate-400">Historique utilisé</div><Segment value={predHist} options={["12 mois","24 mois","Tout"]} onChange={setPredHist}/></div>
+    </div><ExportBtn onClick={exportPred}/>
+   </div>
+   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <KpiCard label="Risque élevé" value={pred.synth.eleve+" équip."} st={pred.synth.eleve>0?"bad":"ok"} stTxt={pred.synth.eleve>0?"À traiter":"Aucun"} sub={"panne probable sous "+predHor}/>
+    <KpiCard label="Risque moyen" value={pred.synth.moyen+" équip."} st={pred.synth.moyen>0?"warn":"ok"} stTxt={pred.synth.moyen>0?"À surveiller":"Aucun"} sub="à inspecter"/>
+    <KpiCard label="Pannes prévues sur 12 mois" value={String(Math.round(pred.synth.pannes12))} sub={pred.synth.analyses+" équipement(s) analysé(s)"}/>
+    <KpiCard label="Arrêt prévu sur 12 mois" value={fH(pred.synth.arret12,0)} sub={"≈ "+fDA(pred.synth.cout12)+" de coût de pannes"}/>
+   </div>
+   {pred.lignes.length===0?<Card><KpiEmpty>Aucun équipement n'a assez de pannes pour une prévision (3 pannes minimum){pred.insuffisants>0?" — "+pred.insuffisants+" équipement(s) avec 1 à 2 pannes seulement.":"."}</KpiEmpty></Card>:<>
+   <CarteGraphe titre="Probabilité de panne par équipement" sousTitre={"Sous "+predHor+" · les 10 équipements les plus exposés · rouge : élevé · orange : moyen · vert : faible"}>
+    <BarresH items={pred.lignes.slice().sort((a,b)=>b.proba-a.proba).slice(0,10).map(l=>({lib:l.nom,sub:l.eq,val:l.proba*100,coul:PRED_COUL[l.risque],note:"MTBF "+fJ(l.mtbfJours)+" · "+l.pannes+" pannes"}))} nom="Probabilité" fmt={(v)=>fNum(v,0)+" %"} max={100}/>
+   </CarteGraphe>
+   <Card>
+    <div className="flex flex-wrap justify-between items-end gap-3"><KpiTitle sub={"Prévision à partir du nombre de pannes, des intervalles entre pannes, des durées et des causes relevées dans les OT correctifs."+(pred.insuffisants>0?" "+pred.insuffisants+" équipement(s) non analysé(s) : moins de 3 pannes.":"")}>Prévisions de pannes par équipement</KpiTitle>
+     <Segment value={predFiltre} options={["Tous","Élevé","Moyen","Faible"]} onChange={setPredFiltre}/></div>
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Risque</Th><Th>Équipement</Th><Th>Pannes</Th><Th>MTBF</Th><Th>Prochaine panne prévue</Th><Th>Probabilité</Th><Th>Tendance</Th><Th>Arrêt moyen</Th><Th>Cause probable</Th><Th>Pièces à prévoir</Th><Th>Action</Th></tr></thead>
+    <tbody>{predLignes.map(l=><tr key={l.eq} className="border-t border-slate-700 align-top">
+     <td className="py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{background:PRED_COUL[l.risque]+"22",color:PRED_COUL[l.risque],border:"1px solid "+PRED_COUL[l.risque]}}>{l.risque}</span></td>
+     <td>{l.nom}<br/><span className="text-xs text-slate-400">{l.eq}</span></td><td>{l.pannes}<br/><span className="text-xs text-slate-400">dernière : {l.derniere}</span></td><td>{fJ(l.mtbfJours)}</td>
+     <td>{l.prochaine}{l.enRetard&&<><br/><span className="text-xs text-amber-400">échéance dépassée</span></>}</td>
+     <td>{fPct(l.proba,0)}<br/><span className="text-xs text-slate-400">sous {l.horizonJours} j</span></td>
+     <td><span style={{color:l.tendance==="Dégradation"?"#D32F2F":l.tendance==="Amélioration"?"#2E9E5B":undefined}}>{l.tendance}</span></td>
+     <td>{fH(l.heuresMoy,1)}</td><td className="text-xs max-w-[11rem]">{l.cause||"—"}{l.causeOcc>1&&<span className="text-slate-400"> ({l.causeOcc}×)</span>}</td>
+     <td className="text-xs">{l.pieces.length?l.pieces.map(x=><div key={x.code}>{x.qte} × {x.nom}{x.stockOk===false&&<span className="text-rose-400"> (stock insuffisant)</span>}</div>):"—"}</td>
+     <td className="text-xs text-slate-300 max-w-xs">{l.action}</td></tr>)}</tbody></table></div>
+   </Card></>}
+   <div className="text-xs text-slate-500">Méthode : à partir des dates des pannes de chaque équipement (DI correctives), on calcule le temps moyen entre pannes (MTBF) et la tendance (dégradation si les pannes se rapprochent). La probabilité de panne sous l'horizon choisi est calculée avec une loi de Weibull lorsque l'historique compte au moins 5 pannes, avec une loi exponentielle (taux de panne constant) sinon, en tenant compte du temps écoulé depuis la dernière panne. Risque élevé : probabilité ≥ 50 % (ou ≥ 30 % avec dégradation) ; moyen : ≥ 25 % ou échéance dépassée. Les durées, coûts, causes et pièces viennent des OT correctifs. C'est une aide à la décision : plus l'historique est long et bien renseigné (dates, causes, pièces), plus la prévision est fiable.</div>
   </div>}
 
   {sub==="Optimisation de la maintenance" && <div className="space-y-4" data-testid="kpi-optimisation">
