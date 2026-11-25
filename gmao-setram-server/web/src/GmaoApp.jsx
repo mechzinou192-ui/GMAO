@@ -1,5 +1,5 @@
 // Application connectée : données synchronisées, actions métier, mise en page (menu, en-tête, onglets).
-import React,{useState,useEffect,useRef} from "react";
+import React,{useState,useEffect,useRef,useMemo} from "react";
 import {ACCUEIL,MATERIAUX,ORG_DOM,ROLES,VALIDATION,RAPPORTS,VOLET_RAPPORTS,VOLET_MATERIAUX} from "./constantes.js";
 import {XL_LOGO} from "./excel.js";
 import {ajouterReleve,dernier,etatPlanCompteur,isCompteurPlan} from "./lib/compteurs.js";
@@ -27,6 +27,8 @@ import {Splash} from "./pages/Connexion.jsx";
 import {DIDetail,DIForm} from "./pages/DemandesIntervention.jsx";
 import {MaintenanceCorrective} from "./pages/MaintenanceCorrective.jsx";
 import {IndicateursPage} from "./pages/Indicateurs.jsx";
+import {optiAlerteAnnuelle} from "./lib/optimisation.js";
+import {predireMaintenance} from "./lib/predictif.js";
 import {BTCreateForm,BTDetail,BTPage,BandeauValidation} from "./pages/OrdresTravail.jsx";
 import {Equipe,InterForm,PrestaForm} from "./pages/Personnel.jsx";
 import {PlanForm,Planning} from "./pages/Preventif.jsx";
@@ -644,18 +646,23 @@ const [notice,setNotice]=useState(null);
  const critStock = piecesU.filter(p=>p.stock<p.min);   // alerte : magasin de l'unité affichée
  const ctAl=visPresta.map(contratInfo).filter(c=>c.alerte); const ctRouge=ctAl.filter(c=>c.niveau==="rouge").length, ctOrange=ctAl.length-ctRouge;
  const habAl=habListe(visInter); const habRouge=habAl.filter(x=>x.niveau==="rouge").length, habOrange=habAl.filter(x=>x.niveau==="orange").length;
+ // Maintenance prédictive : équipements dont une panne est probable sous 30 jours (alerte de la cloche)
+ const predRisque=useMemo(()=>{if(!tabOk(6)) return 0; try{return predireMaintenance({unit,dis:visDis,bts:visBts,planning:visPlanning,equipements:visEquip,pieces:piecesU}).synth.eleve;}catch{return 0;}},[unit,sa,grant,dis,bts,planning,equipements,pieces]);   // eslint-disable-line
+ const alerteAnnuelle=optiAlerteAnnuelle(new Date());
  const syncStates=[sEq,sSys,sTree,sMes,sCtrl,sOrg,sPre,sDch,sDss,sBs,sBrs,sFer,sDis,sBts,sPie,sPla,sInt,sCpt];
  if(syncStates.includes("error")) return <Splash msg="Impossible de joindre le serveur GMAO." action={()=>window.location.reload()} actionLabel="Réessayer"/>;
  if(!syncStates.every(s=>s==="ready")) return <Splash msg="Chargement des données…"/>;
 
  const ordreMenu=[ACCUEIL,0,MATERIAUX,1,3,4,5,6,RAPPORTS,VALIDATION,7];   // 2 (OT) n'est plus au menu : il est dans Préventif
- const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0)+notifs.nonLues;
+ const nbAlertes=(tabOk(5)?ctAl.length+habRouge+habOrange:0)+(tabOk(4)&&critStock.length>0?1:0)+notifs.nonLues+(tabOk(6)&&alerteAnnuelle?1:0)+(tabOk(6)&&predRisque>0?1:0);
  const alerteRouge=(tabOk(5)&&(ctRouge+habRouge)>0)||(tabOk(4)&&critStock.length>0);
  const initiales=(user||"?").replace(/^Démo — /,"").split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("");
  const alertesItems=[
   tabOk(5)&&ctAl.length>0&&{k:"ct",rouge:ctRouge>0,titre:"Contrats prestataires",txt:(ctRouge>0?ctRouge+" expiré(s)":"")+(ctRouge>0&&ctOrange>0?" · ":"")+(ctOrange>0?ctOrange+" à renouveler sous "+CONTRAT_SEUIL_MOIS+" mois — préparer le cahier des charges":""),go:5},
   tabOk(5)&&(habRouge+habOrange)>0&&{k:"hab",rouge:habRouge>0,titre:"Habilitations",txt:(habRouge>0?habRouge+" expirée(s)":"")+(habRouge>0&&habOrange>0?" · ":"")+(habOrange>0?habOrange+" à renouveler sous "+HAB_SEUIL_MOIS+" mois":""),go:5},
   tabOk(4)&&critStock.length>0&&{k:"stk",rouge:true,titre:"Stock critique",txt:critStock.length+" pièce(s) sous le seuil min",go:4},
+  tabOk(6)&&predRisque>0&&{k:"pred",rouge:true,titre:"Maintenance prédictive",txt:predRisque+" équipement(s) à risque élevé de panne sous 30 jours — Indicateurs › Maintenance prédictive",go:6},
+  tabOk(6)&&alerteAnnuelle&&{k:"opti",rouge:false,titre:"Analyse annuelle de la maintenance",txt:"Le bilan "+alerteAnnuelle.annee+" est prêt : revoyez les plans préventifs "+alerteAnnuelle.pour+" — Indicateurs › Optimisation de la maintenance",go:6},
  ].filter(Boolean);
  return (
  <div className="gm-app min-h-screen flex flex-col" style={{paddingTop:"env(safe-area-inset-top,0px)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
