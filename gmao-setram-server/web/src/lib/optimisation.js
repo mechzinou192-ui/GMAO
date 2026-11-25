@@ -78,3 +78,6 @@ export function optimiserMaintenance({unit,annee,dis,bts,planning,equipements,pi
  });
  return {lignes,taches,synth};
 }
+
+// Alerte annuelle : en janvier et février, l'analyse de l'année écoulée est à passer en revue pour régler la maintenance de l'année en cours.
+export function optiAlerteAnnuelle(date=new Date()){ const m=date.getMonth(); return m<=1?{annee:date.getFullYear()-1,pour:date.getFullYear()}:null; }
