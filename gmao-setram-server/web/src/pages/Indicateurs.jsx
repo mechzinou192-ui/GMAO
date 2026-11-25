@@ -4,6 +4,7 @@ import {Anneau,BarresGroupees,BarresH,CarteGraphe,COULEURS_ABC,Courbe,ParetoChar
 import {FENETRE_MOIS,chargerHistorique,historiqueCharge} from "../sync.js";
 import {exporterXlsx} from "../excel.js";
 import {frDate} from "../lib/dates.js";
+import {optimiserMaintenance,OPTI_SEUILS_DEFAUT} from "../lib/optimisation.js";
 import {KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Inp,Segment,SubTabs} from "../ui/base.jsx";
@@ -75,6 +76,8 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const [seuilBT,setSeuilBT]=useState(0);
  const [parcMode,setParcMode]=useState("Équipements avec DI/OT");
  const [groupBy,setGroupBy]=useState("Équipement");
+ const anneeDefaut=(()=>{const d=new Date(); return d.getMonth()===0?d.getFullYear()-1:d.getFullYear();})();   // en janvier : analyse de l'année écoulée
+ const [optiAnnee,setOptiAnnee]=useState(String(anneeDefaut)), [optiSeuil,setOptiSeuil]=useState(String(OPTI_SEUILS_DEFAUT.seuilPannes)), [optiBas,setOptiBas]=useState(String(OPTI_SEUILS_DEFAUT.seuilBas)), [optiFiltre,setOptiFiltre]=useState("Tous");
  const [paretoCrit,setParetoCrit]=useState("nbDI"), [paretoPortee,setParetoPortee]=useState("Corrective");
  const [gravBase,setGravBase]=useState("Gravité saisie (OT)");
  const [fSys,setFSys]=useState(""), [fSub,setFSub]=useState(""), [fEq,setFEq]=useState(""), [fSe,setFSe]=useState("");
@@ -124,6 +127,19 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
   {nom:"Synthèse critères",titre:"Pareto ABC — nombre d'équipements par seuil — "+unit+" — "+perLabel,
    colonnes:[{h:"Critère"},{h:"Total",t:"num"},{h:"Équipements concernés",t:"num"},{h:"Classe A — 80 %",t:"num"},{h:"Jusqu'à B — 95 %",t:"num"},{h:"Jusqu'à C — 100 %",t:"num"}],
    lignes:paretoTous.map(({c,p})=>[c.lib+(c.unite?" ("+c.unite+")":""),Number(p.total.toFixed(2)),p.n100,p.n80,p.n95,p.n100])}]});
+ // Optimisation de la maintenance : analyse annuelle automatique (espacer / renforcer / créer des plans préventifs)
+ const opti=useMemo(()=>optimiserMaintenance({unit,annee:Number(optiAnnee),dis,bts,planning,equipements,pieces,flt,seuilPannes:Math.max(1,Number(optiSeuil)||OPTI_SEUILS_DEFAUT.seuilPannes),seuilBas:Math.max(0,Number(optiBas)||0)}),[unit,optiAnnee,dis,bts,planning,equipements,pieces,flt,optiSeuil,optiBas]);   // eslint-disable-line
+ const optiLignes=opti.lignes.filter(l=>optiFiltre==="Tous"||l.statut===optiFiltre);
+ const OPTI_COUL={"Espacer":"#2E9E5B","Renforcer":"#D32F2F","Créer un plan":"#F59E0B","Maintenir":"#64748B"};
+ const fOcc=(o)=>o==null?"—":(Math.round(o*10)/10).toString().replace(".",",")+" /an";
+ const exportOpti=()=>exporterXlsx({fichier:"Optimisation_maintenance_"+unit+"_"+optiAnnee,feuilles:[
+  {nom:"Recommandations",titre:"Optimisation de la maintenance — analyse "+optiAnnee+" — "+unit,
+   colonnes:[{h:"Statut"},{h:"Code équipement"},{h:"Équipement"},{h:"Plan"},{h:"Périodicité actuelle"},{h:"Occ./an actuelles",t:"num"},{h:"Proposition"},{h:"Occ./an proposées",t:"num"},{h:"Pannes de l'année",t:"num"},{h:"Heures d'arrêt (h)",t:"num"},{h:"Coût des pannes (DA)",t:"num"},{h:"OT préventifs",t:"num"},{h:"Coût préventif (DA)",t:"num"},{h:"Gain estimé (h/an)",t:"num"},{h:"Gain estimé (DA/an)",t:"num"},{h:"Motif"}],
+   lignes:opti.lignes.map(l=>[l.statut,l.eq,l.nom,l.plan,l.periodeActuelle,l.occActuelle==null?"":Number(l.occActuelle.toFixed(1)),l.propose,l.occPropose==null?"":Number(l.occPropose.toFixed(1)),l.pannes,Number(l.heuresPannes.toFixed(1)),Math.round(l.coutPannes),l.nbPrev,Math.round(l.coutPrev),Number(l.economieH.toFixed(1)),Math.round(l.economieCout),l.motif])},
+  {nom:"Tâches proposées",titre:"Tâches à ajouter aux plans préventifs, déduites des pannes de "+optiAnnee+" — "+unit,
+   colonnes:[{h:"Code équipement"},{h:"Équipement"},{h:"Tâche proposée"},{h:"Occurrences de la cause",t:"num"}],lignes:opti.taches.map(t=>[t.eq,t.nom,t.tache,t.occurrences])},
+  {nom:"Synthèse",titre:"Synthèse de l'optimisation — "+optiAnnee+" — "+unit,colonnes:[{h:"Indicateur"},{h:"Valeur",t:"num"}],
+   lignes:[["Équipements analysés",opti.synth.nbEquip],["À espacer",opti.synth.espacer],["À renforcer (plan existant)",opti.synth.renforcer],["Plans à créer",opti.synth.creer],["À maintenir",opti.synth.maintenir],["Gain estimé (h/an)",Number(opti.synth.economieH.toFixed(1))],["Gain estimé (DA/an)",Math.round(opti.synth.economieCout)]]}]});
  // Comparatif : toutes les unités accessibles à l'utilisateur (volet Indicateurs), comme l'export RH « Par unité » —
  // une seule pour un agent d'unité ; plusieurs pour un expert / le responsable DG ; toutes pour le super administrateur
  const unitesComp=unitesRH&&unitesRH.length?unitesRH:[unit];
@@ -185,7 +201,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
 
  const Th=({children,cls})=><th className={"py-1 "+(cls||"")}>{children}</th>;
  // « Tableau de bord » (graphiques) : visible dès que la Synthèse l'est
- const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Stock","Criticité (AMDEC)","Pareto (ABC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x==="Pareto (ABC)"?"Criticité (AMDEC)":x));
+ const SUBS=["Tableau de bord","Synthèse","Équipements","Ressources humaines","Optimisation de la maintenance","Stock","Criticité (AMDEC)","Pareto (ABC)","Référentiel"].filter(x=>kpiOk(x==="Tableau de bord"?"Synthèse":x==="Pareto (ABC)"||x==="Optimisation de la maintenance"?"Criticité (AMDEC)":x));
  const sub=SUBS.includes(subRaw)?subRaw:(SUBS[0]||"");
  const eqSeuil=Number(seuilBT)||0;
  // Charge mensuelle par unité : charge GMAO (temps saisi sur les OT) ÷ charge RAM saisie chaque mois par le responsable maintenance.
@@ -343,6 +359,43 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
      </div>
     </Card>
     <div className="text-xs text-slate-500">Statuts : surcharge &gt; 105 % · équilibre 75–105 % · sous-charge &lt; 75 %. La charge est le temps saisi par chaque intervenant sur les OT de l'unité.</div>
+  </div>}
+
+  {sub==="Optimisation de la maintenance" && <div className="space-y-4" data-testid="kpi-optimisation">
+   <div className="flex flex-wrap justify-between items-end gap-3">
+    <div className="flex flex-wrap items-end gap-3">
+     <div><div className="text-xs text-slate-400">Année analysée</div><Segment value={optiAnnee} options={Array.from({length:5},(_,i)=>String(new Date().getFullYear()-4+i))} onChange={setOptiAnnee}/></div>
+     <div><div className="text-xs text-slate-400">« Trop de pannes » à partir de (pannes/an)</div><Inp type="number" min="1" value={optiSeuil} onChange={e=>setOptiSeuil(e.target.value)} style={{maxWidth:110}}/></div>
+     <div><div className="text-xs text-slate-400">« Sans panne » jusqu'à (pannes/an)</div><Inp type="number" min="0" value={optiBas} onChange={e=>setOptiBas(e.target.value)} style={{maxWidth:110}}/></div>
+    </div><ExportBtn onClick={exportOpti}/>
+   </div>
+   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <KpiCard label="À espacer (alléger)" value={opti.synth.espacer+" équip."} sub="plan préventif sans panne"/>
+    <KpiCard label="À renforcer / créer" value={(opti.synth.renforcer+opti.synth.creer)+" équip."} sub={opti.synth.renforcer+" plan(s) à revoir · "+opti.synth.creer+" plan(s) à créer"}/>
+    <KpiCard label="À maintenir" value={opti.synth.maintenir+" équip."} sub="niveau de préventif cohérent"/>
+    <KpiCard label="Gain estimé par an" value={fDA(opti.synth.economieCout)} sub={fH(opti.synth.economieH,1)+" de maintenance en moins"}/>
+   </div>
+   <Card>
+    <div className="flex flex-wrap justify-between items-end gap-3"><KpiTitle sub={"Bilan "+optiAnnee+" : "+opti.synth.nbEquip+" équipement(s) analysé(s), "+opti.synth.pannes+" panne(s), "+fDA(opti.synth.coutPannes)+" de coût de pannes. Propositions à valider par l'équipe avant modification des plans."}>Recommandations automatiques</KpiTitle>
+     <Segment value={optiFiltre} options={["Tous","Espacer","Renforcer","Créer un plan","Maintenir"]} onChange={setOptiFiltre}/></div>
+    {optiLignes.length===0?<KpiEmpty>Aucune recommandation pour cette année et ce filtre.</KpiEmpty>:
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Action</Th><Th>Équipement</Th><Th>Plan</Th><Th>Périodicité actuelle</Th><Th>Proposition</Th><Th>Pannes</Th><Th>OT prév.</Th><Th>Gain estimé / an</Th><Th>Pourquoi</Th></tr></thead>
+    <tbody>{optiLignes.map((l,i)=><tr key={l.eq+l.plan+i} className="border-t border-slate-700 align-top">
+     <td className="py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{background:OPTI_COUL[l.statut]+"22",color:OPTI_COUL[l.statut],border:"1px solid "+OPTI_COUL[l.statut]}}>{l.statut}</span></td>
+     <td>{l.nom}<br/><span className="text-xs text-slate-400">{l.eq}</span></td><td>{l.plan}</td>
+     <td>{l.periodeActuelle}<br/><span className="text-xs text-slate-400">{fOcc(l.occActuelle)}</span></td>
+     <td>{l.propose}<br/><span className="text-xs text-slate-400">{fOcc(l.occPropose)}</span></td>
+     <td>{l.pannes}<br/><span className="text-xs text-slate-400">{fH(l.heuresPannes,1)} d'arrêt</span></td><td>{l.nbPrev}</td>
+     <td>{l.statut==="Espacer"?<>{fDA(l.economieCout)}<br/><span className="text-xs text-slate-400">{fH(l.economieH,1)}</span></>:"—"}</td>
+     <td className="text-xs text-slate-300 max-w-xs">{l.motif}</td></tr>)}</tbody></table></div>}
+   </Card>
+   <Card>
+    <KpiTitle sub="Déduites des causes de pannes récurrentes de l'année (hors tâches déjà présentes dans les plans). À ajouter au plan existant ou au nouveau plan.">Tâches préventives proposées</KpiTitle>
+    {opti.taches.length===0?<KpiEmpty>Aucune tâche à proposer : aucune panne récurrente avec une cause renseignée.</KpiEmpty>:
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Équipement</Th><Th>Tâche proposée</Th><Th>Occurrences</Th></tr></thead>
+    <tbody>{opti.taches.map((t,i)=><tr key={t.eq+i} className="border-t border-slate-700"><td className="py-1.5">{t.nom}<br/><span className="text-xs text-slate-400">{t.eq}</span></td><td>{t.tache}</td><td>{t.occurrences}</td></tr>)}</tbody></table></div>}
+   </Card>
+   <div className="text-xs text-slate-500">Méthode : sur l'année choisie, un équipement avec plan préventif et sans panne voit sa périodicité allongée d'un cran (gain = occurrences évitées × coût moyen d'un OT préventif de ce plan) ; un équipement avec trop de pannes voit son plan rapproché d'un cran et ses tâches complétées, ou reçoit un nouveau plan dont la périodicité est au plus la moitié du temps moyen entre pannes (MTBF ≈ 365 ÷ pannes/an). Les seuils sont réglables ci-dessus. Aucun plan n'est modifié automatiquement.</div>
   </div>}
 
   {sub==="Stock" && <div className="space-y-4">
