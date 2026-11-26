@@ -5,18 +5,58 @@ export const KPI_UNIT_CODE={"Alger":"ALG","Oran":"ORN","Constantine":"CST","Sidi
 export const KPI_NEW_UNITS=["SBA","ORG","STF","MGM"]; // « nouvelles » unités : cibles plus exigeantes (comme getOBJ de l'ancienne appli)
 export const kpiIsNew=(unit)=>KPI_NEW_UNITS.includes(KPI_UNIT_CODE[unit]);
 
+/* ---------- Paramètres réglables par le super administrateur (cibles, seuils des taux, échelles AMDEC) ---------- */
+// Valeurs par défaut = celles de l'ancienne appli (getOBJ). Le super administrateur peut les modifier (Indicateurs › Référentiel) ;
+// l'application appelle kpiParamsSet() avec les valeurs enregistrées sur le serveur.
+export const KPI_PARAMS_DEFAUT={
+ objectifs:{
+  nouvelles:{tcp:0.80,tcc:0.20,tmp:1,tmc:0.90,dispo:0.97,tauxPanne:5e-4,tauxRep:0.4},
+  anciennes:{tcp:0.70,tcc:0.30,tmp:1,tmc:0.85,dispo:0.95,tauxPanne:3e-4,tauxRep:0.25},
+  efficience:{val:1,tol:0.1},
+ },
+ unites:{},   // cibles propres à une unité (wilaya) : { "Oran": { dispo: 0.96, … } } — une valeur absente = celle du groupe (unités existantes / nouvelles)
+ taux:{tauxPanne:[0.5,1],tauxInterv:[1,5],recurrence:[15,30]},      // % : bon < 1ᵉʳ seuil · alerte < 2ᵉ seuil · critique au-delà
+ amdec:{f:[1,4,52],g:[2,20,120],crit:{high:16,med:10},ndDefaut:2},   // P : occurrences/an (P2, P3, P4) · G : minutes d'arrêt (G2, G3, G4) · C majeure / modérée · ND sans saisie
+};
+const nombre=(v,def)=>{const n=Number(v); return Number.isFinite(n)?n:def;};
+// Fusionne des valeurs enregistrées avec les valeurs par défaut (toute valeur absente ou non numérique retombe sur le défaut)
+export function kpiParamsFusion(raw){
+ const D=KPI_PARAMS_DEFAUT, r=raw&&typeof raw==="object"?raw:{}, ob=r.objectifs||{}, tx=r.taux||{}, am=r.amdec||{};
+ const obj=(k)=>Object.fromEntries(Object.keys(D.objectifs[k]).map(c=>[c,nombre((ob[k]||{})[c],D.objectifs[k][c])]));
+ const tab=(src,def)=>def.map((d,i)=>nombre(Array.isArray(src)?src[i]:undefined,d));
+ const IDS=Object.keys(D.objectifs.anciennes), unites={};
+ Object.keys(r.unites||{}).filter(u=>KPI_UNIT_CODE[u]).forEach(u=>{const o={}; IDS.forEach(c=>{const v=(r.unites[u]||{})[c]; if(v!==undefined&&v!==null&&v!==""&&Number.isFinite(Number(v))) o[c]=Number(v);}); if(Object.keys(o).length) unites[u]=o;});
+ return {objectifs:{nouvelles:obj("nouvelles"),anciennes:obj("anciennes"),efficience:obj("efficience")},unites,
+  taux:{tauxPanne:tab(tx.tauxPanne,D.taux.tauxPanne),tauxInterv:tab(tx.tauxInterv,D.taux.tauxInterv),recurrence:tab(tx.recurrence,D.taux.recurrence)},
+  amdec:{f:tab(am.f,D.amdec.f),g:tab(am.g,D.amdec.g),crit:{high:nombre((am.crit||{}).high,D.amdec.crit.high),med:nombre((am.crit||{}).med,D.amdec.crit.med)},ndDefaut:nombre(am.ndDefaut,D.amdec.ndDefaut)}};
+}
+let PARAMS=kpiParamsFusion(null);
+export const kpiParamsGet=()=>PARAMS;
+export function kpiParamsSet(raw){   // applique les paramètres : les tableaux de seuils sont modifiés en place (les imports existants restent valables)
+ PARAMS=kpiParamsFusion(raw);
+ KPI_SEUILS.tauxPanne.splice(0,2,...PARAMS.taux.tauxPanne); KPI_SEUILS.tauxInterv.splice(0,2,...PARAMS.taux.tauxInterv); KPI_SEUILS.recurrence.splice(0,2,...PARAMS.taux.recurrence);
+ KPI_F_THR.splice(0,3,...PARAMS.amdec.f); KPI_G_THR.splice(0,3,...PARAMS.amdec.g); KPI_CRIT.high=PARAMS.amdec.crit.high; KPI_CRIT.med=PARAMS.amdec.crit.med;
+ return PARAMS;
+}
+// Libellés des cibles (« > 80 % », « ≤ 5×10⁻⁴ /h »…) construits à partir des valeurs
+export const kpiPctTxt=(v)=>String(Math.round(v*10000)/100).replace(".",",")+" %";
+export function kpiSciTxt(v){
+ if(!(v>0)) return "0"; const e=Math.floor(Math.log10(v)+1e-9), m=Math.round(v/Math.pow(10,e)*100)/100;
+ return String(m).replace(".",",")+"×10"+String(e).split("").map(c=>c==="-"?"⁻":"⁰¹²³⁴⁵⁶⁷⁸⁹"[+c]).join("");
+}
 /* Cibles par unité (reprises de getOBJ). dir:"up" = plus c'est haut mieux c'est ; "down" = plus c'est bas mieux c'est */
 export function kpiObj(unit){
- const n=kpiIsNew(unit);
+ // cible de l'unité si elle en a une, sinon cible de son groupe (unités existantes / nouvelles)
+ const o={...(kpiIsNew(unit)?PARAMS.objectifs.nouvelles:PARAMS.objectifs.anciennes),...(PARAMS.unites[unit]||{})}, ef=PARAMS.objectifs.efficience;
  return {
-  tcp:{val:n?0.80:0.70,dir:"up",label:n?"> 80 %":"> 70 %"},
-  tcc:{val:n?0.20:0.30,dir:"down",label:n?"< 20 %":"< 30 %"},
-  tmp:{val:1,dir:"up",label:"100 %"},
-  tmc:{val:n?0.90:0.85,dir:"up",label:n?"> 90 %":"> 85 %"},
-  dispo:{val:n?0.97:0.95,dir:"up",label:n?"> 97 %":"> 95 %"},
-  tauxPanne:{val:n?5e-4:3e-4,dir:"down",label:n?"≤ 5×10⁻⁴ /h":"≤ 3×10⁻⁴ /h"},
-  tauxRep:{val:n?0.4:0.25,dir:"up",label:n?"≥ 4×10⁻¹ /h":"≥ 2,5×10⁻¹ /h"},
-  efficience:{val:1,dir:"around",tol:0.1,label:"≈ 100 % (90–110 %)"},   // charge GMAO ÷ charge RAM
+  tcp:{val:o.tcp,dir:"up",label:"> "+kpiPctTxt(o.tcp)},
+  tcc:{val:o.tcc,dir:"down",label:"< "+kpiPctTxt(o.tcc)},
+  tmp:{val:o.tmp,dir:"up",label:o.tmp>=1?"100 %":"> "+kpiPctTxt(o.tmp)},
+  tmc:{val:o.tmc,dir:"up",label:"> "+kpiPctTxt(o.tmc)},
+  dispo:{val:o.dispo,dir:"up",label:"> "+kpiPctTxt(o.dispo)},
+  tauxPanne:{val:o.tauxPanne,dir:"down",label:"≤ "+kpiSciTxt(o.tauxPanne)+" /h"},
+  tauxRep:{val:o.tauxRep,dir:"up",label:"≥ "+kpiSciTxt(o.tauxRep)+" /h"},
+  efficience:{val:ef.val,dir:"around",tol:ef.tol,label:"≈ "+Math.round(ef.val*100)+" % ("+Math.round((ef.val-ef.tol)*100)+"–"+Math.round((ef.val+ef.tol)*100)+" %)"},   // charge GMAO ÷ charge RAM
  };
 }
 /* Statut vs cible (objClass de l'ancienne appli) : ok = atteint ; warn = à moins de 20 % de la cible ; bad = au-delà */
@@ -28,7 +68,7 @@ export function kpiStatus(o,val,has){
 }
 /* Échelle qualitative (Taux de panne théorique / Taux d'intervention / Taux de récurrence) */
 export function kpiRating(pct,bon,alerte){ return pct<bon?"ok":pct<alerte?"warn":"bad"; }
-export const KPI_SEUILS={tauxPanne:[0.5,1],tauxInterv:[1,5],recurrence:[15,30]}; // en %
+export const KPI_SEUILS={tauxPanne:[0.5,1],tauxInterv:[1,5],recurrence:[15,30]}; // en % (modifiables : voir kpiParamsSet)
 
 /* ---------- Utilitaires ---------- */
 export function kpiDate(s){ if(!s) return null; const t=String(s); const d=new Date(t.length<=10?t+"T00:00:00":t.replace(" ","T")); return isNaN(d.getTime())?null:d; }
@@ -298,7 +338,7 @@ export function kpiAmdec(corr,per,opt){
   const gs=useSaisie&&gSaisie!==null?gSaisie:gDuree;
   const gDefaut=useSaisie&&gSaisie===null; // aucune gravité saisie : repli sur la durée d'arrêt
   const dSaisie=g.det.length?Math.max(1,Math.min(4,Math.round(g.det.reduce((s,v)=>s+v,0)/g.det.length))):null;
-  const d=dSaisie!==null?dSaisie:2;
+  const d=dSaisie!==null?dSaisie:PARAMS.amdec.ndDefaut;
   const crit=f*gs*d;
   return {...g,exemples:[...g.exemples],annual:Math.round(annual*10)/10,avgMin:Math.round(avgMin),f,g:gs,gDefaut,nbGrav:g.grav.length,gMin:g.grav.length?Math.min(...g.grav):0,gMax:g.grav.length?Math.max(...g.grav):0,d,dDefaut:dSaisie===null,crit,band:kpiBand(crit),strat:kpiStrategie(f,gs,d,crit)};
  }).sort((a,b)=>b.crit-a.crit||b.count-a.count);
