@@ -29,6 +29,7 @@ import {MaintenanceCorrective} from "./pages/MaintenanceCorrective.jsx";
 import {IndicateursPage} from "./pages/Indicateurs.jsx";
 import {optiAlerteAnnuelle} from "./lib/optimisation.js";
 import {predireMaintenance} from "./lib/predictif.js";
+import {kpiParamsSet} from "./lib/kpi.js";
 import {BTCreateForm,BTDetail,BTPage,BandeauValidation} from "./pages/OrdresTravail.jsx";
 import {Equipe,InterForm,PrestaForm} from "./pages/Personnel.jsx";
 import {PlanForm,Planning} from "./pages/Preventif.jsx";
@@ -104,6 +105,10 @@ export function GmaoApp({session,onLogout}){
  // Unités de l'export « Par unité » : celles où l'utilisateur a le volet Indicateurs (une seule pour un agent d'unité ; toutes pour le super administrateur, les experts et le responsable DG)
  const unitesRHdroit=UNITS.filter(u=>(session.droits[u]?.volets||[]).includes(6));
  const unitesRH=sa?UNITS:(unitesRHdroit.length?unitesRHdroit:[unit]);
+ const [parametresKpi,setParametresKpi]=useSynced("parametres_kpi");   // seuils des indicateurs / AMDEC (réglés par le super administrateur)
+ const paramRec=parametresKpi.find(x=>x.code==="KPI")||null;
+ useMemo(()=>{kpiParamsSet(paramRec?paramRec.valeurs:null);},[paramRec]);   // applique les seuils avant le rendu des écrans
+ const saveParametres=(valeurs)=>setParametresKpi(l=>{const rec={code:"KPI",valeurs,modifiePar:user,modifieLe:new Date().toISOString()}; return l.some(x=>x.code==="KPI")?l.map(x=>x.code==="KPI"?rec:x):[...l,rec];});
  const [suivis,setSuivis]=useSynced("suivi_maintenance");   // traitement (statut + commentaire) des recommandations de la maintenance prédictive et de l'optimisation
  const saveSuivi=(rec)=>setSuivis(l=>l.some(x=>x.code===rec.code)?l.map(x=>x.code===rec.code?rec:x):[...l,rec]);
  const saveChargeRAM=(u,mois,valeur)=>{const code="RAM-"+String(u).replace(/[^A-Za-z0-9]/g,"")+"-"+mois;
@@ -807,7 +812,7 @@ const [notice,setNotice]=useState(null);
    {tab===3 && sousOnglet==="plan" && <Planning planning={visPlanning} compteurs={visCompteurs} equipements={equipements.filter(e=>e.unit===unit&&sysOk(e.system))} user={user} onSaveCompteur={saveCompteur} blocageCompteur={blocage.compteur} onSupprimerCompteur={supprimer.compteur} bts={visBts} systemsList={visSystems} unit={unit} onAdd={()=>setPlanModal({mode:"add"})} onEdit={(pl)=>setPlanModal({mode:"edit",item:pl})} onDeclencher={unSeul(declencherPlan)} onDeclencherLot={unSeul(declencherLot)} onOpenBT={(c)=>setBtDetail(c)}/>}
    {tab===4 && <Magasin unit={unit} pieces={piecesU} decharges={dechargesU} onNewAchat={(code)=>setAchatModal({prefill:code})} onNewDecharge={(code)=>setDechargeModal({prefill:code})} dss={dssU} bsList={bsU} brs={brsU} onNewDS={()=>setDsModal({})} onNewBR={()=>setBrModal(true)} onTraiterBS={traiterBS} onRetirerLigneDS={retirerLigneDS} onStatutDS={sa?(c,e,m)=>setDss(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onStatutBS={sa?(c,e,m)=>setBsList(l=>l.map(x=>x.code===c?avecStatut(x,e,user,m):x)):undefined} onGenererBS={unSeul(genererBS)} onAnnulerDS={(code)=>setMotifModal({ds:code})} onOpenPiece={setPieceModal} onAddPiece={(categorie)=>setPieceForm({mode:"add",categorie})} onEditPiece={(piece)=>setPieceForm({mode:"edit",piece})}/>}
    {tab===5 && <Equipe inter={visInter} prestataires={visPresta} equipements={equipements} onAddPresta={()=>setPrestaModal({mode:"add"})} onEditPresta={(p)=>setPrestaModal({mode:"edit",item:p})} feries={feries} onChangeFeries={setFeries} onAdd={()=>setInterModal({mode:"add"})} onEdit={(p)=>setInterModal({mode:"edit",item:p})}/>}
-   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={unitesRH} disTous={dis} btsTous={bts} planningTous={planning} equipementsTous={equipements} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} suivis={suivis} onSaveSuivi={saveSuivi} peutTraiter={!enConsultation(session)} auteur={user} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={piecesU} systemsList={visSystems} treeStruct={treeStruct}/>}
+   {tab===6 && <IndicateursPage kpiOk={kpiOk} unit={unit} unitesRH={unitesRH} disTous={dis} btsTous={bts} planningTous={planning} equipementsTous={equipements} chargesRAM={chargesRAM} onSaveChargeRAM={saveChargeRAM} parametres={paramRec?paramRec.valeurs:null} parametresMeta={paramRec} onSaveParametres={saveParametres} estSuper={!!sa} suivis={suivis} onSaveSuivi={saveSuivi} peutTraiter={!enConsultation(session)} auteur={user} peutSaisirRAM={!enConsultation(session)} dis={visDis} bts={visBts} planning={visPlanning} equipements={visEquip} pieces={piecesU} systemsList={visSystems} treeStruct={treeStruct}/>}
   </main>
   </div>
   </div>
