@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { IndicateursPage } from '../pages/Indicateurs.jsx';
+import { KPI_REFERENTIEL } from '../pages/Indicateurs.jsx';
 import { optimiserMaintenance, optiPeriodeVoisine, optiPeriodePourPannes, optiOccParAn } from '../lib/optimisation.js';
 
 const eqs = ['CFO.ALG.SST.01', 'CFO.ALG.SST.02', 'CFO.ALG.SST.03', 'CFO.ALG.SST.04'].map((code, i) => ({ code, unit: 'Alger', system: 'CFO', subCode: 'SST', nom: 'Équipement ' + (i + 1), sousEquip: [] }));
@@ -66,5 +67,15 @@ describe('Optimisation de la maintenance — onglet', () => {
     fireEvent.click(screen.getByText('Optimisation de la maintenance'));
     expect(screen.getByTestId('kpi-optimisation')).toBeTruthy();
     expect(screen.getByText('Recommandations automatiques')).toBeTruthy();
+  });
+});
+
+describe('Référentiel des indicateurs : prédictif et optimisation', () => {
+  it('documente la maintenance prédictive et l’optimisation (formules, seuils, suivi)', () => {
+    const fam = (f) => KPI_REFERENTIEL.filter((r) => r[0] === f);
+    expect(fam('Prédictif').length).toBeGreaterThanOrEqual(8); expect(fam('Optimisation').length).toBeGreaterThanOrEqual(8);
+    expect(KPI_REFERENTIEL.every((r) => r.length === 6)).toBe(true);                       // 6 colonnes, comme le tableau et l'export
+    const txt = KPI_REFERENTIEL.map((r) => r.join(' ')).join(' ');
+    for (const m of ['Weibull', 'MTBF prédictif', 'Niveau de risque', 'Espacer', 'Créer un plan', 'Gain estimé', 'suivi_maintenance']) expect(txt).toContain(m);
   });
 });
