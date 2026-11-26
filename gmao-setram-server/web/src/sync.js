@@ -24,6 +24,7 @@ const BASE = {
   bts:          { id: byCode, newestFirst: true, fenetre: true },
   planning:     { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
   compteurs_eq: { id: byCode, meta: (x) => ({ unit: x.unit, system: x.sys }) },
+  parametres_kpi: { id: byCode },   // seuils des indicateurs et de l'AMDEC (un seul enregistrement « KPI »)
   suivi_maintenance: { id: byCode, newestFirst: true, meta: (x) => ({ unit: x.unit, system: null }) },   // traitement des recommandations prédictives / d'optimisation
   charge_ram:   { id: byCode, meta: (x) => ({ unit: x.unit, system: null }) },   // charge RAM saisie : 1 ligne par unité et par mois
   // magasin par unité : l'unité est portée par l'élément (articles, DS, BS, BR, décharges)
