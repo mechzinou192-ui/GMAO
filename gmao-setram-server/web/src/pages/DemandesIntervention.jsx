@@ -165,7 +165,7 @@ export function DIForm({prefill,equipements,demandeur,onSubmit,systemsList,treeS
    <select value={typeM} onChange={e=>setTypeM(e.target.value)} className={sel}><option>Corrective</option><option>Préventive</option></select>
   </Field>
   {typeM==="Corrective" && <Field label="Nature de la maintenance corrective">
-   <select value={sousType} onChange={e=>setSousType(e.target.value)} className={sel}><option>Palliative</option><option>Curative</option></select>
+   <select value={sousType} onChange={e=>setSousType(e.target.value)} className={sel}><option>Curative</option><option>Palliative</option><option>Sinistre</option></select>
   </Field>}
   <Field label="Date et heure de l'événement"><input type="datetime-local" value={f.dateEvt.replace(" ","T")} onChange={e=>setF({...f,dateEvt:e.target.value.replace(" ","T")})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 mt-1"/></Field>
   <Field label="Date et heure de création (automatique)"><Inp value={dateCreation} disabled className="opacity-60"/></Field>
