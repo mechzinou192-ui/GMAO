@@ -1324,3 +1324,16 @@ test('demandes d\'expertise / d\'assistance : le chargé décrit et joint son ra
   const expMR = await newUser('p.expert.mr', { [U]: { systems: ['MR'], volets: [0, 1, 2, 3, 6] } }, undefined, 'Expert DG');
   assert.ok(!(await expMR.call('GET', '/data/demandes')).body.items.some((i) => i.id === code));
 });
+
+test('paramètres des indicateurs et de l\'AMDEC : lus par tous, modifiés par le super administrateur seul', async () => {
+  const valeurs = { objectifs: { anciennes: { tmp: 0.95 } }, amdec: { ndDefaut: 3 } };
+  const u = await newUser('p.kpi', { Oran: { systems: ['CFO'], volets: [1, 2, 3, 6] } });
+  assert.equal((await u.call('PUT', '/data/parametres_kpi/KPI', { data: { code: 'KPI', valeurs } })).status, 403);   // même avec le volet Indicateurs
+  assert.equal((await admin.call('PUT', '/data/parametres_kpi/KPI', { data: { code: 'KPI', valeurs, modifiePar: 'Super admin' } })).status, 200);
+  const lu = await u.call('GET', '/data/parametres_kpi');                                                            // lecture ouverte à tous les comptes
+  assert.equal(lu.status, 200);
+  const rec = (lu.body.items || lu.body).find((x) => (x.data || x).code === 'KPI');
+  assert.ok(rec);
+  assert.equal((await u.call('DELETE', '/data/parametres_kpi/KPI')).status, 403);
+  assert.equal((await admin.call('DELETE', '/data/parametres_kpi/KPI')).status, 200);
+});
