@@ -215,6 +215,7 @@ export function controleProfil(user, collection, cur, next) {
   if (!user || estSuper(user)) return null;
   // organigramme : systèmes et profils réservés au super administrateur de la DG
   if (collection === 'systemes' || collection === 'profils') return 'Réservé au super administrateur (organigramme et systèmes).';
+  if (collection === 'parametres_kpi') return 'Réservé au super administrateur (seuils des indicateurs et de l\'AMDEC).';
   if (collection === 'rapports') {
     if (cur && !next && peutSupprimerRapports(user)) return null;     // suppression : main donnée par le super administrateur
     return controleRapport(roleRapports(user), user, cur, next);

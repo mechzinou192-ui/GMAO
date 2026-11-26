@@ -38,6 +38,8 @@ export const COLLECTIONS = {
   rapports:     { volet: 7, readVolets: [7], writeVolets: [7] },
   // charge mensuelle du rapport d'activité (RAM) saisie par unité et par mois : sert au taux d'efficience (Indicateurs → Ressources humaines)
   charge_ram:   { volet: 6, readVolets: [6] },
+  // seuils des indicateurs et échelles AMDEC : lus par tous, modifiables par le super administrateur seul (contrôle dans profils-core.js)
+  parametres_kpi: { volet: 6, shared: true, readAll: true },
   // suivi du traitement des recommandations de la Maintenance prédictive et de l'Optimisation de la maintenance (Indicateurs)
   suivi_maintenance: { volet: 6, readVolets: [6] },
   // demandes d'expertise / d'assistance (onglet Validation) : chargé / responsable maintenance → expert DG
