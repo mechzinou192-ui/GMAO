@@ -6,7 +6,8 @@ import {exporterXlsx} from "../excel.js";
 import {frDate} from "../lib/dates.js";
 import {optimiserMaintenance,OPTI_SEUILS_DEFAUT} from "../lib/optimisation.js";
 import {predireMaintenance} from "../lib/predictif.js";
-import {KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
+import {ParametresKpi} from "./ParametresKpi.jsx";
+import {KPI_CRIT,KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiParamsFusion,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
 import {UNITS} from "../lib/unites.js";
 import {Btn,Card,ExportBtn,Field,Inp,Modal,Segment,SubTabs} from "../ui/base.jsx";
 import {SUIVI_COUL,SUIVI_STATUTS,suiviAppliquer,suiviCode,suiviCompter,suiviStatut} from "../lib/suivi.js";
@@ -97,7 +98,7 @@ function TraitementModal({ctx,onClose,onSave}){
   <div className="flex justify-end gap-2 mt-4"><Btn onClick={onClose} cls="bg-slate-700 hover:bg-slate-600">Annuler</Btn><Btn onClick={()=>onSave({statut,commentaire:com})} cls="bg-sky-600 hover:bg-sky-500">Enregistrer</Btn></div>
  </Modal>;
 }
-export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equipementsTous,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,suivis=[],onSaveSuivi,peutTraiter=false,auteur="",dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
+export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equipementsTous,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,parametres=null,parametresMeta=null,onSaveParametres,estSuper=false,suivis=[],onSaveSuivi,peutTraiter=false,auteur="",dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
  const pad=(n)=>String(n).padStart(2,"0");
  const ymd=(d)=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
  const now=new Date(); const d30=new Date(now); d30.setDate(d30.getDate()-29);
@@ -147,7 +148,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const eqRows=useMemo(()=>kpiEquipements(ctx.corr,ctx.prev,per,equipements),[ctx,per,equipements]);
  const rh=useMemo(()=>kpiRH(ctx.corr,ctx.prev,per,Number(normeBase)||KPI_NORME_DEFAUT,0),[ctx,per,normeBase]);
  const stk=useMemo(()=>kpiStock(pieces,per,Math.max(0.1,Number(delai)||3),new Date()),[pieces,per,delai]);
- const amdec=useMemo(()=>kpiAmdec(ctx.corr,per,{groupBy,gravBase,equipements,nomSys,nomSub}),[ctx,per,groupBy,gravBase,equipements,systemsList,treeStruct]);
+ const amdec=useMemo(()=>kpiAmdec(ctx.corr,per,{groupBy,gravBase,equipements,nomSys,nomSub}),[ctx,per,groupBy,gravBase,equipements,systemsList,treeStruct,parametres]);
  // Pareto / ABC : cumul par équipement des 6 critères, puis classement selon le critère choisi
  const paretoRows=useMemo(()=>kpiParetoEquipements(ctx.corr,ctx.prev,pieces,paretoPortee,equipements),[ctx,pieces,paretoPortee,equipements]);
  const paretoCrit1=KPI_PARETO_CRITERES.find(c=>c.id===paretoCrit)||KPI_PARETO_CRITERES[0];
@@ -203,7 +204,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const unitesComp=unitesRH&&unitesRH.length?unitesRH:[unit];
  const unites=useMemo(()=>{const data={dis:disTous||dis,bts:btsTous||bts,planning:planningTous||planning,equipements:equipementsTous||equipements};
   return UNITS.filter(u=>unitesComp.includes(u)).map(u=>{const c=kpiCollect(u,data,per,parcMode,{sys:fSys,sub:fSub});return {u,c,k:kpiCalc(c.corr,c.prev,per,c.nbEquip),o:kpiObj(u)};}).filter(x=>x.c.corr.length+x.c.prev.length>0);},
-  [dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,unitesComp.join("|"),per,parcMode,fSys,fSub]);   // eslint-disable-line
+  [dis,bts,planning,equipements,disTous,btsTous,planningTous,equipementsTous,unitesComp.join("|"),per,parcMode,fSys,fSub,parametres]);   // eslint-disable-line
  const perLabel=frDate(start)+" → "+frDate(end)+" ("+per.days+" j · "+per.hours+" h)"+(fltActif?" — filtre : "+fltLabel:"");
  const ratePanne=kpiRating(K.lambdaTheo*100,...KPI_SEUILS.tauxPanne), rateInterv=kpiRating(K.tauxInterv*100,...KPI_SEUILS.tauxInterv), rateRec=kpiRating(K.tauxRecurrence*100,...KPI_SEUILS.recurrence);
  const lblRate=(r)=>r==="ok"?"Bon":r==="warn"?"Seuil d'alerte":"Seuil critique";
@@ -533,7 +534,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
     <tbody>{amdec.map(g=><tr key={g.key} className="border-t border-slate-700 align-top"><td className="py-1.5">{g.label}<br/><span className="text-xs text-slate-400">{g.sub||g.exemples[0]}</span></td><td>{g.count}</td><td>{fNum(g.annual,1)}</td><td>{g.avgMin} min</td><td>{g.f}</td><td title={gravBase==="Gravité saisie (OT)"?(g.gDefaut?"Aucune gravité saisie sur les OT : repli sur la durée d'arrêt":"Moyenne arrondie de "+g.nbGrav+" gravité(s) saisie(s) sur les OT (min "+g.gMin+" · max "+g.gMax+")"):"Calculée d'après la durée d'arrêt moyenne"}>{g.g}{g.gDefaut?"*":""}{gravBase==="Gravité saisie (OT)"&&!g.gDefaut&&<span className="text-xs text-slate-500"> ({g.nbGrav}/{g.count} OT)</span>}</td><td title={g.dDefaut?"Non saisie sur les OT : valeur par défaut 2":"Moyenne des détections saisies"}>{g.d}{g.dDefaut?"*":""}</td>
      <td><StChip st={g.band.cls} txt={g.crit+" — "+g.band.label}/></td><td title={g.strat.why}><span className="px-2 py-0.5 rounded-full text-xs bg-slate-700">{g.strat.id}</span><div className="text-xs text-slate-500 max-w-xs mt-0.5">{g.strat.why}</div></td></tr>)}</tbody></table></div>}
    </Card>
-   <div className="text-xs text-slate-500">C = G × P × ND · Majeure ≥ 16 · Modérée ≥ 10 · Acceptable &lt; 10. P est extrapolée sur 365 jours à partir de la période affichée. G « Gravité saisie (OT) » = moyenne arrondie des gravités 1 à 4 saisies dans le compte-rendu des OT ; * G = durée d'arrêt quand aucune gravité n'est saisie ; * ND = 2 par défaut quand la détection n'est pas saisie sur les OT.</div>
+   <div className="text-xs text-slate-500">C = G × P × ND · Majeure ≥ {KPI_CRIT.high} · Modérée ≥ {KPI_CRIT.med} · Acceptable &lt; {KPI_CRIT.med}. P est extrapolée sur 365 jours à partir de la période affichée. G « Gravité saisie (OT) » = moyenne arrondie des gravités 1 à 4 saisies dans le compte-rendu des OT ; * G = durée d'arrêt quand aucune gravité n'est saisie ; * ND = 2 par défaut quand la détection n'est pas saisie sur les OT.</div>
   </div>}
 
   {sub==="Pareto (ABC)" && <div className="space-y-4" data-testid="kpi-pareto">
@@ -575,9 +576,10 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
   </div>}
 
   {sub==="Référentiel" && <div className="space-y-3">
-   <div className="flex justify-between items-center"><div className="text-xs text-slate-500">Formules, cibles et correspondance avec les données de cette GMAO.</div><ExportBtn onClick={exportRef}/></div>
+   <div className="flex justify-between items-center"><div className="text-xs text-slate-500">Formules, cibles et correspondance avec les données de cette GMAO. Les cibles du tableau sont les valeurs par défaut : les valeurs en vigueur et les seuils proposés sont dans « Seuils paramétrables » (en bas de page).</div><ExportBtn onClick={exportRef}/></div>
    <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Famille</Th><Th>Indicateur</Th><Th>Formule</Th><Th>Cible</Th><Th>Source dans la GMAO</Th><Th>Adaptation</Th></tr></thead>
    <tbody>{KPI_REFERENTIEL.map((r,i)=><tr key={i} className="border-t border-slate-700 align-top"><td className="py-1.5 text-xs text-slate-400">{r[0]}</td><td className="font-medium text-slate-200">{r[1]}</td><td className="text-xs text-slate-400 max-w-sm">{r[2]}</td><td className="text-xs text-slate-400 max-w-[200px]">{r[3]}</td><td className="text-xs text-slate-400 max-w-[220px]">{r[4]}</td><td className="text-xs text-slate-500 max-w-xs">{r[5]}</td></tr>)}</tbody></table></div></Card>
+   <ParametresKpi valeurs={kpiParamsFusion(parametres)} estSuper={estSuper} onSave={onSaveParametres} meta={parametresMeta}/>
   </div>}
  </div>);
 }
