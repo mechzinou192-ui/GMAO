@@ -8,7 +8,8 @@ import {optimiserMaintenance,OPTI_SEUILS_DEFAUT} from "../lib/optimisation.js";
 import {predireMaintenance} from "../lib/predictif.js";
 import {KPI_NORME_DEFAUT,KPI_PARETO_CRITERES,KPI_SEUILS,kpiAmdec,kpiCalc,kpiCollect,kpiEquipements,kpiIsNew,kpiObj,kpiPareto,kpiParetoEquipements,kpiPeriode,kpiRH,kpiRating,kpiStatus,kpiStock} from "../lib/kpi.js";
 import {UNITS} from "../lib/unites.js";
-import {Btn,Card,ExportBtn,Inp,Segment,SubTabs} from "../ui/base.jsx";
+import {Btn,Card,ExportBtn,Field,Inp,Modal,Segment,SubTabs} from "../ui/base.jsx";
+import {SUIVI_COUL,SUIVI_STATUTS,suiviAppliquer,suiviCode,suiviCompter,suiviStatut} from "../lib/suivi.js";
 
 // Cellule de saisie de la charge RAM d'un mois : enregistrée en quittant le champ (ou avec Entrée) ; vide = supprimée.
 function CelluleRAM({valeur,onSave,disabled,label}){
@@ -62,7 +63,20 @@ export const KPI_REFERENTIEL=[
  ["Fiabilité","Stratégie recommandée","Arbre de décision : C ≥ 16 ou G = 4 → MBF/RCM · G = 1 et C < 10 → Corrective · ND = 1 → Basée sur l'état · P ≥ 3 → Proactive · ND ≤ 2 → TPM · sinon Préventive","—","Résultat de l'AMDEC","—"],
 ];
 
-export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equipementsTous,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
+// Fenêtre de traitement d'une recommandation (prédictive ou d'optimisation) : statut + commentaire facultatif, historique des changements.
+function TraitementModal({ctx,onClose,onSave}){
+ const [statut,setStatut]=useState(ctx.statut==="À traiter"?"En cours":ctx.statut), [com,setCom]=useState(ctx.commentaire||"");
+ return <Modal title={"Traitement — "+ctx.nom} onClose={onClose} wide>
+  <div className="text-xs text-slate-400">{ctx.eq} · {ctx.titre}</div>
+  <div className="text-sm text-slate-200 mt-1 mb-1">{ctx.resume}</div>
+  <Field label="Statut du traitement"><select value={statut} onChange={e=>setStatut(e.target.value)} aria-label="Statut du traitement" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 mt-1">{SUIVI_STATUTS.filter(x=>x!=="À traiter").map(x=><option key={x}>{x}</option>)}</select></Field>
+  <Field label="Commentaire (facultatif)"><textarea value={com} onChange={e=>setCom(e.target.value)} rows={3} aria-label="Commentaire" placeholder="Décision prise, action réalisée, raison du refus…" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-100 mt-1"/></Field>
+  {ctx.historique.length>0&&<div className="mt-3"><div className="text-xs text-slate-400 mb-1">Historique</div>
+   <ul className="text-xs text-slate-300 space-y-1 max-h-32 overflow-y-auto">{ctx.historique.slice().reverse().map((h,i)=><li key={i}><span className="text-slate-500">{new Date(h.le).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"})} · {h.par||"—"} :</span> {h.de} → <b>{h.a}</b>{h.commentaire?" — « "+h.commentaire+" »":""}</li>)}</ul></div>}
+  <div className="flex justify-end gap-2 mt-4"><Btn onClick={onClose} cls="bg-slate-700 hover:bg-slate-600">Annuler</Btn><Btn onClick={()=>onSave({statut,commentaire:com})} cls="bg-sky-600 hover:bg-sky-500">Enregistrer</Btn></div>
+ </Modal>;
+}
+export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equipementsTous,chargesRAM=[],onSaveChargeRAM,peutSaisirRAM=false,suivis=[],onSaveSuivi,peutTraiter=false,auteur="",dis,bts,planning,equipements,pieces,systemsList,treeStruct,kpiOk=()=>true}){
  const pad=(n)=>String(n).padStart(2,"0");
  const ymd=(d)=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
  const now=new Date(); const d30=new Date(now); d30.setDate(d30.getDate()-29);
@@ -78,6 +92,7 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
  const [parcMode,setParcMode]=useState("Équipements avec DI/OT");
  const [groupBy,setGroupBy]=useState("Équipement");
  const anneeDefaut=(()=>{const d=new Date(); return d.getMonth()===0?d.getFullYear()-1:d.getFullYear();})();   // en janvier : analyse de l'année écoulée
+ const [traiter,setTraiter]=useState(null), [predTrait,setPredTrait]=useState("Tous"), [optiTrait,setOptiTrait]=useState("Tous");
  const [predHor,setPredHor]=useState("30 jours"), [predHist,setPredHist]=useState("Tout"), [predFiltre,setPredFiltre]=useState("Tous");
  const [optiAnnee,setOptiAnnee]=useState(String(anneeDefaut)), [optiSeuil,setOptiSeuil]=useState(String(OPTI_SEUILS_DEFAUT.seuilPannes)), [optiBas,setOptiBas]=useState(String(OPTI_SEUILS_DEFAUT.seuilBas)), [optiFiltre,setOptiFiltre]=useState("Tous");
  const [paretoCrit,setParetoCrit]=useState("nbDI"), [paretoPortee,setParetoPortee]=useState("Corrective");
@@ -129,23 +144,35 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
   {nom:"Synthèse critères",titre:"Pareto ABC — nombre d'équipements par seuil — "+unit+" — "+perLabel,
    colonnes:[{h:"Critère"},{h:"Total",t:"num"},{h:"Équipements concernés",t:"num"},{h:"Classe A — 80 %",t:"num"},{h:"Jusqu'à B — 95 %",t:"num"},{h:"Jusqu'à C — 100 %",t:"num"}],
    lignes:paretoTous.map(({c,p})=>[c.lib+(c.unite?" ("+c.unite+")":""),Number(p.total.toFixed(2)),p.n100,p.n80,p.n95,p.n100])}]});
+ // Suivi du traitement (statut + commentaire facultatif) des recommandations prédictives et d'optimisation
+ const suiviMap=useMemo(()=>new Map((suivis||[]).map(x=>[x.code,x])),[suivis]);
+ const codePred=(l)=>suiviCode("PRED",unit,l.eq+"|"+l.derniere), codeOpti=(l)=>suiviCode("OPT",unit,optiAnnee+"|"+l.eq+"|"+l.plan);
+ const statutPred=(l)=>suiviStatut(suiviMap.get(codePred(l))), statutOpti=(l)=>suiviStatut(suiviMap.get(codeOpti(l)));
+ const suiviExport=(code)=>{const r=suiviMap.get(code); return [suiviStatut(r),r?r.commentaire:"",r?r.traitePar:"",r&&r.traiteLe?new Date(r.traiteLe).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"}):""];};
+ const traitCell=(code,base)=>{const r=suiviMap.get(code), st=suiviStatut(r);
+  return <td><span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{background:SUIVI_COUL[st]+"22",color:SUIVI_COUL[st],border:"1px solid "+SUIVI_COUL[st]}}>{st}</span>
+   {r&&r.commentaire&&<div className="text-xs text-slate-300 max-w-[12rem] mt-1" title={r.commentaire}>« {r.commentaire} »</div>}
+   {r&&<div className="text-xs text-slate-500">{r.traitePar} · {new Date(r.traiteLe).toLocaleDateString("fr-FR")}</div>}
+   {peutTraiter&&onSaveSuivi&&<button type="button" className="text-xs text-sky-400 hover:underline mt-1 block" aria-label={(r?"Modifier le traitement de ":"Traiter ")+base.nom} onClick={()=>setTraiter({...base,code,statut:st,commentaire:r?r.commentaire:"",historique:r?r.historique||[]:[]})}>{r?"Modifier":"Traiter"}</button>}</td>;};
+ const enregistrerSuivi=({statut,commentaire})=>{ if(!traiter||!onSaveSuivi) return; onSaveSuivi(suiviAppliquer(suiviMap.get(traiter.code),{code:traiter.code,unit,source:traiter.source,eq:traiter.eq,nom:traiter.nom,resume:traiter.resume,statut,commentaire,par:auteur})); setTraiter(null); };
+ const barreSuivi=(codes)=>{const c=suiviCompter(codes,suivis); return <div className="flex flex-wrap gap-2 text-xs mb-2" data-testid="suivi-compteurs">{SUIVI_STATUTS.map(k=><span key={k} className="px-2 py-0.5 rounded-full" style={{background:SUIVI_COUL[k]+"22",color:SUIVI_COUL[k],border:"1px solid "+SUIVI_COUL[k]}}>{k} : {c[k]}</span>)}</div>;};
  // Maintenance prédictive : prévision des prochaines pannes par équipement (historique des DI / OT correctifs)
  const pred=useMemo(()=>predireMaintenance({unit,dis,bts,planning,equipements,pieces,flt,horizonJours:parseInt(predHor,10)||30,fenetreMois:predHist==="Tout"?0:parseInt(predHist,10)||0}),[unit,dis,bts,planning,equipements,pieces,flt,predHor,predHist]);   // eslint-disable-line
- const predLignes=pred.lignes.filter(l=>predFiltre==="Tous"||l.risque===predFiltre);
+ const predLignes=pred.lignes.filter(l=>(predFiltre==="Tous"||l.risque===predFiltre)&&(predTrait==="Tous"||(l.risque!=="Faible"&&statutPred(l)===predTrait)));
  const PRED_COUL={"Élevé":"#D32F2F","Moyen":"#F59E0B","Faible":"#2E9E5B"};
  const fJ=(j)=>(Math.round(j*10)/10).toString().replace(".",",")+" j";
  const exportPred=()=>exporterXlsx({fichier:"Maintenance_predictive_"+unit,feuilles:[{nom:"Prévisions de pannes",titre:"Maintenance prédictive — probabilité de panne sous "+predHor+" — historique : "+predHist+" — "+unit,
-  colonnes:[{h:"Risque"},{h:"Code équipement"},{h:"Équipement"},{h:"Pannes (historique)",t:"num"},{h:"MTBF (jours)",t:"num"},{h:"Dernière panne"},{h:"Prochaine panne prévue"},{h:"Probabilité de panne (%)",t:"num"},{h:"Tendance"},{h:"Modèle"},{h:"Durée moyenne d'arrêt (h)",t:"num"},{h:"Pannes prévues sur 12 mois",t:"num"},{h:"Arrêt prévu sur 12 mois (h)",t:"num"},{h:"Coût prévu sur 12 mois (DA)",t:"num"},{h:"Cause probable"},{h:"Pièces à prévoir"},{h:"Action recommandée"}],
-  lignes:pred.lignes.map(l=>[l.risque,l.eq,l.nom,l.pannes,Number(l.mtbfJours.toFixed(1)),l.derniere,l.prochaine+(l.enRetard?" (dépassée)":""),Number((l.proba*100).toFixed(1)),l.tendance,l.modele,Number(l.heuresMoy.toFixed(1)),Number(l.pannes12.toFixed(1)),Number(l.arret12.toFixed(1)),Math.round(l.cout12),l.cause,l.pieces.map(x=>x.qte+" × "+x.nom).join(" ; "),l.action])}]});
+  colonnes:[{h:"Risque"},{h:"Code équipement"},{h:"Équipement"},{h:"Pannes (historique)",t:"num"},{h:"MTBF (jours)",t:"num"},{h:"Dernière panne"},{h:"Prochaine panne prévue"},{h:"Probabilité de panne (%)",t:"num"},{h:"Tendance"},{h:"Modèle"},{h:"Durée moyenne d'arrêt (h)",t:"num"},{h:"Pannes prévues sur 12 mois",t:"num"},{h:"Arrêt prévu sur 12 mois (h)",t:"num"},{h:"Coût prévu sur 12 mois (DA)",t:"num"},{h:"Cause probable"},{h:"Pièces à prévoir"},{h:"Action recommandée"},{h:"Traitement"},{h:"Commentaire"},{h:"Traité par"},{h:"Traité le"}],
+  lignes:pred.lignes.map(l=>[l.risque,l.eq,l.nom,l.pannes,Number(l.mtbfJours.toFixed(1)),l.derniere,l.prochaine+(l.enRetard?" (dépassée)":""),Number((l.proba*100).toFixed(1)),l.tendance,l.modele,Number(l.heuresMoy.toFixed(1)),Number(l.pannes12.toFixed(1)),Number(l.arret12.toFixed(1)),Math.round(l.cout12),l.cause,l.pieces.map(x=>x.qte+" × "+x.nom).join(" ; "),l.action,...(l.risque==="Faible"?["—","","",""]:suiviExport(codePred(l)))])}]});
  // Optimisation de la maintenance : analyse annuelle automatique (espacer / renforcer / créer des plans préventifs)
  const opti=useMemo(()=>optimiserMaintenance({unit,annee:Number(optiAnnee),dis,bts,planning,equipements,pieces,flt,seuilPannes:Math.max(1,Number(optiSeuil)||OPTI_SEUILS_DEFAUT.seuilPannes),seuilBas:Math.max(0,Number(optiBas)||0)}),[unit,optiAnnee,dis,bts,planning,equipements,pieces,flt,optiSeuil,optiBas]);   // eslint-disable-line
- const optiLignes=opti.lignes.filter(l=>optiFiltre==="Tous"||l.statut===optiFiltre);
+ const optiLignes=opti.lignes.filter(l=>(optiFiltre==="Tous"||l.statut===optiFiltre)&&(optiTrait==="Tous"||(l.statut!=="Maintenir"&&statutOpti(l)===optiTrait)));
  const OPTI_COUL={"Espacer":"#2E9E5B","Renforcer":"#D32F2F","Créer un plan":"#F59E0B","Maintenir":"#64748B"};
  const fOcc=(o)=>o==null?"—":(Math.round(o*10)/10).toString().replace(".",",")+" /an";
  const exportOpti=()=>exporterXlsx({fichier:"Optimisation_maintenance_"+unit+"_"+optiAnnee,feuilles:[
   {nom:"Recommandations",titre:"Optimisation de la maintenance — analyse "+optiAnnee+" — "+unit,
-   colonnes:[{h:"Statut"},{h:"Code équipement"},{h:"Équipement"},{h:"Plan"},{h:"Périodicité actuelle"},{h:"Occ./an actuelles",t:"num"},{h:"Proposition"},{h:"Occ./an proposées",t:"num"},{h:"Pannes de l'année",t:"num"},{h:"Heures d'arrêt (h)",t:"num"},{h:"Coût des pannes (DA)",t:"num"},{h:"OT préventifs",t:"num"},{h:"Coût préventif (DA)",t:"num"},{h:"Gain estimé (h/an)",t:"num"},{h:"Gain estimé (DA/an)",t:"num"},{h:"Motif"}],
-   lignes:opti.lignes.map(l=>[l.statut,l.eq,l.nom,l.plan,l.periodeActuelle,l.occActuelle==null?"":Number(l.occActuelle.toFixed(1)),l.propose,l.occPropose==null?"":Number(l.occPropose.toFixed(1)),l.pannes,Number(l.heuresPannes.toFixed(1)),Math.round(l.coutPannes),l.nbPrev,Math.round(l.coutPrev),Number(l.economieH.toFixed(1)),Math.round(l.economieCout),l.motif])},
+   colonnes:[{h:"Statut"},{h:"Code équipement"},{h:"Équipement"},{h:"Plan"},{h:"Périodicité actuelle"},{h:"Occ./an actuelles",t:"num"},{h:"Proposition"},{h:"Occ./an proposées",t:"num"},{h:"Pannes de l'année",t:"num"},{h:"Heures d'arrêt (h)",t:"num"},{h:"Coût des pannes (DA)",t:"num"},{h:"OT préventifs",t:"num"},{h:"Coût préventif (DA)",t:"num"},{h:"Gain estimé (h/an)",t:"num"},{h:"Gain estimé (DA/an)",t:"num"},{h:"Motif"},{h:"Traitement"},{h:"Commentaire"},{h:"Traité par"},{h:"Traité le"}],
+   lignes:opti.lignes.map(l=>[l.statut,l.eq,l.nom,l.plan,l.periodeActuelle,l.occActuelle==null?"":Number(l.occActuelle.toFixed(1)),l.propose,l.occPropose==null?"":Number(l.occPropose.toFixed(1)),l.pannes,Number(l.heuresPannes.toFixed(1)),Math.round(l.coutPannes),l.nbPrev,Math.round(l.coutPrev),Number(l.economieH.toFixed(1)),Math.round(l.economieCout),l.motif,...(l.statut==="Maintenir"?["—","","",""]:suiviExport(codeOpti(l)))])},
   {nom:"Tâches proposées",titre:"Tâches à ajouter aux plans préventifs, déduites des pannes de "+optiAnnee+" — "+unit,
    colonnes:[{h:"Code équipement"},{h:"Équipement"},{h:"Tâche proposée"},{h:"Occurrences de la cause",t:"num"}],lignes:opti.taches.map(t=>[t.eq,t.nom,t.tache,t.occurrences])},
   {nom:"Synthèse",titre:"Synthèse de l'optimisation — "+optiAnnee+" — "+unit,colonnes:[{h:"Indicateur"},{h:"Valeur",t:"num"}],
@@ -390,8 +417,9 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
    </CarteGraphe>
    <Card>
     <div className="flex flex-wrap justify-between items-end gap-3"><KpiTitle sub={"Prévision à partir du nombre de pannes, des intervalles entre pannes, des durées et des causes relevées dans les OT correctifs."+(pred.insuffisants>0?" "+pred.insuffisants+" équipement(s) non analysé(s) : moins de 3 pannes.":"")}>Prévisions de pannes par équipement</KpiTitle>
-     <Segment value={predFiltre} options={["Tous","Élevé","Moyen","Faible"]} onChange={setPredFiltre}/></div>
-    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Risque</Th><Th>Équipement</Th><Th>Pannes</Th><Th>MTBF</Th><Th>Prochaine panne prévue</Th><Th>Probabilité</Th><Th>Tendance</Th><Th>Arrêt moyen</Th><Th>Cause probable</Th><Th>Pièces à prévoir</Th><Th>Action</Th></tr></thead>
+     <div className="flex flex-wrap gap-3 items-end"><div><div className="text-xs text-slate-400">Risque</div><Segment value={predFiltre} options={["Tous","Élevé","Moyen","Faible"]} onChange={setPredFiltre}/></div><div><div className="text-xs text-slate-400">Traitement</div><Segment value={predTrait} options={["Tous",...SUIVI_STATUTS]} onChange={setPredTrait}/></div></div></div>
+    {barreSuivi(pred.lignes.filter(l=>l.risque!=="Faible").map(codePred))}
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Risque</Th><Th>Équipement</Th><Th>Pannes</Th><Th>MTBF</Th><Th>Prochaine panne prévue</Th><Th>Probabilité</Th><Th>Tendance</Th><Th>Arrêt moyen</Th><Th>Cause probable</Th><Th>Pièces à prévoir</Th><Th>Action</Th><Th>Traitement</Th></tr></thead>
     <tbody>{predLignes.map(l=><tr key={l.eq} className="border-t border-slate-700 align-top">
      <td className="py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{background:PRED_COUL[l.risque]+"22",color:PRED_COUL[l.risque],border:"1px solid "+PRED_COUL[l.risque]}}>{l.risque}</span></td>
      <td>{l.nom}<br/><span className="text-xs text-slate-400">{l.eq}</span></td><td>{l.pannes}<br/><span className="text-xs text-slate-400">dernière : {l.derniere}</span></td><td>{fJ(l.mtbfJours)}</td>
@@ -400,7 +428,8 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
      <td><span style={{color:l.tendance==="Dégradation"?"#D32F2F":l.tendance==="Amélioration"?"#2E9E5B":undefined}}>{l.tendance}</span></td>
      <td>{fH(l.heuresMoy,1)}</td><td className="text-xs max-w-[11rem]">{l.cause||"—"}{l.causeOcc>1&&<span className="text-slate-400"> ({l.causeOcc}×)</span>}</td>
      <td className="text-xs">{l.pieces.length?l.pieces.map(x=><div key={x.code}>{x.qte} × {x.nom}{x.stockOk===false&&<span className="text-rose-400"> (stock insuffisant)</span>}</div>):"—"}</td>
-     <td className="text-xs text-slate-300 max-w-xs">{l.action}</td></tr>)}</tbody></table></div>
+     <td className="text-xs text-slate-300 max-w-xs">{l.action}</td>
+     {l.risque==="Faible"?<td className="text-xs text-slate-500">—</td>:traitCell(codePred(l),{source:"PRED",eq:l.eq,nom:l.nom,titre:"Maintenance prédictive — risque "+l.risque.toLowerCase()+" (prochaine panne prévue le "+l.prochaine+")",resume:l.action})}</tr>)}</tbody></table></div>
    </Card></>}
    <div className="text-xs text-slate-500">Méthode : à partir des dates des pannes de chaque équipement (DI correctives), on calcule le temps moyen entre pannes (MTBF) et la tendance (dégradation si les pannes se rapprochent). La probabilité de panne sous l'horizon choisi est calculée avec une loi de Weibull lorsque l'historique compte au moins 5 pannes, avec une loi exponentielle (taux de panne constant) sinon, en tenant compte du temps écoulé depuis la dernière panne. Risque élevé : probabilité ≥ 50 % (ou ≥ 30 % avec dégradation) ; moyen : ≥ 25 % ou échéance dépassée. Les durées, coûts, causes et pièces viennent des OT correctifs. C'est une aide à la décision : plus l'historique est long et bien renseigné (dates, causes, pièces), plus la prévision est fiable.</div>
   </div>}
@@ -421,9 +450,10 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
    </div>
    <Card>
     <div className="flex flex-wrap justify-between items-end gap-3"><KpiTitle sub={"Bilan "+optiAnnee+" : "+opti.synth.nbEquip+" équipement(s) analysé(s), "+opti.synth.pannes+" panne(s), "+fDA(opti.synth.coutPannes)+" de coût de pannes. Propositions à valider par l'équipe avant modification des plans."}>Recommandations automatiques</KpiTitle>
-     <Segment value={optiFiltre} options={["Tous","Espacer","Renforcer","Créer un plan","Maintenir"]} onChange={setOptiFiltre}/></div>
+     <div className="flex flex-wrap gap-3 items-end"><div><div className="text-xs text-slate-400">Action</div><Segment value={optiFiltre} options={["Tous","Espacer","Renforcer","Créer un plan","Maintenir"]} onChange={setOptiFiltre}/></div><div><div className="text-xs text-slate-400">Traitement</div><Segment value={optiTrait} options={["Tous",...SUIVI_STATUTS]} onChange={setOptiTrait}/></div></div></div>
+    {barreSuivi(opti.lignes.filter(l=>l.statut!=="Maintenir").map(codeOpti))}
     {optiLignes.length===0?<KpiEmpty>Aucune recommandation pour cette année et ce filtre.</KpiEmpty>:
-    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Action</Th><Th>Équipement</Th><Th>Plan</Th><Th>Périodicité actuelle</Th><Th>Proposition</Th><Th>Pannes</Th><Th>OT prév.</Th><Th>Gain estimé / an</Th><Th>Pourquoi</Th></tr></thead>
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-slate-400 text-left"><Th>Action</Th><Th>Équipement</Th><Th>Plan</Th><Th>Périodicité actuelle</Th><Th>Proposition</Th><Th>Pannes</Th><Th>OT prév.</Th><Th>Gain estimé / an</Th><Th>Pourquoi</Th><Th>Traitement</Th></tr></thead>
     <tbody>{optiLignes.map((l,i)=><tr key={l.eq+l.plan+i} className="border-t border-slate-700 align-top">
      <td className="py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{background:OPTI_COUL[l.statut]+"22",color:OPTI_COUL[l.statut],border:"1px solid "+OPTI_COUL[l.statut]}}>{l.statut}</span></td>
      <td>{l.nom}<br/><span className="text-xs text-slate-400">{l.eq}</span></td><td>{l.plan}</td>
@@ -431,7 +461,8 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
      <td>{l.propose}<br/><span className="text-xs text-slate-400">{fOcc(l.occPropose)}</span></td>
      <td>{l.pannes}<br/><span className="text-xs text-slate-400">{fH(l.heuresPannes,1)} d'arrêt</span></td><td>{l.nbPrev}</td>
      <td>{l.statut==="Espacer"?<>{fDA(l.economieCout)}<br/><span className="text-xs text-slate-400">{fH(l.economieH,1)}</span></>:"—"}</td>
-     <td className="text-xs text-slate-300 max-w-xs">{l.motif}</td></tr>)}</tbody></table></div>}
+     <td className="text-xs text-slate-300 max-w-xs">{l.motif}</td>
+     {l.statut==="Maintenir"?<td className="text-xs text-slate-500">—</td>:traitCell(codeOpti(l),{source:"OPT",eq:l.eq,nom:l.nom,titre:"Optimisation "+optiAnnee+" — "+l.statut+(l.plan?" — "+l.plan:""),resume:l.periodeActuelle+" → "+l.propose})}</tr>)}</tbody></table></div>}
    </Card>
    <Card>
     <KpiTitle sub="Déduites des causes de pannes récurrentes de l'année (hors tâches déjà présentes dans les plans). À ajouter au plan existant ou au nouveau plan.">Tâches préventives proposées</KpiTitle>
@@ -441,6 +472,8 @@ export function IndicateursPage({unit,unitesRH,disTous,btsTous,planningTous,equi
    </Card>
    <div className="text-xs text-slate-500">Méthode : sur l'année choisie, un équipement avec plan préventif et sans panne voit sa périodicité allongée d'un cran (gain = occurrences évitées × coût moyen d'un OT préventif de ce plan) ; un équipement avec trop de pannes voit son plan rapproché d'un cran et ses tâches complétées, ou reçoit un nouveau plan dont la périodicité est au plus la moitié du temps moyen entre pannes (MTBF ≈ 365 ÷ pannes/an). Les seuils sont réglables ci-dessus. Aucun plan n'est modifié automatiquement.</div>
   </div>}
+
+  {traiter&&<TraitementModal ctx={traiter} onClose={()=>setTraiter(null)} onSave={enregistrerSuivi}/>}
 
   {sub==="Stock" && <div className="space-y-4">
    <div className="flex flex-wrap justify-between items-end gap-3">
